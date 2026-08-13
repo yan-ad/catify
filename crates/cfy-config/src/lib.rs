@@ -229,11 +229,7 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
         .encode_wide()
         .chain(Some(0))
         .collect();
-    let source: Vec<u16> = source
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
 
     // SAFETY: both paths are valid, null-terminated UTF-16 buffers that remain
     // alive for the call. Optional backup/exclusion/reserved pointers are null.
