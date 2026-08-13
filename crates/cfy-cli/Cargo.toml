@@ -1,0 +1,16 @@
+[package]
+name = "cfy-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "cfy"
+path = "src/main.rs"
+
+[dependencies]
+cfy-core = { path = "../cfy-core" }
+clap.workspace = true
+tokio.workspace = true

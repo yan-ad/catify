@@ -1,0 +1,25 @@
+[workspace]
+members = [
+  "crates/cfy-api",
+  "crates/cfy-cli",
+  "crates/cfy-config",
+  "crates/cfy-core",
+  "crates/cfy-process",
+]
+default-members = ["crates/cfy-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+repository = "https://github.com/yan-ad/crabpify"
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+clap = { version = "4.5.45", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+thiserror = "2.0.16"
+tokio = { version = "1.47.1", features = ["macros", "process", "rt-multi-thread", "signal", "time"] }
+toml = "0.9.5"

@@ -1,0 +1,11 @@
+[package]
+name = "cfy-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cfy-core = { path = "../cfy-core" }
+tokio.workspace = true

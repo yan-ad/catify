@@ -1,0 +1,3087 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-13T09:35:48.164465+00:00",
+  "upstream": {
+    "repository": "https://github.com/Shopify/cli",
+    "version": "4.6.0",
+    "commit": "87a3ae19c8ddc6bdb379d9d69068ad986995aa59",
+    "commit_date": "2026-08-12T10:30:23Z",
+    "license": "MIT"
+  },
+  "limitations": [
+    "Static conservative scan; dynamically composed flags and transitive runtime dependencies may be absent.",
+    "Aliases are recorded when declared in command metadata; current source scan found none.",
+    "API and executable fields are evidence markers, not a complete call graph."
+  ],
+  "commands": [
+    {
+      "name": "app app-logs sources",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "app-logs"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/app-logs/sources.ts"
+    },
+    {
+      "name": "app build",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "skip-dependencies-installation",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "adapter-backed",
+      "source": "packages/app/src/cli/commands/app/build.ts"
+    },
+    {
+      "name": "app bulk cancel",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "id",
+          "short": null
+        },
+        {
+          "name": "store",
+          "short": "s"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/bulk/cancel.ts"
+    },
+    {
+      "name": "app bulk execute",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/bulk/execute.ts"
+    },
+    {
+      "name": "app bulk status",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "id",
+          "short": null
+        },
+        {
+          "name": "store",
+          "short": "s"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/bulk/status.ts"
+    },
+    {
+      "name": "app config link",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "config"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "organization-id",
+          "short": null
+        },
+        {
+          "name": "file-name",
+          "short": null
+        },
+        {
+          "name": "force",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_APP_CONFIG_FILE_NAME",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "shopify.app.staging.toml",
+        "shopify.app.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/config/link.ts"
+    },
+    {
+      "name": "app config pull",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "config"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/config/pull.ts"
+    },
+    {
+      "name": "app config use",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "config"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json",
+        "shopify.app.staging.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/config/use.ts"
+    },
+    {
+      "name": "app config validate",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "config"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "**/shopify.web.toml",
+        "*.extension.toml",
+        "<dir>/*.extension.toml",
+        "<dir>/shopify.web.toml",
+        "package.json",
+        "shopify.app*.toml",
+        "shopify.app.staging.toml",
+        "shopify.web.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/config/validate.ts"
+    },
+    {
+      "name": "app demo watcher",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "demo"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/demo/watcher.ts"
+    },
+    {
+      "name": "app deploy",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "allow-updates",
+          "short": null
+        },
+        {
+          "name": "allow-deletes",
+          "short": null
+        },
+        {
+          "name": "no-release",
+          "short": null
+        },
+        {
+          "name": "no-build",
+          "short": null
+        },
+        {
+          "name": "message",
+          "short": null
+        },
+        {
+          "name": "version",
+          "short": null
+        },
+        {
+          "name": "source-control-url",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_DELETES",
+        "SHOPIFY_FLAG_ALLOW_UPDATES",
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_MESSAGE",
+        "SHOPIFY_FLAG_NO_BUILD",
+        "SHOPIFY_FLAG_NO_RELEASE",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_SOURCE_CONTROL_URL",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/deploy.ts"
+    },
+    {
+      "name": "app dev clean",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "dev"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "store",
+          "short": "s"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/dev/clean.ts"
+    },
+    {
+      "name": "app dev",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "store",
+          "short": "s"
+        },
+        {
+          "name": "skip-dependencies-installation",
+          "short": null
+        },
+        {
+          "name": "no-update",
+          "short": null
+        },
+        {
+          "name": "subscription-product-url",
+          "short": null
+        },
+        {
+          "name": "checkout-cart-url",
+          "short": null
+        },
+        {
+          "name": "tunnel-url",
+          "short": null
+        },
+        {
+          "name": "use-localhost",
+          "short": null
+        },
+        {
+          "name": "install-mkcert",
+          "short": null
+        },
+        {
+          "name": "localhost-port",
+          "short": null
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "theme-app-extension-port",
+          "short": null
+        },
+        {
+          "name": "store-password",
+          "short": null
+        },
+        {
+          "name": "notify",
+          "short": null
+        },
+        {
+          "name": "graphiql-port",
+          "short": null
+        },
+        {
+          "name": "graphiql-key",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CHECKOUT_CART_URL",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_GRAPHIQL_KEY",
+        "SHOPIFY_FLAG_GRAPHIQL_PORT",
+        "SHOPIFY_FLAG_INSTALL_MKCERT",
+        "SHOPIFY_FLAG_LOCALHOST_PORT",
+        "SHOPIFY_FLAG_NOTIFY",
+        "SHOPIFY_FLAG_NO_UPDATE",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_PASSWORD",
+        "SHOPIFY_FLAG_SUBSCRIPTION_PRODUCT_URL",
+        "SHOPIFY_FLAG_THEME",
+        "SHOPIFY_FLAG_THEME_APP_EXTENSION_PORT",
+        "SHOPIFY_FLAG_TUNNEL_URL",
+        "SHOPIFY_FLAG_USE_LOCALHOST",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "adapter-backed",
+      "source": "packages/app/src/cli/commands/app/dev.ts"
+    },
+    {
+      "name": "app env pull",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "env"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "env-file",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_ENV_FILE",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/env/pull.ts"
+    },
+    {
+      "name": "app env show",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "env"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/env/show.ts"
+    },
+    {
+      "name": "app execute",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/execute.ts"
+    },
+    {
+      "name": "app function build",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/build.ts"
+    },
+    {
+      "name": "app function info",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/info.ts"
+    },
+    {
+      "name": "app function replay",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "watch",
+          "short": "w"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_LOG",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/replay.ts"
+    },
+    {
+      "name": "app function run",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "input",
+          "short": "i"
+        },
+        {
+          "name": "export",
+          "short": "e"
+        },
+        {
+          "name": "profile",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_EXPORT",
+        "SHOPIFY_FLAG_INPUT",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_PROFILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/run.ts"
+    },
+    {
+      "name": "app function schema",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "stdout",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STDOUT",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/schema.ts"
+    },
+    {
+      "name": "app function typegen",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "function"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "codegen.json",
+        "node_modules/@shopify/shopify_function/package.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/function/typegen.ts"
+    },
+    {
+      "name": "app generate extension",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "generate"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "clone-url",
+          "short": "u"
+        },
+        {
+          "name": "flavor",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_CLONE_URL",
+        "SHOPIFY_FLAG_EXTENSION_TEMPLATE",
+        "SHOPIFY_FLAG_FLAVOR",
+        "SHOPIFY_FLAG_NAME",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/generate/extension.ts"
+    },
+    {
+      "name": "app graphiql",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "store",
+          "short": "s"
+        },
+        {
+          "name": "port",
+          "short": null
+        },
+        {
+          "name": "variables",
+          "short": "v"
+        },
+        {
+          "name": "version",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_PORT",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/graphiql.ts"
+    },
+    {
+      "name": "app import-custom-data-definitions",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "store",
+          "short": "s"
+        },
+        {
+          "name": "include-existing",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_INCLUDE_EXISTING",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "admin-graphql",
+        "business-platform-graphql",
+        "storefront"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/import-custom-data-definitions.ts"
+    },
+    {
+      "name": "app import-extensions",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "client-id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "shopify.extension.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/import-extensions.ts"
+    },
+    {
+      "name": "app info",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "web-env",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHELL",
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_OUTPUT_WEB_ENV",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/info.ts"
+    },
+    {
+      "name": "app init",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "name",
+          "short": "n"
+        },
+        {
+          "name": "path",
+          "short": "p"
+        },
+        {
+          "name": "flavor",
+          "short": null
+        },
+        {
+          "name": "package-manager",
+          "short": "d"
+        },
+        {
+          "name": "local",
+          "short": "l"
+        },
+        {
+          "name": "client-id",
+          "short": null
+        },
+        {
+          "name": "organization-id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_LOCAL",
+        "SHOPIFY_FLAG_NAME",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_PACKAGE_MANAGER",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_TEMPLATE",
+        "SHOPIFY_FLAG_TEMPLATE_FLAVOR"
+      ],
+      "config_files": [
+        "Updating package.json",
+        "pnpm-workspace.yaml",
+        "shopify.app.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql",
+        "partners-graphql"
+      ],
+      "classification": "adapter-backed",
+      "source": "packages/app/src/cli/commands/app/init.ts"
+    },
+    {
+      "name": "app logs",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "store",
+          "short": "s"
+        },
+        {
+          "name": "source",
+          "short": null
+        },
+        {
+          "name": "status",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_SOURCE",
+        "SHOPIFY_FLAG_STATUS",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [
+        "composer.json",
+        "package.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/logs.ts"
+    },
+    {
+      "name": "app release",
+      "group": "app",
+      "nested_groups": [
+        "app"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "allow-updates",
+          "short": null
+        },
+        {
+          "name": "allow-deletes",
+          "short": null
+        },
+        {
+          "name": "version",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_DELETES",
+        "SHOPIFY_FLAG_ALLOW_UPDATES",
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/release.ts"
+    },
+    {
+      "name": "app versions list",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "versions"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/versions/list.ts"
+    },
+    {
+      "name": "app webhook trigger",
+      "group": "app",
+      "nested_groups": [
+        "app",
+        "webhook"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "help",
+          "short": null
+        },
+        {
+          "name": "delivery-method",
+          "short": null
+        },
+        {
+          "name": "client-secret",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ADDRESS",
+        "SHOPIFY_FLAG_API_VERSION",
+        "SHOPIFY_FLAG_APP_CONFIG",
+        "SHOPIFY_FLAG_CLIENT_ID",
+        "SHOPIFY_FLAG_CLIENT_SECRET",
+        "SHOPIFY_FLAG_DELIVERY_METHOD",
+        "SHOPIFY_FLAG_HELP",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_RESET",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_TOPIC",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/app/webhook/trigger.ts"
+    },
+    {
+      "name": "organization list",
+      "group": "organization",
+      "nested_groups": [
+        "organization"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/app/src/cli/commands/organization/list.ts"
+    },
+    {
+      "name": "auth login",
+      "group": "auth",
+      "nested_groups": [
+        "auth"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_AUTH_ALIAS"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/auth/login.ts"
+    },
+    {
+      "name": "auth logout",
+      "group": "auth",
+      "nested_groups": [
+        "auth"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/auth/logout.ts"
+    },
+    {
+      "name": "cache clear",
+      "group": "cache",
+      "nested_groups": [
+        "cache"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/cache/clear.ts"
+    },
+    {
+      "name": "config autoupgrade off",
+      "group": "config",
+      "nested_groups": [
+        "config",
+        "autoupgrade"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/config/autoupgrade/off.ts"
+    },
+    {
+      "name": "config autoupgrade on",
+      "group": "config",
+      "nested_groups": [
+        "config",
+        "autoupgrade"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/config/autoupgrade/on.ts"
+    },
+    {
+      "name": "config autoupgrade status",
+      "group": "config",
+      "nested_groups": [
+        "config",
+        "autoupgrade"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/config/autoupgrade/status.ts"
+    },
+    {
+      "name": "debug command-flags",
+      "group": "debug",
+      "nested_groups": [
+        "debug"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "csv",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_OUTPUT_CSV"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/debug/command-flags.ts"
+    },
+    {
+      "name": "doc fetch",
+      "group": "doc",
+      "nested_groups": [
+        "doc"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "url",
+          "short": null
+        },
+        {
+          "name": "output",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_OUTPUT",
+        "SHOPIFY_FLAG_URL"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/doc/fetch.ts"
+    },
+    {
+      "name": "doc search",
+      "group": "doc",
+      "nested_groups": [
+        "doc"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "query",
+          "short": null
+        },
+        {
+          "name": "api-name",
+          "short": null
+        },
+        {
+          "name": "api-version",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_API_NAME",
+        "SHOPIFY_FLAG_API_VERSION",
+        "SHOPIFY_FLAG_QUERY"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/doc/search.ts"
+    },
+    {
+      "name": "docs generate",
+      "group": "docs",
+      "nested_groups": [
+        "docs"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/docs/generate.ts"
+    },
+    {
+      "name": "doctor-release doctor-release",
+      "group": "doctor-release",
+      "nested_groups": [
+        "doctor-release"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/doctor-release/doctor-release.ts"
+    },
+    {
+      "name": "help",
+      "group": "help",
+      "nested_groups": [],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "nested-commands",
+          "short": "n"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_CLI_NESTED_COMMANDS"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/help.ts"
+    },
+    {
+      "name": "kitchen-sink async",
+      "group": "kitchen-sink",
+      "nested_groups": [
+        "kitchen-sink"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/kitchen-sink/async.ts"
+    },
+    {
+      "name": "kitchen-sink prompts",
+      "group": "kitchen-sink",
+      "nested_groups": [
+        "kitchen-sink"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/kitchen-sink/prompts.ts"
+    },
+    {
+      "name": "kitchen-sink static",
+      "group": "kitchen-sink",
+      "nested_groups": [
+        "kitchen-sink"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [
+        "shopify.app.scalable-transaction-app.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "partners-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/kitchen-sink/static.ts"
+    },
+    {
+      "name": "notifications generate",
+      "group": "notifications",
+      "nested_groups": [
+        "notifications"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [
+        "./notifications.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/notifications/generate.ts"
+    },
+    {
+      "name": "notifications list",
+      "group": "notifications",
+      "nested_groups": [
+        "notifications"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "ignore-errors",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_IGNORE_ERRORS"
+      ],
+      "config_files": [
+        "./notifications.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/notifications/list.ts"
+    },
+    {
+      "name": "search",
+      "group": "search",
+      "nested_groups": [],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/search.ts"
+    },
+    {
+      "name": "upgrade",
+      "group": "upgrade",
+      "nested_groups": [],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/upgrade.ts"
+    },
+    {
+      "name": "version",
+      "group": "version",
+      "nested_groups": [],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/cli/src/cli/commands/version.ts"
+    },
+    {
+      "name": "store auth list",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "auth"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/auth/list.ts"
+    },
+    {
+      "name": "store auth",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "scopes",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_SCOPES",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/auth.ts"
+    },
+    {
+      "name": "store bulk cancel",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/bulk/cancel.ts"
+    },
+    {
+      "name": "store bulk execute",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/bulk/execute.ts"
+    },
+    {
+      "name": "store bulk status",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "bulk"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/bulk/status.ts"
+    },
+    {
+      "name": "store create dev",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "create"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "feature-preview",
+          "short": null
+        },
+        {
+          "name": "with-demo-data",
+          "short": null
+        },
+        {
+          "name": "country",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_STORE_FEATURE_PREVIEW",
+        "SHOPIFY_FLAG_STORE_NAME",
+        "SHOPIFY_FLAG_STORE_PLAN",
+        "SHOPIFY_FLAG_STORE_WITH_DEMO_DATA",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/create/dev.ts"
+    },
+    {
+      "name": "store create preview",
+      "group": "store",
+      "nested_groups": [
+        "store",
+        "create"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "name",
+          "short": null
+        },
+        {
+          "name": "country",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PREVIEW_STORE_NAME",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "admin-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/create/preview.ts"
+    },
+    {
+      "name": "store delete",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "force",
+          "short": "f"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/delete.ts"
+    },
+    {
+      "name": "store execute",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "query",
+          "short": "q"
+        },
+        {
+          "name": "query-file",
+          "short": null
+        },
+        {
+          "name": "variables",
+          "short": "v"
+        },
+        {
+          "name": "variable-file",
+          "short": null
+        },
+        {
+          "name": "version",
+          "short": null
+        },
+        {
+          "name": "output-file",
+          "short": null
+        },
+        {
+          "name": "allow-mutations",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/execute.ts"
+    },
+    {
+      "name": "store graphiql",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "port",
+          "short": null
+        },
+        {
+          "name": "allow-mutations",
+          "short": null
+        },
+        {
+          "name": "variables",
+          "short": "v"
+        },
+        {
+          "name": "version",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_PORT",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/graphiql.ts"
+    },
+    {
+      "name": "store info",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "admin-graphql",
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/info.ts"
+    },
+    {
+      "name": "store list",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "organization-id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [
+        "business-platform-graphql"
+      ],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/list.ts"
+    },
+    {
+      "name": "store open",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/open.ts"
+    },
+    {
+      "name": "store stripe-auth",
+      "group": "store",
+      "nested_groups": [
+        "store"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "scopes",
+          "short": null
+        },
+        {
+          "name": "signup",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_FLAG_ALLOW_MUTATIONS",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_ORGANIZATION_ID",
+        "SHOPIFY_FLAG_OUTPUT_FILE",
+        "SHOPIFY_FLAG_QUERY",
+        "SHOPIFY_FLAG_QUERY_FILE",
+        "SHOPIFY_FLAG_SCOPES",
+        "SHOPIFY_FLAG_SIGNUP",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_COUNTRY",
+        "SHOPIFY_FLAG_VARIABLES",
+        "SHOPIFY_FLAG_VARIABLE_FILE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_FLAG_WATCH"
+      ],
+      "config_files": [],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/store/src/cli/commands/store/stripe-auth.ts"
+    },
+    {
+      "name": "theme check",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "auto-correct",
+          "short": "a"
+        },
+        {
+          "name": "config",
+          "short": "C"
+        },
+        {
+          "name": "fail-level",
+          "short": null
+        },
+        {
+          "name": "init",
+          "short": null
+        },
+        {
+          "name": "list",
+          "short": null
+        },
+        {
+          "name": "output",
+          "short": "o"
+        },
+        {
+          "name": "print",
+          "short": null
+        },
+        {
+          "name": "version",
+          "short": "v"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_AUTO_CORRECT",
+        "SHOPIFY_FLAG_CONFIG",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FAIL_LEVEL",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_INIT",
+        "SHOPIFY_FLAG_LIST",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_OUTPUT",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_PRINT",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_VERSION",
+        "SHOPIFY_TMP_FLAG_DEBUG"
+      ],
+      "config_files": [
+        ".theme-check.yml",
+        "package.json",
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "adapter-backed",
+      "source": "packages/theme/src/cli/commands/theme/check.ts"
+    },
+    {
+      "name": "theme console",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "url",
+          "short": null
+        },
+        {
+          "name": "store-password",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_PASSWORD",
+        "SHOPIFY_FLAG_URL"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "storefront"
+      ],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/console.ts"
+    },
+    {
+      "name": "theme delete",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "show-all",
+          "short": "a"
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_SHOW_ALL",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/delete.ts"
+    },
+    {
+      "name": "theme dev",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "host",
+          "short": null
+        },
+        {
+          "name": "live-reload",
+          "short": null
+        },
+        {
+          "name": "error-overlay",
+          "short": null
+        },
+        {
+          "name": "poll",
+          "short": null
+        },
+        {
+          "name": "theme-editor-sync",
+          "short": null
+        },
+        {
+          "name": "standard-events-inspector",
+          "short": null
+        },
+        {
+          "name": "reconciliation-strategy",
+          "short": null
+        },
+        {
+          "name": "port",
+          "short": null
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "listing",
+          "short": null
+        },
+        {
+          "name": "nodelete",
+          "short": "n"
+        },
+        {
+          "name": "only",
+          "short": "o"
+        },
+        {
+          "name": "ignore",
+          "short": "x"
+        },
+        {
+          "name": "force",
+          "short": "f"
+        },
+        {
+          "name": "notify",
+          "short": null
+        },
+        {
+          "name": "open",
+          "short": null
+        },
+        {
+          "name": "store-password",
+          "short": null
+        },
+        {
+          "name": "allow-live",
+          "short": "a"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ALLOW_LIVE",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_ERROR_OVERLAY",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_HOST",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LISTING",
+        "SHOPIFY_FLAG_LIVE_RELOAD",
+        "SHOPIFY_FLAG_NODELETE",
+        "SHOPIFY_FLAG_NOTIFY",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_OPEN",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_POLL",
+        "SHOPIFY_FLAG_PORT",
+        "SHOPIFY_FLAG_RECONCILIATION_STRATEGY",
+        "SHOPIFY_FLAG_STANDARD_EVENTS_INSPECTOR",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_PASSWORD",
+        "SHOPIFY_FLAG_THEME_EDITOR_SYNC",
+        "SHOPIFY_FLAG_THEME_ID",
+        "SHOPIFY_LANGUAGE_SERVER"
+      ],
+      "config_files": [
+        "metafields.json",
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "storefront"
+      ],
+      "classification": "adapter-backed",
+      "source": "packages/theme/src/cli/commands/theme/dev.ts"
+    },
+    {
+      "name": "theme duplicate",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "name",
+          "short": "n"
+        },
+        {
+          "name": "force",
+          "short": "f"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_NAME",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/duplicate.ts"
+    },
+    {
+      "name": "theme info",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        }
+      ],
+      "environment_variables": [
+        "SHELL",
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/info.ts"
+    },
+    {
+      "name": "theme init",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "clone-url",
+          "short": "u"
+        },
+        {
+          "name": "latest",
+          "short": "l"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_CLONE_URL",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LATEST",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/init.ts"
+    },
+    {
+      "name": "theme language-server",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "adapter-backed",
+      "source": "packages/theme/src/cli/commands/theme/language-server.ts"
+    },
+    {
+      "name": "theme list",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "role",
+          "short": null
+        },
+        {
+          "name": "name",
+          "short": null
+        },
+        {
+          "name": "id",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_ID",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_NAME",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_ROLE",
+        "SHOPIFY_FLAG_STORE"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/list.ts"
+    },
+    {
+      "name": "theme metafields pull",
+      "group": "theme",
+      "nested_groups": [
+        "theme",
+        "metafields"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "force",
+          "short": "f"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_LANGUAGE_SERVER"
+      ],
+      "config_files": [
+        "metafields.json",
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/metafields/pull.ts"
+    },
+    {
+      "name": "theme open",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "editor",
+          "short": "E"
+        },
+        {
+          "name": "live",
+          "short": "l"
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_EDITOR",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LIVE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/open.ts"
+    },
+    {
+      "name": "theme package",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE"
+      ],
+      "config_files": [
+        "config/settings_schema.json",
+        "shopify.theme.toml",
+        "update_extension.json"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/package.ts"
+    },
+    {
+      "name": "theme preview",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "overrides",
+          "short": null
+        },
+        {
+          "name": "preview-id",
+          "short": null
+        },
+        {
+          "name": "open",
+          "short": null
+        },
+        {
+          "name": "json",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_JSON",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_OPEN",
+        "SHOPIFY_FLAG_OVERRIDES",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_PREVIEW_ID",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "storefront"
+      ],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/preview.ts"
+    },
+    {
+      "name": "theme profile",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "url",
+          "short": null
+        },
+        {
+          "name": "store-password",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STORE_PASSWORD",
+        "SHOPIFY_FLAG_THEME_ID",
+        "SHOPIFY_FLAG_URL",
+        "WSL_DISTRO_NAME"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [
+        "storefront"
+      ],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/profile.ts"
+    },
+    {
+      "name": "theme publish",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/publish.ts"
+    },
+    {
+      "name": "theme pull",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "live",
+          "short": "l"
+        },
+        {
+          "name": "nodelete",
+          "short": "n"
+        },
+        {
+          "name": "force",
+          "short": "f"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LIVE",
+        "SHOPIFY_FLAG_NODELETE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/pull.ts"
+    },
+    {
+      "name": "theme push",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "development-context",
+          "short": "c"
+        },
+        {
+          "name": "live",
+          "short": "l"
+        },
+        {
+          "name": "unpublished",
+          "short": "u"
+        },
+        {
+          "name": "nodelete",
+          "short": "n"
+        },
+        {
+          "name": "allow-live",
+          "short": "a"
+        },
+        {
+          "name": "publish",
+          "short": "p"
+        },
+        {
+          "name": "force",
+          "short": "f"
+        },
+        {
+          "name": "strict",
+          "short": null
+        },
+        {
+          "name": "listing",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ALLOW_LIVE",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_DEVELOPMENT_CONTEXT",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LISTING",
+        "SHOPIFY_FLAG_LIVE",
+        "SHOPIFY_FLAG_NODELETE",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_PUBLISH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_STRICT_PUSH",
+        "SHOPIFY_FLAG_THEME_ID",
+        "SHOPIFY_FLAG_UNPUBLISHED"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/push.ts"
+    },
+    {
+      "name": "theme rename",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "development",
+          "short": "d"
+        },
+        {
+          "name": "theme",
+          "short": "t"
+        },
+        {
+          "name": "live",
+          "short": "l"
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_DEVELOPMENT",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LIVE",
+        "SHOPIFY_FLAG_NEW_NAME",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE",
+        "SHOPIFY_FLAG_THEME_ID"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/rename.ts"
+    },
+    {
+      "name": "theme share",
+      "group": "theme",
+      "nested_groups": [
+        "theme"
+      ],
+      "aliases": [],
+      "flags": [
+        {
+          "name": "force",
+          "short": "f"
+        },
+        {
+          "name": "listing",
+          "short": null
+        }
+      ],
+      "environment_variables": [
+        "SHOPIFY_CLI_THEME_TOKEN",
+        "SHOPIFY_FLAG_ENVIRONMENT",
+        "SHOPIFY_FLAG_FORCE",
+        "SHOPIFY_FLAG_IGNORE",
+        "SHOPIFY_FLAG_LISTING",
+        "SHOPIFY_FLAG_ONLY",
+        "SHOPIFY_FLAG_PATH",
+        "SHOPIFY_FLAG_STORE"
+      ],
+      "config_files": [
+        "shopify.theme.toml"
+      ],
+      "external_executables": [],
+      "shopify_apis": [],
+      "classification": "deferred",
+      "source": "packages/theme/src/cli/commands/theme/share.ts"
+    }
+  ]
+}
