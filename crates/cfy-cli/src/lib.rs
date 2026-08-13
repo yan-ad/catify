@@ -172,7 +172,8 @@ mod tests {
             .render_long_help()
             .to_string()
             .replace("\r\n", "\n");
-        assert_eq!(help, include_str!("../tests/snapshots/root-help.txt"));
+        let snapshot = include_str!("../tests/snapshots/root-help.txt").replace("\r\n", "\n");
+        assert_eq!(help, snapshot);
     }
 
     #[test]
