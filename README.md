@@ -13,6 +13,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/crabpify/issues). Architecture and compatibility decisions live in [`docs/adr`](docs/adr) and [`docs/compatibility.md`](docs/compatibility.md).
 
+Configuration precedence, file locations, and persistence guarantees are
+documented in [`docs/configuration.md`](docs/configuration.md).
+
 ## CLI conventions
 
 Global flags work before or after nested commands:
