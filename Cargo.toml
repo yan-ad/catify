@@ -20,6 +20,7 @@ repository = "https://github.com/yan-ad/crabpify"
 async-trait = "0.1.89"
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 clap = { version = "4.5.45", features = ["derive"] }
+clap_complete = "4.6.9"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["macros", "process", "rt-multi-thread", "signal", "time"] }

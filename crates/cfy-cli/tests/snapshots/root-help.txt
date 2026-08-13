@@ -1,0 +1,28 @@
+A fast, memory-efficient Shopify CLI alternative
+
+Usage: cfy [OPTIONS] [COMMAND]
+
+Commands:
+  app         Manage Shopify apps
+  theme       Manage Shopify themes
+  completion  Generate a shell completion script on standard output
+  version     Print build and runtime version information
+
+Options:
+  -v, --verbose...
+          Increase diagnostic output; repeat for more detail
+
+      --no-color
+          Disable ANSI color output
+
+      --json
+          Emit machine-readable JSON when supported by the command
+
+      --non-interactive
+          Never prompt for interactive input
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version
