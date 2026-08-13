@@ -7,5 +7,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-cfy-core = { path = "../cfy-core" }
+cfy-core.workspace = true
 tokio.workspace = true

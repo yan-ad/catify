@@ -11,6 +11,6 @@ name = "cfy"
 path = "src/main.rs"
 
 [dependencies]
-cfy-core = { path = "../cfy-core" }
+cfy-core.workspace = true
 clap.workspace = true
 tokio.workspace = true

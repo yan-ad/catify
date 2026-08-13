@@ -8,4 +8,4 @@ repository.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-cfy-core = { path = "../cfy-core" }
+cfy-core.workspace = true
