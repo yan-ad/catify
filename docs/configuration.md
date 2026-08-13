@@ -27,8 +27,9 @@ Unknown fields are rejected so misspelled settings do not appear to work.
 Configuration writes use a temporary sibling file, flush complete contents,
 and replace the destination only after the temporary file is ready. Reported
 failures clean up the temporary file and do not truncate the existing
-destination. On Windows, replacement uses a backup and rollback because the
-standard rename operation cannot overwrite an existing file.
+destination. On Windows, replacement uses the operating system's atomic file
+replacement API because the Rust standard rename operation cannot overwrite an
+existing file.
 
 Paths are normalized lexically without requiring them to exist. `.` segments
 are removed, safe `..` segments are collapsed, and parent traversal above a

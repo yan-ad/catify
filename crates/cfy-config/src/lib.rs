@@ -205,24 +205,52 @@ fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
 
 #[cfg(windows)]
 fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
-    // std::fs::rename cannot replace a destination on Windows. Preserve the old
-    // file until the new file is complete, then use a backup for safe rollback.
     if !destination.exists() {
         return fs::rename(source, destination);
     }
 
-    let backup = destination.with_extension("cfy-backup");
-    let _ = fs::remove_file(&backup);
-    fs::rename(destination, &backup)?;
-    match fs::rename(source, destination) {
-        Ok(()) => {
-            let _ = fs::remove_file(backup);
-            Ok(())
-        }
-        Err(error) => {
-            let _ = fs::rename(backup, destination);
-            Err(error)
-        }
+    use std::{os::windows::ffi::OsStrExt, ptr};
+
+    #[link(name = "Kernel32")]
+    unsafe extern "system" {
+        fn ReplaceFileW(
+            replaced_file_name: *const u16,
+            replacement_file_name: *const u16,
+            backup_file_name: *const u16,
+            replace_flags: u32,
+            exclude: *mut std::ffi::c_void,
+            reserved: *mut std::ffi::c_void,
+        ) -> i32;
+    }
+
+    const REPLACEFILE_WRITE_THROUGH: u32 = 0x0000_0001;
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let source: Vec<u16> = source
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+
+    // SAFETY: both paths are valid, null-terminated UTF-16 buffers that remain
+    // alive for the call. Optional backup/exclusion/reserved pointers are null.
+    let result = unsafe {
+        ReplaceFileW(
+            destination.as_ptr(),
+            source.as_ptr(),
+            ptr::null(),
+            REPLACEFILE_WRITE_THROUGH,
+            ptr::null_mut(),
+            ptr::null_mut(),
+        )
+    };
+    if result == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
     }
 }
 
