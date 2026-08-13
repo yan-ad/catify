@@ -8,6 +8,35 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn json_runtime_errors_leave_stdout_empty() {
+    let output = cfy(&["app", "info", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let diagnostic: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("stderr should contain one JSON diagnostic");
+    assert_eq!(diagnostic["error"]["code"], "invalid_input");
+}
+
+#[test]
+fn verbose_diagnostics_are_explicit_and_stay_out_of_stdout() {
+    let output = cfy(&["version", "--json", "--verbose"]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        concat!(
+            "{\"name\":\"cfy\",\"version\":\"",
+            env!("CARGO_PKG_VERSION"),
+            "\"}\n"
+        )
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "debug: debug diagnostics enabled\n"
+    );
+}
+
+#[test]
 fn root_help_is_successful() {
     let output = cfy(&["--help"]);
     assert!(output.status.success());

@@ -1,6 +1,6 @@
 //! Typed configuration loading. Filesystem discovery stays outside domain crates.
 
-use cfy_core::{Error, Result};
+use cfy_core::{Error, ErrorKind, Result};
 use serde::Deserialize;
 
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
@@ -14,7 +14,8 @@ pub struct Telemetry {
 }
 
 pub fn parse(input: &str) -> Result<Config> {
-    toml::from_str(input).map_err(|error| Error::Config(error.to_string()))
+    toml::from_str(input)
+        .map_err(|error| Error::with_source(ErrorKind::Config, "invalid TOML configuration", error))
 }
 
 #[cfg(test)]

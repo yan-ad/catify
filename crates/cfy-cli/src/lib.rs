@@ -1,3 +1,6 @@
+pub mod output;
+
+use crate::output::Output;
 use cfy_core::{Error, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -98,9 +101,9 @@ pub enum InternalCommand {
 }
 
 /// Execute a parsed command.
-pub async fn run(cli: Cli) -> Result<()> {
+pub async fn run(cli: Cli, output: &Output) -> Result<()> {
     match cli.command {
-        Some(Command::Version) => print_version(cli.global.json),
+        Some(Command::Version) => print_version(output)?,
         Some(Command::Completion { shell }) => print_completion(shell),
         Some(Command::Internal {
             command: InternalCommand::Idle { seconds },
@@ -110,7 +113,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         None => {
             Cli::command()
                 .print_help()
-                .map_err(|error| Error::Process(error.to_string()))?;
+                .map_err(|error| Error::process(error.to_string()))?;
             println!();
         }
     }
@@ -118,15 +121,28 @@ pub async fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn print_version(json: bool) {
-    if json {
-        println!(
-            "{{\"name\":\"cfy\",\"version\":\"{}\"}}",
-            env!("CARGO_PKG_VERSION")
-        );
-    } else {
-        println!("cfy {}", env!("CARGO_PKG_VERSION"));
+fn print_version(output: &Output) -> Result<()> {
+    #[derive(serde::Serialize)]
+    struct Version<'a> {
+        name: &'a str,
+        version: &'a str,
     }
+
+    output
+        .success(
+            &format!("cfy {}", env!("CARGO_PKG_VERSION")),
+            &Version {
+                name: "cfy",
+                version: env!("CARGO_PKG_VERSION"),
+            },
+        )
+        .map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not write output",
+                error,
+            )
+        })
 }
 
 fn print_completion(shell: Shell) {
@@ -135,7 +151,7 @@ fn print_completion(shell: Shell) {
 }
 
 fn not_implemented(group: &str) -> Error {
-    Error::InvalidInput(format!(
+    Error::invalid_input(format!(
         "the '{group}' command group is reserved but not implemented yet"
     ))
 }

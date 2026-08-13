@@ -1,6 +1,6 @@
 //! Explicit subprocess boundary for Node, esbuild, cloudflared, and other tools.
 
-use cfy_core::{Error, Result};
+use cfy_core::{Error, ErrorKind, Result};
 use std::process::ExitStatus;
 use tokio::process::Command;
 
@@ -15,5 +15,11 @@ pub async fn run(spec: &ProcessSpec) -> Result<ExitStatus> {
         .args(&spec.args)
         .status()
         .await
-        .map_err(|error| Error::Process(format!("{}: {error}", spec.program)))
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::Process,
+                format!("could not start {}", spec.program),
+                error,
+            )
+        })
 }
