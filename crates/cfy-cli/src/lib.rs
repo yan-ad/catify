@@ -168,7 +168,10 @@ mod tests {
 
     #[test]
     fn root_help_matches_snapshot() {
-        let help = Cli::command().render_long_help().to_string();
+        let help = Cli::command()
+            .render_long_help()
+            .to_string()
+            .replace("\r\n", "\n");
         assert_eq!(help, include_str!("../tests/snapshots/root-help.txt"));
     }
 
