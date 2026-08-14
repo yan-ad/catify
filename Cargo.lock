@@ -144,7 +144,9 @@ name = "cfy-process"
 version = "0.1.0"
 dependencies = [
  "cfy-core",
+ "libc",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

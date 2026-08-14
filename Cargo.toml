@@ -28,3 +28,14 @@ serde_json = "1.0.143"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "0.9.5"
+
+[workspace.dependencies.libc]
+version = "0.2.175"
+
+[workspace.dependencies.windows-sys]
+version = "0.61.0"
+features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+]
