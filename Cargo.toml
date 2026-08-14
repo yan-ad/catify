@@ -12,7 +12,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.94"
 license = "MIT"
 repository = "https://github.com/yan-ad/crabpify"
 
@@ -21,8 +21,10 @@ async-trait = "0.1.89"
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 clap = { version = "4.5.45", features = ["derive"] }
 clap_complete = "4.6.9"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23.37", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 thiserror = "2.0.16"
-tokio = { version = "1.47.1", features = ["macros", "process", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.47.1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "0.9.5"
