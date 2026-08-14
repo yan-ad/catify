@@ -509,7 +509,7 @@ mod platform {
 
 #[cfg(windows)]
 mod platform {
-    use std::{io, mem::size_of, os::windows::io::AsRawHandle, ptr};
+    use std::{io, mem::size_of, ptr};
     use tokio::process::{Child, Command};
     use windows_sys::Win32::{
         Foundation::{CloseHandle, HANDLE},
