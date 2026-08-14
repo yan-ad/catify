@@ -16,6 +16,9 @@ Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/crabpify/
 Configuration precedence, file locations, and persistence guarantees are
 documented in [`docs/configuration.md`](docs/configuration.md).
 
+Pinned upstream research lives in [`docs/research`](docs/research), including
+the [Shopify authentication flow and risk analysis](docs/research/shopify-authentication.md).
+
 ## CLI conventions
 
 Global flags work before or after nested commands:
