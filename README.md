@@ -1,6 +1,6 @@
 # Crabpify
 
-Crabpify (`cfy`) is an independent, memory-efficient CLI aiming for behavioral compatibility with common Shopify CLI workflows. It is experimental and is not affiliated with, endorsed by, or sponsored by Shopify.
+Catify (`cfy`) is an independent, memory-efficient CLI aiming for behavioral compatibility with common Shopify CLI workflows. It is experimental and is not affiliated with, endorsed by, or sponsored by Shopify.
 
 ## Development
 

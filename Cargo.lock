@@ -356,8 +356,10 @@ name = "cfy-cli"
 version = "0.1.0"
 dependencies = [
  "cfy-api",
+ "cfy-auth",
  "cfy-config",
  "cfy-core",
+ "cfy-organization",
  "cfy-process",
  "clap",
  "clap_complete",
@@ -419,6 +421,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "cfy-organization"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cfy-core",
+ "serde",
+ "thiserror",
  "tokio",
 ]
 

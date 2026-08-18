@@ -3,6 +3,10 @@ mod theme_check;
 
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
+use cfy_auth::{
+    CredentialStore, NativeCredentialStore,
+    flow::{LoginMode, headless_from_env},
+};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
@@ -10,7 +14,7 @@ use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
-use cfy_core::{Cancellation, Error, Result};
+use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use notify::{
@@ -33,6 +37,72 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Output) -> Result<u8> {
+    let store = NativeCredentialStore::default();
+    match command {
+        AuthCommand::Login { identity } => {
+            let mode = headless_from_env(&identity, |key| env::var(key).ok());
+            if non_interactive {
+                let LoginMode::Headless { .. } = mode? else {
+                    return Err(Error::invalid_input("headless login requires a token"));
+                };
+                return Err(Error::invalid_input(
+                    "token-backed session import requires an auth provider; configure the provider before login",
+                ));
+            }
+            let _ = output.lifecycle("Browser/device login provider is not configured in this build; use --non-interactive with SHOPIFY_CLI_TOKEN");
+            Err(Error::invalid_input(
+                "auth provider endpoint is not configured",
+            ))
+        }
+        AuthCommand::Logout { identity } => {
+            store.delete(&identity).await?;
+            output
+                .success(
+                    "Local credentials removed; remote token revocation depends on the provider.",
+                    &serde_json::json!({ "identity": identity, "remote_revoked": false }),
+                )
+                .map_err(|error| {
+                    Error::with_source(ErrorKind::Process, "could not write logout result", error)
+                })?;
+            Ok(0)
+        }
+    }
+}
+
+async fn organization_command(command: OrganizationCommand, output: &Output) -> Result<u8> {
+    match command {
+        OrganizationCommand::List => {
+            let _ = output.lifecycle("Organization provider is not configured in this build");
+            Err(Error::invalid_input(
+                "organization API provider is not configured; authenticate first and configure the organization backend",
+            ))
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AuthCommand {
+    /// Start browser/device login or consume a headless token.
+    Login {
+        /// Identity key used for credential storage.
+        #[arg(long, default_value = "default")]
+        identity: String,
+    },
+    /// Remove local credentials. Remote revocation is provider-dependent.
+    Logout {
+        /// Identity key used for credential storage.
+        #[arg(long, default_value = "default")]
+        identity: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum OrganizationCommand {
+    /// List organizations available to the current identity.
+    List,
 }
 
 #[derive(serde::Serialize)]
@@ -683,7 +753,10 @@ pub enum Command {
     },
 
     /// Authentication operations.
-    Auth,
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommand,
+    },
     /// Crabpify configuration options.
     Config,
     /// Search and fetch Shopify documentation.
@@ -691,7 +764,10 @@ pub enum Command {
     /// Build Hydrogen storefronts.
     Hydrogen,
     /// List Shopify organizations.
-    Organization,
+    Organization {
+        #[command(subcommand)]
+        command: OrganizationCommand,
+    },
     /// Work directly with Shopify stores.
     Store,
     /// Search Shopify developer documentation.
@@ -820,11 +896,15 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             drop(watcher.take());
         }
         Some(Command::App { .. }) => return Err(not_implemented("app")),
-        Some(Command::Auth)
-        | Some(Command::Config)
+        Some(Command::Auth { command }) => {
+            auth_command(command, cli.global.non_interactive, output).await?;
+        }
+        Some(Command::Organization { command }) => {
+            organization_command(command, output).await?;
+        }
+        Some(Command::Config)
         | Some(Command::Doc)
         | Some(Command::Hydrogen)
-        | Some(Command::Organization)
         | Some(Command::Store)
         | Some(Command::Search { .. }) => return Err(not_implemented("this command topic")),
         Some(Command::Theme {

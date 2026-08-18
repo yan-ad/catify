@@ -8,6 +8,7 @@ members = [
   "crates/cfy-build",
   "crates/cfy-deploy",
   "crates/cfy-dev",
+  "crates/cfy-organization",
   "crates/cfy-tunnel",
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
@@ -30,6 +31,7 @@ cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-dev = { version = "0.1.0", path = "crates/cfy-dev" }
+cfy-organization = { version = "0.1.0", path = "crates/cfy-organization" }
 cfy-tunnel = { version = "0.1.0", path = "crates/cfy-tunnel" }
 cfy-config = { version = "0.1.0", path = "crates/cfy-config" }
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
