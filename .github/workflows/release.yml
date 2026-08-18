@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.94.0
+          targets: ${{ matrix.target }}
+      - run: cargo build --release -p cfy-cli --target ${{ matrix.target }} --locked
+      - name: Package artifact
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION=${VERSION#v}
+          python3 scripts/package-release.py \
+            --binary target/${{ matrix.target }}/release/cfy \
+            --version "$VERSION" \
+            --target "${{ matrix.target }}" \
+            --output dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cfy-${{ matrix.target }}
+          path: dist/*
+
+  windows-status:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Windows archive publishing is intentionally deferred until signing/install smoke is established."
