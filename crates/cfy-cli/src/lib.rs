@@ -132,6 +132,7 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
+        ThemeCommand::LanguageServer { args } => theme_check::run_language_server(&args).await,
         ThemeCommand::Info { theme, store } => {
             let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
             let client =

@@ -9,6 +9,7 @@ use std::{
 };
 
 pub const ADAPTER_ENV: &str = "CFY_THEME_CHECK_BIN";
+pub const LSP_ADAPTER_ENV: &str = "CFY_THEME_LSP_BIN";
 
 #[derive(Debug, Args)]
 pub struct ThemeCheckArgs {
@@ -36,6 +37,49 @@ pub struct ThemeCheckArgs {
     /// Output format supported by the selected engine.
     #[arg(short = 'o', long, value_name = "FORMAT")]
     pub output: Option<String>,
+}
+
+pub async fn run_language_server(args: &[String]) -> Result<u8> {
+    let program = env::var(LSP_ADAPTER_ENV).unwrap_or_else(|_| "shopify".to_owned());
+    if is_cfy_executable(Path::new(&program)) {
+        return Err(Error::config(format!(
+            "{LSP_ADAPTER_ENV} points to cfy; use an official Theme Language Server executable"
+        )));
+    }
+    let mut child_args = if program == "shopify" {
+        vec!["theme".to_owned(), "language-server".to_owned()]
+    } else {
+        Vec::new()
+    };
+    child_args.extend(args.iter().cloned());
+    let supervisor = Supervisor::default();
+    let output = execute(
+        &supervisor,
+        ProcessSpec::new(&program)
+            .args(child_args)
+            .output(OutputMode::CaptureAndStream),
+        &program,
+    )
+    .await?;
+    io::stdout().write_all(&output.stdout).map_err(|source| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not write Language Server stdout",
+            source,
+        )
+    })?;
+    io::stderr().write_all(&output.stderr).map_err(|source| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not write Language Server stderr",
+            source,
+        )
+    })?;
+    Ok(output
+        .status
+        .code()
+        .and_then(|code| u8::try_from(code).ok())
+        .unwrap_or(1))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
