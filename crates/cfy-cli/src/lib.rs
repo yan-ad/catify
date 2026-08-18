@@ -1114,6 +1114,11 @@ pub enum Command {
         #[command(subcommand)]
         command: CacheCommand,
     },
+    /// Diagnose the local Crabpify environment and project.
+    Doctor {
+        #[command(subcommand)]
+        command: DoctorCommand,
+    },
     /// Search and fetch Shopify documentation.
     Doc {
         #[command(subcommand)]
@@ -1146,6 +1151,38 @@ pub enum Command {
         #[command(subcommand)]
         command: InternalCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DoctorCommand {
+    /// Print runtime, toolchain, and platform diagnostics.
+    Env,
+    /// Inspect the current project root and config markers.
+    Project,
+}
+
+fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
+    let value = match command {
+        DoctorCommand::Env => serde_json::json!({
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+            "rust_version": option_env!("RUSTC_VERSION").unwrap_or("unknown"),
+            "shell": env::var("SHELL").ok(),
+        }),
+        DoctorCommand::Project => {
+            let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
+            let project = cfy_config::project::discover(&cwd, None).ok();
+            serde_json::json!({
+                "cwd": cwd,
+                "project_found": project.is_some(),
+                "project_kind": project.map(|value| format!("{:?}", value.kind())),
+            })
+        }
+    };
+    output
+        .success("Crabpify diagnostics", &value)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
 }
 
 #[derive(Debug, Subcommand)]
@@ -1379,6 +1416,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
         }
         Some(Command::Cache { command }) => {
             cache_command(command, output)?;
+        }
+        Some(Command::Doctor { command }) => {
+            doctor_command(command, output)?;
         }
         Some(Command::Notification { command }) => {
             notification_command(command, output)?;

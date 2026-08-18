@@ -1,0 +1,1009 @@
+{
+  "schema_version": 1,
+  "commands": [
+    {
+      "name": "app build",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app bulk cancel",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app bulk execute",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app bulk status",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app config link",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app config pull",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app config use",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app config validate",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app deploy",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app dev",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app dev clean",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app env pull",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app env show",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app execute",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function build",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function info",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function replay",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function run",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function schema",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app function typegen",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app generate extension",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app graphiql",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app import-custom-data-definitions",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app import-extensions",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app info",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app init",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app logs",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app logs sources",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app release",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app versions list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "app webhook trigger",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "auth login",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "auth logout",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "commands",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autocorrect off",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autocorrect on",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autocorrect status",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autoupgrade off",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autoupgrade on",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "config autoupgrade status",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "doc fetch",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "doc search",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "help",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen build",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen check",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen codegen",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen customer-account-push",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen debug cpu",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen deploy",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen dev",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen env list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen env pull",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen env push",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen generate route",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen generate routes",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen init",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen link",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen login",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen logout",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen preview",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen setup",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen setup css",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen setup markets",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen setup vite",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen shortcut",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen unlink",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "hydrogen upgrade",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "organization list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins add",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins inspect",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins install",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins link",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins remove",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins reset",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins uninstall",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins unlink",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "plugins update",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "search",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store auth",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store auth list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store bulk cancel",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store bulk execute",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store bulk status",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store create preview",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store execute",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store graphiql",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store info",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "store open",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme check",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme console",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme delete",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme dev",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme duplicate",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme info",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme init",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme language-server",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme list",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme metafields pull",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme open",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme package",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme preview",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme profile",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme publish",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme pull",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme push",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme rename",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "theme share",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "upgrade",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    },
+    {
+      "name": "version",
+      "public": true,
+      "kind": "public",
+      "status": "missing-implementation",
+      "owner": null,
+      "rationale": "Public runtime command has no complete Crabpify implementation yet.",
+      "intentional_exclusion": false
+    }
+  ],
+  "invalid": [],
+  "intentional_exclusions": 0,
+  "missing_implementation": 111,
+  "public_missing_implementation": 111,
+  "hidden_intentional_exclusions": 0
+}

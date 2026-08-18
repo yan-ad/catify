@@ -14,6 +14,7 @@ Commands:
   config        Crabpify configuration options
   notification  Show or clear Crabpify notification state
   cache         Manage local caches
+  doctor        Diagnose the local Crabpify environment and project
   doc           Search and fetch Shopify documentation
   hydrogen      Build Hydrogen storefronts
   organization  List Shopify organizations

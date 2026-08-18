@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "classifications": {
+    "debug": {"kind": "diagnostic", "status": "implemented", "owner": 44, "rationale": "Replaced by cfy doctor diagnostics."},
+    "doctor-release": {"kind": "release-only", "status": "intentional-exclusion", "owner": 32, "rationale": "Release packaging internals are not user-facing."},
+    "docs generate": {"kind": "release-only", "status": "intentional-exclusion", "owner": 33, "rationale": "Documentation generation belongs to the release toolchain."},
+    "kitchen-sink": {"kind": "hidden", "status": "intentional-exclusion", "owner": 44, "rationale": "Upstream test/demo command; not public CLI behavior."},
+    "notifications": {"kind": "hidden", "status": "intentional-exclusion", "owner": 42, "rationale": "Internal notification transport; public status/clear commands are exposed by cfy."},
+    "default": {"kind": "unsupported", "status": "missing-implementation", "owner": 44, "rationale": "Requires explicit review before being exposed as public behavior."}
+  }
+}
