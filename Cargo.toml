@@ -14,6 +14,7 @@ members = [
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
   "crates/cfy-docs",
+  "crates/cfy-hydrogen",
 ]
 default-members = ["crates/cfy-cli"]
 resolver = "2"
@@ -34,6 +35,7 @@ cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-dev = { version = "0.1.0", path = "crates/cfy-dev" }
 cfy-docs = { version = "0.1.0", path = "crates/cfy-docs" }
+cfy-hydrogen = { version = "0.1.0", path = "crates/cfy-hydrogen" }
 cfy-organization = { version = "0.1.0", path = "crates/cfy-organization" }
 cfy-store = { version = "0.1.0", path = "crates/cfy-store" }
 cfy-tunnel = { version = "0.1.0", path = "crates/cfy-tunnel" }

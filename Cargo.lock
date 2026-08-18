@@ -361,6 +361,7 @@ dependencies = [
  "cfy-config",
  "cfy-core",
  "cfy-docs",
+ "cfy-hydrogen",
  "cfy-organization",
  "cfy-process",
  "cfy-store",
@@ -440,6 +441,15 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "cfy-hydrogen"
+version = "0.1.0"
+dependencies = [
+ "cfy-core",
+ "cfy-process",
+ "thiserror",
 ]
 
 [[package]]

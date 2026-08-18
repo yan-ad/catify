@@ -1,0 +1,10 @@
+[package]
+name = "cfy-hydrogen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cfy-core.workspace = true
+cfy-process.workspace = true
+thiserror.workspace = true

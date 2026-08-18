@@ -18,6 +18,7 @@ use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
+use cfy_hydrogen::run as run_hydrogen;
 use cfy_store::{StoreCommand as StoreOperation, StoreTarget, browser_url};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -1098,7 +1099,11 @@ pub enum Command {
         command: DocCommand,
     },
     /// Build Hydrogen storefronts.
-    Hydrogen,
+    Hydrogen {
+        /// Hydrogen subcommand and arguments.
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
     /// List Shopify organizations.
     Organization {
         #[command(subcommand)]
@@ -1259,8 +1264,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
         Some(Command::Notification { command }) => {
             notification_command(command, output)?;
         }
-        Some(Command::Hydrogen) => {
-            return Err(not_implemented("this command topic"));
+        Some(Command::Hydrogen { args }) => {
+            let code = run_hydrogen(&args).await?;
+            return Ok(code as u8);
         }
         Some(Command::Theme {
             command: ThemeCommand::Check(args),
