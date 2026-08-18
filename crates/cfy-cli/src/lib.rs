@@ -20,7 +20,8 @@ use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
 use cfy_store::{
-    AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreTarget, browser_url,
+    AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
+    StoreTarget, browser_url,
 };
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -455,6 +456,77 @@ async fn store_command(
     output: &Output,
 ) -> Result<u8> {
     match command {
+        StoreCliCommand::CreateDev { store } | StoreCliCommand::CreatePreview { store } => {
+            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
+                Error::new(
+                    ErrorKind::Api,
+                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
+                )
+            })?;
+            let token = store_token()?;
+            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
+            let value = if store.contains("preview") {
+                backend.create_preview(&store).await
+            } else {
+                backend.create_development(&store).await
+            }
+            .map_err(Error::from)?;
+            output
+                .success("Store created", &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Delete { store, confirm } => {
+            if !confirm {
+                return Err(Error::invalid_input("store delete requires --confirm"));
+            }
+            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
+                Error::new(
+                    ErrorKind::Api,
+                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
+                )
+            })?;
+            let token = store_token()?;
+            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
+            let value = backend.delete(&store).await.map_err(Error::from)?;
+            output
+                .success("Store deleted", &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::BulkStatus { store } => {
+            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
+                Error::new(
+                    ErrorKind::Api,
+                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
+                )
+            })?;
+            let token = store_token()?;
+            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
+            let value = backend.bulk_status(&store).await.map_err(Error::from)?;
+            output
+                .success("Bulk operation status", &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::BulkCancel { store, confirm } => {
+            if !confirm {
+                return Err(Error::invalid_input("bulk cancellation requires --confirm"));
+            }
+            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
+                Error::new(
+                    ErrorKind::Api,
+                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
+                )
+            })?;
+            let token = store_token()?;
+            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
+            let value = backend.bulk_cancel(&store).await.map_err(Error::from)?;
+            output
+                .success("Bulk operation cancelled", &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
         StoreCliCommand::Info { store } => {
             let target = StoreTarget::parse(&store)?;
             let token = store_token()?;

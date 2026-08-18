@@ -16,6 +16,96 @@ pub struct StoreTarget {
     pub domain: String,
 }
 
+/// Partner/organization API boundary for store lifecycle commands.
+/// It is intentionally separate from the Admin API backend because store
+/// creation and deletion are not Admin API operations.
+pub struct StoreManagementBackend {
+    client: GraphQlClient,
+}
+
+impl StoreManagementBackend {
+    pub fn new(base_url: &str, token: &str) -> std::result::Result<Self, StoreError> {
+        let base = Url::parse(base_url)
+            .map_err(|error| StoreError::Backend(format!("invalid partner API URL: {error}")))?;
+        if base.scheme() != "https" {
+            return Err(StoreError::Backend("partner API URL must use HTTPS".into()));
+        }
+
+        let http = HttpClient::new(base.as_str())
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .with_sensitive_header(
+                reqwest::header::HeaderName::from_static("authorization"),
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                    .map_err(|error| StoreError::Backend(format!("invalid token: {error}")))?,
+            );
+        Ok(Self {
+            client: GraphQlClient::new(http, base.path()),
+        })
+    }
+
+    async fn mutation(
+        &self,
+        query: &str,
+        variables: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let request = GraphQlRequest::mutation(query, variables);
+        self.client
+            .execute::<_, serde_json::Value>(&request)
+            .await
+            .map(|response| response.data)
+            .map_err(|error| StoreError::Backend(error.to_string()))
+    }
+
+    async fn query(&self, query: &str, variables: serde_json::Value) -> Result<serde_json::Value> {
+        let request = GraphQlRequest::query(query, variables);
+        self.client
+            .execute::<_, serde_json::Value>(&request)
+            .await
+            .map(|response| response.data)
+            .map_err(|error| StoreError::Backend(error.to_string()))
+    }
+
+    pub async fn create_development(&self, handle: &str) -> Result<serde_json::Value> {
+        self.mutation(
+            "mutation CreateDevelopmentStore($handle: String!) { developmentStoreCreate(input: { handle: $handle }) { store { id handle } userErrors { field message } } }",
+            serde_json::json!({"handle": handle}),
+        )
+        .await
+    }
+
+    pub async fn create_preview(&self, handle: &str) -> Result<serde_json::Value> {
+        self.mutation(
+            "mutation CreatePreviewStore($handle: String!) { previewStoreCreate(input: { handle: $handle }) { store { id handle } userErrors { field message } } }",
+            serde_json::json!({"handle": handle}),
+        )
+        .await
+    }
+
+    pub async fn delete(&self, store_id: &str) -> Result<serde_json::Value> {
+        self.mutation(
+            "mutation DeleteStore($id: ID!) { storeDelete(id: $id) { deletedStoreId userErrors { field message } } }",
+            serde_json::json!({"id": store_id}),
+        )
+        .await
+    }
+
+    pub async fn bulk_status(&self, operation_id: &str) -> Result<serde_json::Value> {
+        self.query(
+            "query BulkOperationStatus($id: ID!) { bulkOperation(id: $id) { id status errorCode objectCount url } }",
+            serde_json::json!({"id": operation_id}),
+        )
+        .await
+    }
+
+    pub async fn bulk_cancel(&self, operation_id: &str) -> Result<serde_json::Value> {
+        self.mutation(
+            "mutation BulkOperationCancel($id: ID!) { bulkOperationCancel(id: $id) { bulkOperation { id status } userErrors { field message } } }",
+            serde_json::json!({"id": operation_id}),
+        )
+        .await
+    }
+}
+
 pub struct AdminStoreBackend {
     client: GraphQlClient,
 }
