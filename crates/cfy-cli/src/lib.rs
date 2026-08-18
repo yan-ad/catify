@@ -1,16 +1,19 @@
 pub mod output;
 
 use crate::output::Output;
-use cfy_api::theme::{Theme, ThemeClient};
+use cfy_api::theme::{Theme, ThemeClient, diff_assets};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
-use cfy_config::theme::{StagedFile, commit_staged_files_cancellable, safe_relative_path};
+use cfy_config::theme::{
+    StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
+};
 use cfy_core::{Cancellation, Error, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use std::{
-    env, io,
+    env,
+    io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -23,6 +26,124 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn live_push_requires_confirmation(
+    is_live: bool,
+    force: bool,
+    non_interactive: bool,
+) -> Result<bool> {
+    if !is_live || force {
+        return Ok(false);
+    }
+    if non_interactive {
+        return Err(Error::invalid_input(
+            "refusing to push to the live theme in non-interactive mode; pass --force to acknowledge the risk",
+        ));
+    }
+    Ok(true)
+}
+
+async fn push_theme(
+    theme: u64,
+    explicit_store: Option<&str>,
+    source: &Path,
+    allow_delete: bool,
+    force: bool,
+    non_interactive: bool,
+    output: &Output,
+) -> Result<()> {
+    let store = resolve_store(explicit_store)?;
+    let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(
+        cfy_core::ErrorKind::Api,
+        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+    ))?;
+    let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+    let themes = client.list().await.map_err(Error::from)?;
+    let selected = themes
+        .iter()
+        .find(|candidate| candidate.id == theme)
+        .ok_or_else(|| Error::invalid_input(format!("theme {theme} was not found on {store}")))?;
+    if live_push_requires_confirmation(selected.role == "main", force, non_interactive)? {
+        if !io::stdin().is_terminal() {
+            return Err(Error::invalid_input(
+                "refusing to prompt for a live theme without an interactive terminal; pass --force to acknowledge the risk",
+            ));
+        }
+        eprint!(
+            "Theme {theme} ({}) is live. Push changes? [y/N] ",
+            selected.name
+        );
+        io::stderr().flush().map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not display confirmation",
+                error,
+            )
+        })?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer).map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not read confirmation",
+                error,
+            )
+        })?;
+        if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            return Err(Error::invalid_input("live theme push was not confirmed"));
+        }
+    }
+    let local = read_theme_files(source).map_err(|error| {
+        Error::with_source(
+            cfy_core::ErrorKind::Config,
+            format!("could not read theme files from {}", source.display()),
+            error,
+        )
+    })?;
+    let cancellation = Cancellation::default();
+    let signal = cancellation.clone();
+    let _signal_task = AbortOnDrop(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal.cancel();
+        }
+    }));
+    let remote = client
+        .pull(theme, &[], &[], &cancellation)
+        .await
+        .map_err(Error::from)?;
+    let changes = diff_assets(&local, &remote);
+    let summary = client
+        .push(theme, &changes, allow_delete, &cancellation)
+        .await;
+    if !summary.succeeded() {
+        return Err(Error::new(
+            cfy_core::ErrorKind::Api,
+            format!(
+                "theme push partially failed: {} uploaded, {} deleted, {} deletion(s) skipped; failures: {}. Re-run the command after fixing these assets",
+                summary.uploaded.len(),
+                summary.deleted.len(),
+                summary.skipped_deletions.len(),
+                summary.failed.join("; ")
+            ),
+        ));
+    }
+    output
+        .success(
+            &format!(
+                "Pushed theme {theme}: {} uploaded, {} deleted, {} deletion(s) skipped.",
+                summary.uploaded.len(),
+                summary.deleted.len(),
+                summary.skipped_deletions.len()
+            ),
+            &summary,
+        )
+        .map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not write theme push result",
+                error,
+            )
+        })
 }
 
 /// Crabpify's top-level command-line interface.
@@ -274,6 +395,24 @@ pub enum ThemeCommand {
         #[arg(long, short = 'd', default_value = ".")]
         destination: PathBuf,
     },
+    /// Upload changed and new assets to a theme.
+    Push {
+        /// Numeric Shopify theme ID.
+        #[arg(long)]
+        theme: u64,
+        /// Store handle or myshopify.com domain.
+        #[arg(long)]
+        store: Option<String>,
+        /// Theme directory. Defaults to the current directory.
+        #[arg(long, short = 'd', default_value = ".")]
+        source: PathBuf,
+        /// Delete remote assets that do not exist locally.
+        #[arg(long)]
+        allow_delete: bool,
+        /// Push to a live theme without confirmation.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -313,6 +452,27 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
                 &include,
                 &exclude,
                 &destination,
+                output,
+            )
+            .await?
+        }
+        Some(Command::Theme {
+            command:
+                ThemeCommand::Push {
+                    theme,
+                    store,
+                    source,
+                    allow_delete,
+                    force,
+                },
+        }) => {
+            push_theme(
+                theme,
+                store.as_deref(),
+                &source,
+                allow_delete,
+                force,
+                cli.global.non_interactive,
                 output,
             )
             .await?
@@ -365,7 +525,9 @@ fn not_implemented(group: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command, ThemeCommand, format_themes, select_store};
+    use super::{
+        Cli, Command, ThemeCommand, format_themes, live_push_requires_confirmation, select_store,
+    };
     use cfy_api::theme::Theme;
     use cfy_config::project::Environment;
     use clap::{CommandFactory, Parser, error::ErrorKind};
@@ -383,6 +545,14 @@ mod tests {
             .replace("\r\n", "\n");
         let snapshot = include_str!("../tests/snapshots/root-help.txt").replace("\r\n", "\n");
         assert_eq!(help, snapshot);
+    }
+
+    #[test]
+    fn live_push_policy_rejects_non_interactive_without_force() {
+        assert!(live_push_requires_confirmation(true, false, true).is_err());
+        assert!(!live_push_requires_confirmation(true, true, true).unwrap());
+        assert!(!live_push_requires_confirmation(false, false, true).unwrap());
+        assert!(live_push_requires_confirmation(true, false, false).unwrap());
     }
 
     #[test]

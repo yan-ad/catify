@@ -87,3 +87,15 @@ SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme pull \
 includes. Text and binary files are staged fully before the destination is
 changed. Unsafe paths and symlink traversal are rejected, and write failure or
 Ctrl-C triggers rollback so selected files are not left partially updated.
+
+Push local changes back to a theme:
+
+```sh
+SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme push \
+  --store example --theme 123456789 --source ./theme
+```
+
+Only new and changed assets are uploaded. Remote-only assets are retained unless
+`--allow-delete` is explicitly supplied. A live theme requires confirmation;
+non-interactive automation must pass `--force`. Individual API failures produce
+a non-zero actionable summary while preserving the successful operation counts.

@@ -1,10 +1,64 @@
 use cfy_core::Cancellation;
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fs, io,
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+/// Read all regular files below a theme directory without following symlinks.
+pub fn read_theme_files(root: &Path) -> io::Result<BTreeMap<String, Vec<u8>>> {
+    if fs::symlink_metadata(root).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("theme directory is a symlink: {}", root.display()),
+        ));
+    }
+
+    let mut files = BTreeMap::new();
+    read_theme_directory(root, root, &mut files)?;
+    Ok(files)
+}
+
+fn read_theme_directory(
+    root: &Path,
+    directory: &Path,
+    files: &mut BTreeMap<String, Vec<u8>>,
+) -> io::Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let metadata = entry.file_type()?;
+        let path = entry.path();
+        if metadata.is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("theme path is a symlink: {}", path.display()),
+            ));
+        }
+        if metadata.is_dir() {
+            read_theme_directory(root, &path, files)?;
+        } else if metadata.is_file() {
+            let relative = path.strip_prefix(root).expect("walk remains below root");
+            let key = relative
+                .to_str()
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "theme asset path is not UTF-8")
+                })?
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            safe_relative_path(&key)?;
+            files.insert(key, fs::read(path)?);
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "theme path is not a regular file or directory: {}",
+                    path.display()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
 
 /// A fully downloaded theme file ready to be committed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,6 +281,32 @@ mod tests {
             safe_relative_path("assets/theme.js").unwrap(),
             PathBuf::from("assets/theme.js")
         );
+    }
+
+    #[test]
+    fn reads_nested_theme_files() {
+        let root = temp_directory("read");
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::write(root.join("assets/theme.js"), [0, 159, 255]).unwrap();
+        let files = read_theme_files(&root).unwrap();
+        assert_eq!(files.get("assets/theme.js"), Some(&vec![0, 159, 255]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn theme_reader_rejects_symlinks() {
+        use std::os::unix::fs::symlink;
+        let root = temp_directory("read-symlink");
+        fs::create_dir_all(&root).unwrap();
+        symlink("/etc/passwd", root.join("asset")).unwrap();
+        assert!(
+            read_theme_files(&root)
+                .unwrap_err()
+                .to_string()
+                .contains("symlink")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

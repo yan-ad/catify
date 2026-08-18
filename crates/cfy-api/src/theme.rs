@@ -8,6 +8,7 @@ use reqwest::{
     header::{HeaderName, HeaderValue, LINK},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 const TOKEN_HEADER: &str = "x-shopify-access-token";
 
@@ -24,6 +25,53 @@ pub struct Theme {
     pub previewable: Option<bool>,
     #[serde(default)]
     pub processing: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemeChange {
+    Upload(ThemeAsset),
+    Delete(String),
+}
+
+/// Compute the minimal set of operations needed to make the remote theme match local files.
+#[must_use]
+pub fn diff_assets(local: &BTreeMap<String, Vec<u8>>, remote: &[ThemeAsset]) -> Vec<ThemeChange> {
+    let remote = remote
+        .iter()
+        .map(|asset| (&asset.key, &asset.contents))
+        .collect::<BTreeMap<_, _>>();
+    let mut changes = local
+        .iter()
+        .filter(|(key, contents)| remote.get(*key) != Some(contents))
+        .map(|(key, contents)| {
+            ThemeChange::Upload(ThemeAsset {
+                key: key.clone(),
+                contents: contents.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    changes.extend(
+        remote
+            .keys()
+            .filter(|key| !local.contains_key(key.as_str()))
+            .map(|key| ThemeChange::Delete((*key).clone())),
+    );
+    changes
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PushSummary {
+    pub uploaded: Vec<String>,
+    pub deleted: Vec<String>,
+    pub skipped_deletions: Vec<String>,
+    pub failed: Vec<String>,
+}
+
+impl PushSummary {
+    #[must_use]
+    pub fn succeeded(&self) -> bool {
+        self.failed.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,12 +273,73 @@ impl ThemeClient {
         }
         Ok(assets)
     }
+
+    /// Apply theme changes, continuing after individual failures to provide a complete summary.
+    pub async fn push(
+        &self,
+        theme_id: u64,
+        changes: &[ThemeChange],
+        allow_delete: bool,
+        cancellation: &Cancellation,
+    ) -> PushSummary {
+        let mut summary = PushSummary::default();
+        for change in changes {
+            if cancellation.is_cancelled() {
+                summary
+                    .failed
+                    .push("push cancelled; remaining operations were not attempted".to_owned());
+                break;
+            }
+            let (key, request) = match change {
+                ThemeChange::Upload(asset) => {
+                    let payload = if let Ok(value) = std::str::from_utf8(&asset.contents) {
+                        serde_json::json!({"asset": {"key": asset.key, "value": value}})
+                    } else {
+                        serde_json::json!({"asset": {"key": asset.key, "attachment": BASE64.encode(&asset.contents)}})
+                    };
+                    let mut request = HttpRequest::new(
+                        Method::PUT,
+                        format!("{}/themes/{theme_id}/assets.json", self.api_root),
+                    );
+                    request.body = Some(payload);
+                    request.retry_safety = crate::RetrySafety::Unsafe;
+                    (&asset.key, request)
+                }
+                ThemeChange::Delete(key) if allow_delete => {
+                    let mut url = Url::parse("https://placeholder.invalid/").expect("valid URL");
+                    url.query_pairs_mut().append_pair("asset[key]", key);
+                    let mut request = HttpRequest::new(
+                        Method::DELETE,
+                        format!(
+                            "{}/themes/{theme_id}/assets.json?{}",
+                            self.api_root,
+                            url.query().unwrap_or_default()
+                        ),
+                    );
+                    request.retry_safety = crate::RetrySafety::Unsafe;
+                    (key, request)
+                }
+                ThemeChange::Delete(key) => {
+                    summary.skipped_deletions.push(key.clone());
+                    continue;
+                }
+            };
+            match self.http.execute(&request).await.map_err(theme_api_error) {
+                Ok(_) => match change {
+                    ThemeChange::Upload(_) => summary.uploaded.push(key.clone()),
+                    ThemeChange::Delete(_) => summary.deleted.push(key.clone()),
+                },
+                Err(error) => summary.failed.push(format!("{key}: {error}")),
+            }
+        }
+        summary
+    }
 }
 
 fn check_cancelled(cancellation: &Cancellation) -> Result<(), ApiError> {
     if cancellation.is_cancelled() {
         Err(ApiError::Configuration(
-            "theme pull was cancelled".to_owned(),
+            "theme operation was cancelled".to_owned(),
         ))
     } else {
         Ok(())
@@ -329,6 +438,43 @@ mod tests {
         assert!(!selected("templates/index.json", &include, &exclude));
     }
 
+    #[test]
+    fn diff_detects_new_changed_unchanged_and_deleted_assets() {
+        let local = BTreeMap::from([
+            ("assets/changed.js".to_owned(), b"new".to_vec()),
+            ("assets/new.js".to_owned(), b"new".to_vec()),
+            ("assets/same.js".to_owned(), b"same".to_vec()),
+        ]);
+        let remote = vec![
+            ThemeAsset {
+                key: "assets/changed.js".to_owned(),
+                contents: b"old".to_vec(),
+            },
+            ThemeAsset {
+                key: "assets/deleted.js".to_owned(),
+                contents: b"old".to_vec(),
+            },
+            ThemeAsset {
+                key: "assets/same.js".to_owned(),
+                contents: b"same".to_vec(),
+            },
+        ];
+        assert_eq!(
+            diff_assets(&local, &remote),
+            vec![
+                ThemeChange::Upload(ThemeAsset {
+                    key: "assets/changed.js".to_owned(),
+                    contents: b"new".to_vec()
+                }),
+                ThemeChange::Upload(ThemeAsset {
+                    key: "assets/new.js".to_owned(),
+                    contents: b"new".to_vec()
+                }),
+                ThemeChange::Delete("assets/deleted.js".to_owned()),
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn pulls_filtered_text_and_binary_assets_from_rest_fixtures() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -420,6 +566,92 @@ mod tests {
                 .is_err()
         );
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn push_uploads_deletes_and_reports_partial_failures_from_fixtures() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for index in 0..3 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                match index {
+                    0 => {
+                        assert!(request.contains("PUT /themes/42/assets.json"));
+                        assert!(request.contains(r#""key":"assets/theme.js""#));
+                        assert!(request.contains(r#""value":"changed""#));
+                    }
+                    1 => {
+                        assert!(request.contains("PUT /themes/42/assets.json"));
+                        assert!(request.contains(r#""attachment":"AJ//""#));
+                    }
+                    _ => {
+                        assert!(request.contains(
+                            "DELETE /themes/42/assets.json?asset%5Bkey%5D=assets%2Fold.js"
+                        ));
+                    }
+                }
+                let (status, body) = if index == 1 {
+                    ("422 Unprocessable Entity", r#"{"errors":"invalid asset"}"#)
+                } else {
+                    ("200 OK", r#"{"asset":{}}"#)
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base)
+            .unwrap()
+            .with_retry_policy(RetryPolicy {
+                max_retries: 0,
+                base_delay: Duration::ZERO,
+                max_delay: Duration::ZERO,
+            });
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        let changes = vec![
+            ThemeChange::Upload(ThemeAsset {
+                key: "assets/theme.js".to_owned(),
+                contents: b"changed".to_vec(),
+            }),
+            ThemeChange::Upload(ThemeAsset {
+                key: "assets/image.bin".to_owned(),
+                contents: vec![0, 159, 255],
+            }),
+            ThemeChange::Delete("assets/old.js".to_owned()),
+        ];
+        let summary = client
+            .push(42, &changes, true, &Cancellation::default())
+            .await;
+        server.await.unwrap();
+        assert_eq!(summary.uploaded, ["assets/theme.js"]);
+        assert_eq!(summary.deleted, ["assets/old.js"]);
+        assert_eq!(summary.failed.len(), 1);
+        assert!(summary.failed[0].contains("assets/image.bin"));
+        assert!(!summary.succeeded());
+    }
+
+    #[tokio::test]
+    async fn push_skips_deletes_without_explicit_opt_in() {
+        let http = HttpClient::new("http://127.0.0.1:1/").unwrap();
+        let client =
+            ThemeClient::with_http(http, Url::parse("http://127.0.0.1:1/").unwrap(), "themes");
+        let summary = client
+            .push(
+                42,
+                &[ThemeChange::Delete("assets/old.js".to_owned())],
+                false,
+                &Cancellation::default(),
+            )
+            .await;
+        assert_eq!(summary.skipped_deletions, ["assets/old.js"]);
+        assert!(summary.succeeded());
     }
 
     #[tokio::test]
