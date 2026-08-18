@@ -4,7 +4,7 @@ mod theme_check;
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_auth::{
-    CredentialStore, NativeCredentialStore,
+    CredentialStore, NativeCredentialStore, Session,
     flow::{LoginMode, headless_from_env},
 };
 use cfy_config::project::{
@@ -45,12 +45,35 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
         AuthCommand::Login { identity } => {
             let mode = headless_from_env(&identity, |key| env::var(key).ok());
             if non_interactive {
-                let LoginMode::Headless { .. } = mode? else {
+                let LoginMode::Headless {
+                    access_token,
+                    refresh_token,
+                    expires_at_unix,
+                } = mode?
+                else {
                     return Err(Error::invalid_input("headless login requires a token"));
                 };
-                return Err(Error::invalid_input(
-                    "token-backed session import requires an auth provider; configure the provider before login",
-                ));
+                let session = Session {
+                    identity: identity.clone(),
+                    access_token,
+                    refresh_token: refresh_token.unwrap_or_else(|| cfy_auth::Secret::new("")),
+                    expires_at_unix,
+                    scopes: Vec::new(),
+                };
+                store.save(&session).await?;
+                output
+                    .success(
+                        "Headless session saved to the native credential store.",
+                        &serde_json::json!({ "identity": identity, "stored": true }),
+                    )
+                    .map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Process,
+                            "could not write login result",
+                            error,
+                        )
+                    })?;
+                return Ok(0);
             }
             let _ = output.lifecycle("Browser/device login provider is not configured in this build; use --non-interactive with SHOPIFY_CLI_TOKEN");
             Err(Error::invalid_input(

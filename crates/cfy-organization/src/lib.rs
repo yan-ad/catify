@@ -1,5 +1,7 @@
 //! Organization listing contracts and stable output models.
 
+pub mod graphql;
+
 use async_trait::async_trait;
 use cfy_core::{Error, ErrorKind};
 use serde::{Deserialize, Serialize};

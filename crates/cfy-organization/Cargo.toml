@@ -7,9 +7,12 @@ license.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+cfy-api.workspace = true
+cfy-auth.workspace = true
 cfy-core.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

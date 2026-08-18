@@ -89,6 +89,17 @@ impl<T: IdentityTransport> IdentityClient<T> {
         Self { transport, config }
     }
 
+    pub async fn login_and_save<S: crate::CredentialStore>(
+        &self,
+        store: &S,
+        identity: &str,
+    ) -> Result<Session> {
+        let mut session = self.device_login().await?;
+        session.identity = identity.to_owned();
+        store.save(&session).await?;
+        Ok(session)
+    }
+
     pub async fn device_login(&self) -> Result<Session> {
         let authorization = self.transport.device_authorization(&self.config).await?;
         let mut delay = authorization.interval_seconds.max(1);
