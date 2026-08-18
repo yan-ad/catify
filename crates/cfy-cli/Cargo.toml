@@ -11,6 +11,8 @@ name = "cfy"
 path = "src/main.rs"
 
 [dependencies]
+cfy-api.workspace = true
+cfy-config.workspace = true
 cfy-core.workspace = true
 clap.workspace = true
 clap_complete.workspace = true

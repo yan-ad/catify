@@ -339,6 +339,8 @@ dependencies = [
 name = "cfy-cli"
 version = "0.1.0"
 dependencies = [
+ "cfy-api",
+ "cfy-config",
  "cfy-core",
  "clap",
  "clap_complete",

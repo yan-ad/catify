@@ -57,3 +57,19 @@ cfy completion bash > ~/.local/share/bash-completion/completions/cfy
 cfy completion zsh > ~/.zfunc/_cfy
 cfy completion fish > ~/.config/fish/completions/cfy.fish
 ```
+
+### Theme listing
+
+List all available theme metadata with:
+
+```sh
+SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme list --store example
+cfy theme list --store example --json
+```
+
+Store resolution uses `--store`, then `CFY_STORE`, then the compatible
+`SHOPIFY_FLAG_STORE`, then the discovered project configuration. Theme access
+uses `SHOPIFY_CLI_THEME_TOKEN` until the interactive login command is wired.
+Pagination is automatic. Human output contains theme ID, role, and name; JSON
+returns the complete metadata objects. Authentication and permission failures
+include token-refresh and scope remediation without printing the token.

@@ -1,10 +1,16 @@
 pub mod output;
 
 use crate::output::Output;
+use cfy_api::theme::{Theme, ThemeClient};
+use cfy_config::project::{
+    Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
+};
 use cfy_core::{Error, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
-use std::{io, time::Duration};
+use std::{env, io, time::Duration};
+
+const SHOPIFY_API_VERSION: &str = "2026-07";
 
 /// Crabpify's top-level command-line interface.
 #[derive(Debug, Parser)]
@@ -22,6 +28,91 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+async fn list_themes(explicit_store: Option<&str>, output: &Output) -> Result<()> {
+    let store = resolve_store(explicit_store)?;
+    let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| {
+        Error::new(
+            cfy_core::ErrorKind::Api,
+            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+        )
+    })?;
+    let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+    let themes = client.list().await.map_err(Error::from)?;
+    output
+        .success(&format_themes(&themes), &themes)
+        .map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not write theme list",
+                error,
+            )
+        })
+}
+
+fn resolve_store(explicit_store: Option<&str>) -> Result<String> {
+    let environment = Environment::from_iter(
+        ["CFY_STORE", "SHOPIFY_FLAG_STORE"]
+            .into_iter()
+            .filter_map(|name| env::var(name).ok().map(|value| (name.to_owned(), value))),
+    );
+
+    let current = env::current_dir().map_err(|error| {
+        Error::with_source(
+            cfy_core::ErrorKind::Config,
+            "could not read current directory",
+            error,
+        )
+    })?;
+    if let Ok(project) = discover(&current, Some(ProjectKind::App)) {
+        let selected =
+            resolve_environment(project, &ProjectOverrides::default(), &Environment::new())?;
+        return select_store(explicit_store, &environment, selected.store.as_deref());
+    }
+    if let Ok(project) = discover(&current, Some(ProjectKind::Theme)) {
+        let selected =
+            resolve_environment(project, &ProjectOverrides::default(), &Environment::new())?;
+        return select_store(explicit_store, &environment, selected.store.as_deref());
+    }
+
+    select_store(explicit_store, &environment, None)
+}
+
+fn select_store(
+    explicit_store: Option<&str>,
+    environment: &Environment,
+    configured_store: Option<&str>,
+) -> Result<String> {
+    if let Some(store) = explicit_store.filter(|store| !store.trim().is_empty()) {
+        return Ok(store.to_owned());
+    }
+    for name in ["CFY_STORE", "SHOPIFY_FLAG_STORE"] {
+        if let Some(store) = environment
+            .get(name)
+            .filter(|store| !store.trim().is_empty())
+        {
+            return Ok(store.clone());
+        }
+    }
+    if let Some(store) = configured_store.filter(|store| !store.trim().is_empty()) {
+        return Ok(store.to_owned());
+    }
+
+    Err(Error::invalid_input(
+        "no store selected; pass --store, set CFY_STORE/SHOPIFY_FLAG_STORE, or add store to the project configuration",
+    ))
+}
+
+fn format_themes(themes: &[Theme]) -> String {
+    if themes.is_empty() {
+        return "No themes found.".to_owned();
+    }
+    themes
+        .iter()
+        .map(|theme| format!("{}\t{}\t{}", theme.id, theme.role, theme.name))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Options shared by every Crabpify command.
@@ -86,9 +177,12 @@ pub enum AppCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ThemeCommand {
-    /// Display the currently selected theme environment.
-    #[command(alias = "show")]
-    Info,
+    /// List themes available on a store.
+    List {
+        /// Store handle or myshopify.com domain.
+        #[arg(long)]
+        store: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -109,7 +203,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
             command: InternalCommand::Idle { seconds },
         }) => tokio::time::sleep(Duration::from_secs(seconds)).await,
         Some(Command::App { .. }) => return Err(not_implemented("app")),
-        Some(Command::Theme { .. }) => return Err(not_implemented("theme")),
+        Some(Command::Theme {
+            command: ThemeCommand::List { store },
+        }) => list_themes(store.as_deref(), output).await?,
         None => {
             Cli::command()
                 .print_help()
@@ -158,7 +254,9 @@ fn not_implemented(group: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command};
+    use super::{Cli, Command, ThemeCommand, format_themes, select_store};
+    use cfy_api::theme::Theme;
+    use cfy_config::project::Environment;
     use clap::{CommandFactory, Parser, error::ErrorKind};
 
     #[test]
@@ -199,6 +297,83 @@ mod tests {
     fn command_and_nested_aliases_parse() {
         let cli = Cli::try_parse_from(["cfy", "a", "show"]).expect("aliases should parse");
         assert!(matches!(cli.command, Some(Command::App { .. })));
+    }
+
+    #[test]
+    fn theme_list_parses_store_and_global_json_flag() {
+        let cli =
+            Cli::try_parse_from(["cfy", "theme", "list", "--store", "example", "--json"]).unwrap();
+
+        assert!(cli.global.json);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Theme {
+                command: ThemeCommand::List { store: Some(store) }
+            }) if store == "example"
+        ));
+    }
+
+    #[test]
+    fn human_theme_output_is_stable_and_complete() {
+        let themes = vec![
+            Theme {
+                id: 10,
+                name: "Dawn".to_owned(),
+                role: "main".to_owned(),
+                created_at: Some("2026-01-01".to_owned()),
+                updated_at: Some("2026-01-02".to_owned()),
+                previewable: Some(true),
+                processing: Some(false),
+            },
+            Theme {
+                id: 20,
+                name: "Development".to_owned(),
+                role: "development".to_owned(),
+                created_at: None,
+                updated_at: None,
+                previewable: None,
+                processing: None,
+            },
+        ];
+
+        assert_eq!(
+            format_themes(&themes),
+            "10\tmain\tDawn\n20\tdevelopment\tDevelopment"
+        );
+        assert_eq!(format_themes(&[]), "No themes found.");
+    }
+
+    #[test]
+    fn store_precedence_is_flag_then_environment_then_config() {
+        let environment = Environment::from([
+            (
+                "CFY_STORE".to_owned(),
+                "environment.myshopify.com".to_owned(),
+            ),
+            (
+                "SHOPIFY_FLAG_STORE".to_owned(),
+                "compatible.myshopify.com".to_owned(),
+            ),
+        ]);
+
+        assert_eq!(
+            select_store(
+                Some("flag.myshopify.com"),
+                &environment,
+                Some("config.myshopify.com")
+            )
+            .unwrap(),
+            "flag.myshopify.com"
+        );
+        assert_eq!(
+            select_store(None, &environment, Some("config.myshopify.com")).unwrap(),
+            "environment.myshopify.com"
+        );
+        assert_eq!(
+            select_store(None, &Environment::new(), Some("config.myshopify.com")).unwrap(),
+            "config.myshopify.com"
+        );
+        assert!(select_store(None, &Environment::new(), None).is_err());
     }
 
     #[test]

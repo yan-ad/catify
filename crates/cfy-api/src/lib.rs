@@ -1,5 +1,7 @@
 //! Reusable HTTP and GraphQL clients for Shopify APIs.
 
+pub mod theme;
+
 use std::{
     fmt,
     sync::OnceLock,
