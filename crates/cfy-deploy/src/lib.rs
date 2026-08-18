@@ -1,6 +1,7 @@
 //! App deploy orchestration and release safety contracts.
 
 use async_trait::async_trait;
+use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
 use cfy_build::BuildReport;
 use cfy_core::{Cancellation, Error, ErrorKind};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,65 @@ use thiserror::Error as ThisError;
 pub struct DeploySelection {
     pub app: String,
     pub environment: String,
+}
+
+/// Configurable Admin/Partner GraphQL boundary for app metadata operations.
+/// Mutation names remain supplied by the caller because Shopify app lifecycle
+/// APIs differ by app generation and are not all public Admin API operations.
+pub struct AppAdminBackend {
+    client: GraphQlClient,
+}
+
+impl AppAdminBackend {
+    pub fn new(endpoint: &str, token: &str) -> std::result::Result<Self, DeployError> {
+        let parsed = url::Url::parse(endpoint).map_err(|error| {
+            DeployError::Validation(format!("invalid app API endpoint: {error}"))
+        })?;
+        if parsed.scheme() != "https" {
+            return Err(DeployError::Validation(
+                "app API endpoint must use HTTPS".into(),
+            ));
+        }
+        let http = HttpClient::new(parsed.as_str())
+            .map_err(|error| DeployError::Validation(error.to_string()))?
+            .with_sensitive_header(
+                reqwest::header::HeaderName::from_static("authorization"),
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                    .map_err(|error| DeployError::Validation(format!("invalid token: {error}")))?,
+            );
+        Ok(Self {
+            client: GraphQlClient::new(http, parsed.path()),
+        })
+    }
+
+    pub async fn query(
+        &self,
+        query: &str,
+        variables: serde_json::Value,
+    ) -> std::result::Result<serde_json::Value, DeployError> {
+        let request = GraphQlRequest::query(query, variables);
+        self.client
+            .execute::<_, serde_json::Value>(&request)
+            .await
+            .map(|response| response.data)
+            .map_err(|error| DeployError::Validation(error.to_string()))
+    }
+
+    pub async fn mutation(
+        &self,
+        mutation: &str,
+        variables: serde_json::Value,
+    ) -> std::result::Result<serde_json::Value, DeployError> {
+        let request = GraphQlRequest::mutation(mutation, variables);
+        self.client
+            .execute::<_, serde_json::Value>(&request)
+            .await
+            .map(|response| response.data)
+            .map_err(|error| DeployError::Release {
+                version_id: "unknown".into(),
+                message: error.to_string(),
+            })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
