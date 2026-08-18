@@ -152,6 +152,11 @@ struct ThemesEnvelope {
     themes: Vec<Theme>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ThemeEnvelope {
+    theme: Theme,
+}
+
 #[derive(Debug, Clone)]
 pub struct ThemeClient {
     http: HttpClient,
@@ -211,6 +216,72 @@ impl ThemeClient {
             path = same_origin_path(&self.origin, &next)?;
         }
         Ok(themes)
+    }
+
+    pub async fn get(&self, theme_id: u64) -> Result<Theme, ApiError> {
+        let response = self
+            .http
+            .execute(&HttpRequest::new(
+                Method::GET,
+                format!("{}/themes/{theme_id}.json", self.api_root),
+            ))
+            .await
+            .map_err(theme_api_error)?;
+        response.json::<ThemeEnvelope>().map(|value| value.theme)
+    }
+
+    pub async fn rename(&self, theme_id: u64, name: &str) -> Result<Theme, ApiError> {
+        if name.trim().is_empty() {
+            return Err(ApiError::Configuration("theme name cannot be empty".into()));
+        }
+        let mut request = HttpRequest::new(
+            Method::PUT,
+            format!("{}/themes/{theme_id}.json", self.api_root),
+        );
+        request.body = Some(serde_json::json!({"theme": {"name": name}}));
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        self.http
+            .execute(&request)
+            .await
+            .map_err(theme_api_error)?
+            .json::<ThemeEnvelope>()
+            .map(|value| value.theme)
+    }
+
+    pub async fn duplicate(&self, theme_id: u64, name: &str) -> Result<Theme, ApiError> {
+        if name.trim().is_empty() {
+            return Err(ApiError::Configuration("theme name cannot be empty".into()));
+        }
+        let mut request = HttpRequest::new(Method::POST, format!("{}/themes.json", self.api_root));
+        request.body =
+            Some(serde_json::json!({"theme": {"source_theme_id": theme_id, "name": name}}));
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        self.http
+            .execute(&request)
+            .await
+            .map_err(theme_api_error)?
+            .json::<ThemeEnvelope>()
+            .map(|value| value.theme)
+    }
+
+    pub async fn publish(&self, theme_id: u64) -> Result<Theme, ApiError> {
+        let mut request = HttpRequest::new(
+            Method::PUT,
+            format!("{}/themes/{theme_id}.json", self.api_root),
+        );
+        request.body = Some(serde_json::json!({"theme": {"role": "main"}}));
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        self.http
+            .execute(&request)
+            .await
+            .map_err(theme_api_error)?
+            .json::<ThemeEnvelope>()
+            .map(|value| value.theme)
+    }
+
+    #[must_use]
+    pub fn preview_url(&self, theme_id: u64) -> String {
+        format!("{}?preview_theme_id={theme_id}", self.origin)
     }
 
     /// Create a session-scoped development theme. The caller owns its lifecycle.

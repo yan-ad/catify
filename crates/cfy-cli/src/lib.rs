@@ -57,7 +57,11 @@ fn store_token() -> Result<String> {
         })
 }
 
-fn theme_parity_command(command: ThemeCommand, output: &Output) -> Result<u8> {
+async fn theme_parity_command(
+    command: ThemeCommand,
+    _non_interactive: bool,
+    output: &Output,
+) -> Result<u8> {
     match command {
         ThemeCommand::Init { destination } => {
             std::fs::create_dir_all(destination.join("assets"))
@@ -68,6 +72,86 @@ fn theme_parity_command(command: ThemeCommand, output: &Output) -> Result<u8> {
                 .success(
                     "Theme directory initialized",
                     &serde_json::json!({"initialized": true}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Info { theme, store } => {
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let value = client.get(theme).await.map_err(Error::from)?;
+            output
+                .success(&format!("Theme {}", value.id), &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Open { theme, store } | ThemeCommand::Share { theme, store } => {
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let url = client.preview_url(theme);
+            output
+                .success(&url, &serde_json::json!({"url": url, "theme_id": theme}))
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Rename { theme, store, name } => {
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let value = client.rename(theme, &name).await.map_err(Error::from)?;
+            output
+                .success(&format!("Renamed theme {}", value.id), &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Duplicate { theme, store, name } => {
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let value = client.duplicate(theme, &name).await.map_err(Error::from)?;
+            output
+                .success(&format!("Duplicated theme {}", value.id), &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Publish {
+            theme,
+            store,
+            confirm,
+        } => {
+            if !confirm {
+                return Err(Error::invalid_input("theme publish requires --confirm"));
+            }
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let value = client.publish(theme).await.map_err(Error::from)?;
+            output
+                .success(&format!("Published theme {}", value.id), &value)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Delete {
+            theme,
+            store,
+            confirm,
+        } => {
+            if !confirm {
+                return Err(Error::invalid_input("theme delete requires --confirm"));
+            }
+            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            client
+                .delete_theme(theme, &Cancellation::default())
+                .await
+                .map_err(Error::from)?;
+            output
+                .success(
+                    &format!("Deleted theme {theme}"),
+                    &serde_json::json!({"theme_id": theme, "deleted": true}),
                 )
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
@@ -1653,7 +1737,7 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             .await?
         }
         Some(Command::Theme { command }) => {
-            return theme_parity_command(command, output);
+            return theme_parity_command(command, cli.global.non_interactive, output).await;
         }
         None => {
             Cli::command()
