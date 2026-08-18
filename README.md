@@ -1,4 +1,4 @@
-# Crabpify
+# 🐈‍⬛ catify
 
 Catify (`cfy`) is an independent, memory-efficient CLI aiming for behavioral compatibility with common Shopify CLI workflows. It is experimental and is not affiliated with, endorsed by, or sponsored by Shopify.
 
@@ -11,7 +11,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/crabpify/issues). Architecture and compatibility decisions live in [`docs/adr`](docs/adr) and [`docs/compatibility.md`](docs/compatibility.md).
+Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/catify/issues). Architecture and compatibility decisions live in [`docs/adr`](docs/adr) and [`docs/compatibility.md`](docs/compatibility.md).
 
 Configuration precedence, file locations, and persistence guarantees are
 documented in [`docs/configuration.md`](docs/configuration.md).
@@ -106,7 +106,7 @@ Run a development session with an initial sync and incremental watching:
 SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme dev --store example --source ./theme
 ```
 
-Without `--theme`, Crabpify creates a temporary development theme and deletes it
+Without `--theme`, catify creates a temporary development theme and deletes it
 when the session ends, including on Ctrl-C or a sync error. Pass `--theme ID` to
 reuse an existing theme; a user-supplied theme is never deleted. Lifecycle state,
 preview URL, and editor URL are printed clearly. Creates and updates upload,
