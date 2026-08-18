@@ -6,6 +6,7 @@ members = [
   "crates/cfy-config",
   "crates/cfy-core",
   "crates/cfy-build",
+  "crates/cfy-deploy",
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
 ]
@@ -25,6 +26,7 @@ async-trait = "0.1.89"
 cfy-api = { version = "0.1.0", path = "crates/cfy-api" }
 cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
+cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-config = { version = "0.1.0", path = "crates/cfy-config" }
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 cfy-extension-adapter = { version = "0.1.0", path = "crates/cfy-extension-adapter" }
