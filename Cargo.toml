@@ -8,6 +8,7 @@ members = [
   "crates/cfy-build",
   "crates/cfy-deploy",
   "crates/cfy-dev",
+  "crates/cfy-tunnel",
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
 ]
@@ -29,6 +30,7 @@ cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-dev = { version = "0.1.0", path = "crates/cfy-dev" }
+cfy-tunnel = { version = "0.1.0", path = "crates/cfy-tunnel" }
 cfy-config = { version = "0.1.0", path = "crates/cfy-config" }
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 cfy-extension-adapter = { version = "0.1.0", path = "crates/cfy-extension-adapter" }
@@ -45,6 +47,7 @@ semver = "1.0.26"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "0.9.5"
+url = { version = "2.5.7", features = ["serde"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 
 [workspace.dependencies.libc]

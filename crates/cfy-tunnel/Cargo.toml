@@ -1,0 +1,18 @@
+[package]
+name = "cfy-tunnel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+cfy-core.workspace = true
+cfy-process.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
