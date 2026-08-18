@@ -5,12 +5,25 @@ use cfy_api::theme::{Theme, ThemeClient};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
-use cfy_core::{Error, Result};
+use cfy_config::theme::{StagedFile, commit_staged_files_cancellable, safe_relative_path};
+use cfy_core::{Cancellation, Error, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
-use std::{env, io, time::Duration};
+use std::{
+    env, io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 const SHOPIFY_API_VERSION: &str = "2026-07";
+
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
 
 /// Crabpify's top-level command-line interface.
 #[derive(Debug, Parser)]
@@ -28,6 +41,65 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+async fn pull_theme(
+    theme: u64,
+    explicit_store: Option<&str>,
+    includes: &[String],
+    excludes: &[String],
+    destination: &Path,
+    output: &Output,
+) -> Result<()> {
+    let store = resolve_store(explicit_store)?;
+    let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| {
+        Error::new(
+            cfy_core::ErrorKind::Api,
+            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+        )
+    })?;
+    let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+    let cancellation = Cancellation::default();
+    let signal = cancellation.clone();
+    let _signal_task = AbortOnDrop(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal.cancel();
+        }
+    }));
+    // The complete remote set is staged in memory. Cancellation or any partial
+    // HTTP failure therefore leaves the destination untouched.
+    let assets = client
+        .pull(theme, includes, excludes, &cancellation)
+        .await
+        .map_err(Error::from)?;
+    let files = assets
+        .into_iter()
+        .map(|asset| {
+            Ok(StagedFile {
+                path: safe_relative_path(&asset.key).map_err(|error| {
+                    Error::with_source(
+                        cfy_core::ErrorKind::Config,
+                        format!("Shopify returned an unsafe theme asset path: {}", asset.key),
+                        error,
+                    )
+                })?,
+                contents: asset.contents,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    commit_staged_files_cancellable(destination, &files, &cancellation).map_err(|error| {
+        Error::with_source(
+            cfy_core::ErrorKind::Config,
+            format!("could not commit theme assets to {}", destination.display()),
+            error,
+        )
+    })?;
+    output
+        .success(
+            &format!("Pulled {} theme assets to {}.", files.len(), destination.display()),
+            &serde_json::json!({ "theme_id": theme, "store": store, "destination": destination, "files": files.len() }),
+        )
+        .map_err(|error| Error::with_source(cfy_core::ErrorKind::Process, "could not write theme pull result", error))
 }
 
 async fn list_themes(explicit_store: Option<&str>, output: &Output) -> Result<()> {
@@ -70,6 +142,7 @@ fn resolve_store(explicit_store: Option<&str>) -> Result<String> {
             resolve_environment(project, &ProjectOverrides::default(), &Environment::new())?;
         return select_store(explicit_store, &environment, selected.store.as_deref());
     }
+
     if let Ok(project) = discover(&current, Some(ProjectKind::Theme)) {
         let selected =
             resolve_environment(project, &ProjectOverrides::default(), &Environment::new())?;
@@ -183,6 +256,24 @@ pub enum ThemeCommand {
         #[arg(long)]
         store: Option<String>,
     },
+    /// Download a theme's selected assets into a local directory.
+    Pull {
+        /// Numeric Shopify theme ID.
+        #[arg(long)]
+        theme: u64,
+        /// Store handle or myshopify.com domain.
+        #[arg(long)]
+        store: Option<String>,
+        /// Include matching asset paths (supports `*` and `?`); repeatable.
+        #[arg(long)]
+        include: Vec<String>,
+        /// Exclude matching asset paths (supports `*` and `?`); repeatable.
+        #[arg(long)]
+        exclude: Vec<String>,
+        /// Destination directory. Defaults to the current directory.
+        #[arg(long, short = 'd', default_value = ".")]
+        destination: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -206,6 +297,26 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
         Some(Command::Theme {
             command: ThemeCommand::List { store },
         }) => list_themes(store.as_deref(), output).await?,
+        Some(Command::Theme {
+            command:
+                ThemeCommand::Pull {
+                    theme,
+                    store,
+                    include,
+                    exclude,
+                    destination,
+                },
+        }) => {
+            pull_theme(
+                theme,
+                store.as_deref(),
+                &include,
+                &exclude,
+                &destination,
+                output,
+            )
+            .await?
+        }
         None => {
             Cli::command()
                 .print_help()
@@ -311,6 +422,44 @@ mod tests {
                 command: ThemeCommand::List { store: Some(store) }
             }) if store == "example"
         ));
+    }
+
+    #[test]
+    fn theme_pull_parses_filters_and_destination() {
+        let cli = Cli::try_parse_from([
+            "cfy",
+            "theme",
+            "pull",
+            "--theme",
+            "42",
+            "--store",
+            "example",
+            "--include",
+            "assets/*",
+            "--exclude",
+            "*.map",
+            "--destination",
+            "theme",
+        ])
+        .unwrap();
+        let Some(Command::Theme {
+            command:
+                ThemeCommand::Pull {
+                    theme,
+                    store,
+                    include,
+                    exclude,
+                    destination,
+                },
+        }) = cli.command
+        else {
+            panic!("expected theme pull")
+        };
+        assert_eq!(theme, 42);
+        assert_eq!(store.as_deref(), Some("example"));
+        assert_eq!(include, ["assets/*"]);
+        assert_eq!(exclude, ["*.map"]);
+        assert_eq!(destination, std::path::PathBuf::from("theme"));
     }
 
     #[test]

@@ -73,3 +73,17 @@ uses `SHOPIFY_CLI_THEME_TOKEN` until the interactive login command is wired.
 Pagination is automatic. Human output contains theme ID, role, and name; JSON
 returns the complete metadata objects. Authentication and permission failures
 include token-refresh and scope remediation without printing the token.
+
+Pull selected theme assets into a local directory with repeatable wildcard
+filters:
+
+```sh
+SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme pull \
+  --store example --theme 123456789 \
+  --include 'assets/*' --exclude '*.map' --destination ./theme
+```
+
+`--include` defaults to all assets when omitted; exclusions are applied after
+includes. Text and binary files are staged fully before the destination is
+changed. Unsafe paths and symlink traversal are rejected, and write failure or
+Ctrl-C triggers rollback so selected files are not left partially updated.

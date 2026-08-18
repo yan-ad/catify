@@ -1,6 +1,8 @@
 //! Shopify theme metadata listing over the Admin REST API.
 
 use crate::{ApiError, HttpClient, HttpRequest};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use cfy_core::Cancellation;
 use reqwest::{
     Method, StatusCode, Url,
     header::{HeaderName, HeaderValue, LINK},
@@ -24,6 +26,34 @@ pub struct Theme {
     pub processing: Option<bool>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeAsset {
+    pub key: String,
+    pub contents: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetsEnvelope {
+    assets: Vec<AssetMetadata>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetMetadata {
+    key: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetEnvelope {
+    asset: AssetPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetPayload {
+    key: String,
+    value: Option<String>,
+    attachment: Option<String>,
+}
+
 fn theme_api_error(error: ApiError) -> ApiError {
     match error {
         ApiError::Http {
@@ -39,6 +69,36 @@ fn theme_api_error(error: ApiError) -> ApiError {
     }
 }
 
+fn selected(key: &str, includes: &[String], excludes: &[String]) -> bool {
+    (includes.is_empty() || includes.iter().any(|pattern| matches_pattern(pattern, key)))
+        && !excludes.iter().any(|pattern| matches_pattern(pattern, key))
+}
+
+fn matches_pattern(pattern: &str, value: &str) -> bool {
+    let (mut pattern, mut value) = (pattern.as_bytes(), value.as_bytes());
+    let (mut star_pattern, mut star_value) = (None, &[][..]);
+    while !value.is_empty() {
+        if !pattern.is_empty() && (pattern[0] == b'?' || pattern[0] == value[0]) {
+            pattern = &pattern[1..];
+            value = &value[1..];
+        } else if !pattern.is_empty() && pattern[0] == b'*' {
+            star_pattern = Some(&pattern[1..]);
+            pattern = &pattern[1..];
+            star_value = value;
+        } else if let Some(after_star) = star_pattern {
+            if star_value.is_empty() {
+                return false;
+            }
+            star_value = &star_value[1..];
+            value = star_value;
+            pattern = after_star;
+        } else {
+            return false;
+        }
+    }
+    pattern.iter().all(|byte| *byte == b'*')
+}
+
 #[derive(Debug, Deserialize)]
 struct ThemesEnvelope {
     themes: Vec<Theme>,
@@ -49,6 +109,7 @@ pub struct ThemeClient {
     http: HttpClient,
     origin: Url,
     first_path: String,
+    api_root: String,
 }
 
 impl ThemeClient {
@@ -69,6 +130,7 @@ impl ThemeClient {
             http,
             origin,
             first_path: format!("admin/api/{api_version}/themes.json?limit=250"),
+            api_root: format!("admin/api/{api_version}"),
         })
     }
 
@@ -78,6 +140,7 @@ impl ThemeClient {
             http,
             origin,
             first_path: first_path.into(),
+            api_root: String::new(),
         }
     }
 
@@ -100,6 +163,77 @@ impl ThemeClient {
             path = same_origin_path(&self.origin, &next)?;
         }
         Ok(themes)
+    }
+
+    /// Download all selected assets before returning them to the caller.
+    pub async fn pull(
+        &self,
+        theme_id: u64,
+        includes: &[String],
+        excludes: &[String],
+        cancellation: &Cancellation,
+    ) -> Result<Vec<ThemeAsset>, ApiError> {
+        check_cancelled(cancellation)?;
+        let path = format!("{}/themes/{theme_id}/assets.json?fields=key", self.api_root);
+        let response = self
+            .http
+            .execute(&HttpRequest::new(Method::GET, path))
+            .await
+            .map_err(theme_api_error)?;
+        let metadata = response.json::<AssetsEnvelope>()?.assets;
+        let mut assets = Vec::new();
+        for asset in metadata {
+            check_cancelled(cancellation)?;
+            if !selected(&asset.key, includes, excludes) {
+                continue;
+            }
+            let mut url = Url::parse("https://placeholder.invalid/").expect("valid URL");
+            url.query_pairs_mut().append_pair("asset[key]", &asset.key);
+            let query = url.query().unwrap_or_default();
+            let path = format!("{}/themes/{theme_id}/assets.json?{query}", self.api_root);
+            let response = self
+                .http
+                .execute(&HttpRequest::new(Method::GET, path))
+                .await
+                .map_err(theme_api_error)?;
+            let payload = response.json::<AssetEnvelope>()?.asset;
+            if payload.key != asset.key {
+                return Err(ApiError::Configuration(format!(
+                    "Shopify returned asset {:?} while {:?} was requested",
+                    payload.key, asset.key
+                )));
+            }
+            let contents = match (payload.value, payload.attachment) {
+                (Some(value), None) => value.into_bytes(),
+                (None, Some(attachment)) => BASE64.decode(attachment).map_err(|error| {
+                    ApiError::Configuration(format!(
+                        "invalid base64 attachment for {}: {error}",
+                        payload.key
+                    ))
+                })?,
+                _ => {
+                    return Err(ApiError::Configuration(format!(
+                        "asset {} did not contain exactly one of value or attachment",
+                        payload.key
+                    )));
+                }
+            };
+            assets.push(ThemeAsset {
+                key: payload.key,
+                contents,
+            });
+        }
+        Ok(assets)
+    }
+}
+
+fn check_cancelled(cancellation: &Cancellation) -> Result<(), ApiError> {
+    if cancellation.is_cancelled() {
+        Err(ApiError::Configuration(
+            "theme pull was cancelled".to_owned(),
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -183,6 +317,109 @@ mod tests {
         assert!(next_link(header).unwrap().contains("page_info=next"));
         let origin = Url::parse("https://shop.myshopify.com/").unwrap();
         assert!(same_origin_path(&origin, "https://evil.example/a").is_err());
+    }
+
+    #[test]
+    fn include_and_exclude_patterns_select_expected_assets() {
+        let include = vec!["assets/*".to_owned(), "sections/?.liquid".to_owned()];
+        let exclude = vec!["*.map".to_owned()];
+        assert!(selected("assets/theme.js", &include, &exclude));
+        assert!(!selected("assets/theme.js.map", &include, &exclude));
+        assert!(selected("sections/a.liquid", &include, &exclude));
+        assert!(!selected("templates/index.json", &include, &exclude));
+    }
+
+    #[tokio::test]
+    async fn pulls_filtered_text_and_binary_assets_from_rest_fixtures() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let bodies = [
+                r#"{"assets":[{"key":"assets/theme.js"},{"key":"assets/logo.bin"},{"key":"config/settings.json"}]}"#,
+                r#"{"asset":{"key":"assets/theme.js","value":"console.log('ok');","attachment":null}}"#,
+                r#"{"asset":{"key":"assets/logo.bin","value":null,"attachment":"AJ//Cg=="}}"#,
+            ];
+            for (index, body) in bodies.into_iter().enumerate() {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                assert!(request.contains("GET /themes/42/assets.json"));
+                if index == 1 {
+                    assert!(request.contains("asset%5Bkey%5D=assets%2Ftheme.js"));
+                }
+                if index == 2 {
+                    assert!(request.contains("asset%5Bkey%5D=assets%2Flogo.bin"));
+                }
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base)
+            .unwrap()
+            .with_retry_policy(RetryPolicy {
+                max_retries: 0,
+                base_delay: Duration::ZERO,
+                max_delay: Duration::ZERO,
+            });
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        let assets = client
+            .pull(
+                42,
+                &["assets/*".to_owned()],
+                &["*.map".to_owned()],
+                &Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(assets[0].contents, b"console.log('ok');");
+        assert_eq!(assets[1].contents, vec![0, 159, 255, 10]);
+    }
+
+    #[tokio::test]
+    async fn pull_failure_returns_no_partial_asset_set() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for (status, body) in [
+                ("200 OK", r#"{"assets":[{"key":"a"},{"key":"b"}]}"#),
+                (
+                    "200 OK",
+                    r#"{"asset":{"key":"a","value":"downloaded","attachment":null}}"#,
+                ),
+                ("500 Internal Server Error", r#"{"errors":"failed"}"#),
+            ] {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 1024];
+                let _ = socket.read(&mut request).await.unwrap();
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base)
+            .unwrap()
+            .with_retry_policy(RetryPolicy {
+                max_retries: 0,
+                base_delay: Duration::ZERO,
+                max_delay: Duration::ZERO,
+            });
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        assert!(
+            client
+                .pull(42, &[], &[], &Cancellation::default())
+                .await
+                .is_err()
+        );
+        server.await.unwrap();
     }
 
     #[tokio::test]

@@ -18,6 +18,7 @@ license = "MIT"
 repository = "https://github.com/yan-ad/crabpify"
 
 [workspace.dependencies]
+base64 = "0.22"
 async-trait = "0.1.89"
 cfy-api = { version = "0.1.0", path = "crates/cfy-api" }
 cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }

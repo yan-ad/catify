@@ -1,6 +1,7 @@
 //! Configuration loading, filesystem primitives, and project path handling.
 
 pub mod project;
+pub mod theme;
 
 use cfy_core::{Error, ErrorKind, Result};
 use serde::Deserialize;

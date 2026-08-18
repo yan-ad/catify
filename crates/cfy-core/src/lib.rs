@@ -1,9 +1,33 @@
 //! Stable domain primitives shared by Crabpify crates.
 
-use std::{error::Error as StdError, process::ExitCode};
+use std::{
+    error::Error as StdError,
+    process::ExitCode,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use thiserror::Error;
 
 pub type BoxError = Box<dyn StdError + Send + Sync + 'static>;
+
+/// A cheap, cloneable cancellation signal shared across async and blocking work.
+#[derive(Debug, Clone, Default)]
+pub struct Cancellation {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Cancellation {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
 
 /// Stable error categories exposed at the command boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
