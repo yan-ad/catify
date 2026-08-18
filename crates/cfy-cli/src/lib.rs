@@ -35,6 +35,146 @@ impl Drop for AbortOnDrop {
     }
 }
 
+#[derive(serde::Serialize)]
+struct CommandListing {
+    name: &'static str,
+    summary: &'static str,
+    status: &'static str,
+}
+
+const COMMAND_LISTING: &[CommandListing] = &[
+    CommandListing {
+        name: "app",
+        summary: "Build Shopify apps.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "auth",
+        summary: "Auth operations.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "commands",
+        summary: "List all Crabpify commands.",
+        status: "implemented",
+    },
+    CommandListing {
+        name: "completion",
+        summary: "Generate shell completions.",
+        status: "implemented",
+    },
+    CommandListing {
+        name: "config",
+        summary: "CLI configuration options.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "doc",
+        summary: "Search and fetch documentation.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "help",
+        summary: "Display help for Crabpify.",
+        status: "implemented",
+    },
+    CommandListing {
+        name: "hydrogen",
+        summary: "Build Hydrogen storefronts.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "organization",
+        summary: "List Shopify organizations.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "search",
+        summary: "Search Shopify developer documentation.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "store",
+        summary: "Work directly with Shopify stores.",
+        status: "scaffolded",
+    },
+    CommandListing {
+        name: "theme",
+        summary: "Build Liquid themes.",
+        status: "implemented",
+    },
+    CommandListing {
+        name: "upgrade",
+        summary: "Upgrade Crabpify.",
+        status: "implemented",
+    },
+    CommandListing {
+        name: "version",
+        summary: "Show the current version.",
+        status: "implemented",
+    },
+];
+
+fn print_help(topic: Option<&str>) {
+    let mut command = Cli::command();
+    if let Some(topic) = topic
+        && let Some(subcommand) = command.find_subcommand_mut(topic)
+    {
+        let _ = subcommand.print_long_help();
+        println!();
+        return;
+    }
+    let _ = command.print_long_help();
+    println!();
+}
+
+fn print_commands(output: &Output) -> Result<()> {
+    output
+        .success("Available commands:", &COMMAND_LISTING)
+        .map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not write command listing",
+                error,
+            )
+        })
+}
+
+fn upgrade(dry_run: bool, output: &Output) -> Result<()> {
+    let channel = env::var("CFY_INSTALL_CHANNEL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let Some(channel) = channel else {
+        return Err(Error::invalid_input(
+            "cannot upgrade an unmanaged installation; set CFY_INSTALL_CHANNEL to cargo or homebrew, or reinstall cfy through a supported channel",
+        ));
+    };
+    if !matches!(channel.as_str(), "cargo" | "homebrew") {
+        return Err(Error::invalid_input(format!(
+            "unsupported install channel `{channel}`; supported channels: cargo, homebrew"
+        )));
+    }
+    let message = if dry_run {
+        format!("upgrade check passed for {channel}; no files changed")
+    } else {
+        format!(
+            "upgrade is available through {channel}; run the channel's package manager to apply it"
+        )
+    };
+    output
+        .success(
+            &message,
+            &serde_json::json!({ "channel": channel, "dry_run": dry_run, "changed": false }),
+        )
+        .map_err(|error| {
+            Error::with_source(
+                cfy_core::ErrorKind::Process,
+                "could not write upgrade result",
+                error,
+            )
+        })
+}
+
 async fn theme_dev(
     requested_theme: Option<u64>,
     explicit_store: Option<&str>,
@@ -504,6 +644,13 @@ pub struct GlobalOptions {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Display help for Crabpify.
+    Help {
+        /// Optional topic or command to describe.
+        topic: Option<String>,
+    },
+    /// List all public Crabpify commands.
+    Commands,
     /// Manage Shopify apps.
     #[command(alias = "a")]
     App {
@@ -527,6 +674,31 @@ pub enum Command {
     /// Print build and runtime version information.
     #[command(alias = "v")]
     Version,
+
+    /// Upgrade Crabpify through a supported installation channel.
+    Upgrade {
+        /// Validate the selected channel without changing the installation.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Authentication operations.
+    Auth,
+    /// Crabpify configuration options.
+    Config,
+    /// Search and fetch Shopify documentation.
+    Doc,
+    /// Build Hydrogen storefronts.
+    Hydrogen,
+    /// List Shopify organizations.
+    Organization,
+    /// Work directly with Shopify stores.
+    Store,
+    /// Search Shopify developer documentation.
+    Search {
+        /// Search query.
+        query: Vec<String>,
+    },
 
     #[command(hide = true)]
     Internal {
@@ -620,7 +792,10 @@ pub enum InternalCommand {
 /// Execute a parsed command.
 pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
     match cli.command {
+        Some(Command::Help { topic }) => print_help(topic.as_deref()),
+        Some(Command::Commands) => print_commands(output)?,
         Some(Command::Version) => print_version(output)?,
+        Some(Command::Upgrade { dry_run }) => upgrade(dry_run, output)?,
         Some(Command::Completion { shell }) => print_completion(shell),
         Some(Command::Internal {
             command: InternalCommand::Idle { seconds, watch },
@@ -645,6 +820,13 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             drop(watcher.take());
         }
         Some(Command::App { .. }) => return Err(not_implemented("app")),
+        Some(Command::Auth)
+        | Some(Command::Config)
+        | Some(Command::Doc)
+        | Some(Command::Hydrogen)
+        | Some(Command::Organization)
+        | Some(Command::Store)
+        | Some(Command::Search { .. }) => return Err(not_implemented("this command topic")),
         Some(Command::Theme {
             command: ThemeCommand::Check(args),
         }) => return theme_check::run(&args).await,

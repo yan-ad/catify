@@ -3,10 +3,20 @@ A fast, memory-efficient Shopify CLI alternative
 Usage: cfy [OPTIONS] [COMMAND]
 
 Commands:
-  app         Manage Shopify apps
-  theme       Manage Shopify themes
-  completion  Generate a shell completion script on standard output
-  version     Print build and runtime version information
+  help          Display help for Crabpify
+  commands      List all public Crabpify commands
+  app           Manage Shopify apps
+  theme         Manage Shopify themes
+  completion    Generate a shell completion script on standard output
+  version       Print build and runtime version information
+  upgrade       Upgrade Crabpify through a supported installation channel
+  auth          Authentication operations
+  config        Crabpify configuration options
+  doc           Search and fetch Shopify documentation
+  hydrogen      Build Hydrogen storefronts
+  organization  List Shopify organizations
+  store         Work directly with Shopify stores
+  search        Search Shopify developer documentation
 
 Options:
   -v, --verbose...
