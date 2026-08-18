@@ -337,6 +337,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfy-build"
+version = "0.1.0"
+dependencies = [
+ "cfy-config",
+ "cfy-core",
+ "cfy-extension-adapter",
+ "cfy-process",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "cfy-cli"
 version = "0.1.0"
 dependencies = [
