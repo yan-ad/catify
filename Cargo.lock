@@ -362,6 +362,7 @@ dependencies = [
  "cfy-core",
  "cfy-organization",
  "cfy-process",
+ "cfy-store",
  "clap",
  "clap_complete",
  "notify",
@@ -447,6 +448,18 @@ dependencies = [
  "libc",
  "tokio",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "cfy-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cfy-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
 ]
 
 [[package]]

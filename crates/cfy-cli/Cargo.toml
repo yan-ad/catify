@@ -17,6 +17,7 @@ cfy-config.workspace = true
 cfy-organization.workspace = true
 cfy-core.workspace = true
 cfy-process.workspace = true
+cfy-store.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 notify.workspace = true

@@ -6,6 +6,7 @@ use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_auth::{
     CredentialStore, NativeCredentialStore, Session,
     flow::{LoginMode, headless_from_env},
+    identity::IdentityConfig,
 };
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
@@ -15,6 +16,7 @@ use cfy_config::theme::{
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
+use cfy_store::{StoreCommand as StoreOperation, StoreTarget, browser_url};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use notify::{
@@ -37,6 +39,136 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum StoreCliCommand {
+    /// Authenticate against a store.
+    Auth {
+        #[arg(long)]
+        store: Option<String>,
+    },
+    /// List stores available to the current account.
+    AuthList,
+    /// Show store information.
+    Info {
+        #[arg(long)]
+        store: String,
+    },
+    /// Open the Shopify admin in a browser.
+    Open {
+        #[arg(long)]
+        store: String,
+    },
+    /// Open Shopify GraphiQL in a browser.
+    Graphiql {
+        #[arg(long)]
+        store: String,
+    },
+    /// Execute an Admin API request.
+    Execute {
+        #[arg(long)]
+        store: String,
+        query: String,
+    },
+    /// Create a development store.
+    CreateDev {
+        #[arg(long)]
+        store: String,
+    },
+    /// Create a preview store.
+    CreatePreview {
+        #[arg(long)]
+        store: String,
+    },
+    /// Delete a store. Requires --confirm.
+    Delete {
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Execute a bulk operation.
+    BulkExecute {
+        #[arg(long)]
+        store: String,
+        query: String,
+    },
+    /// Show bulk operation status.
+    BulkStatus {
+        #[arg(long)]
+        store: String,
+    },
+    /// Cancel a bulk operation. Requires --confirm.
+    BulkCancel {
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Authenticate Stripe for the selected store.
+    StripeAuth {
+        #[arg(long)]
+        store: String,
+    },
+}
+
+async fn store_command(
+    command: StoreCliCommand,
+    non_interactive: bool,
+    output: &Output,
+) -> Result<u8> {
+    let (operation, target, destructive, confirm) = match command {
+        StoreCliCommand::Open { store } => {
+            let target = StoreTarget::parse(&store)?;
+            let url = browser_url(StoreOperation::Open, &target, non_interactive)?;
+            output
+                .success(url.as_ref(), &serde_json::json!({ "url": url }))
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Graphiql { store } => {
+            let target = StoreTarget::parse(&store)?;
+            let url = browser_url(StoreOperation::Graphiql, &target, non_interactive)?;
+            output
+                .success(url.as_ref(), &serde_json::json!({ "url": url }))
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Delete { store, confirm } => {
+            (StoreOperation::Delete, store, true, confirm)
+        }
+        StoreCliCommand::BulkCancel { store, confirm } => {
+            (StoreOperation::BulkCancel, store, true, confirm)
+        }
+        StoreCliCommand::Auth { store } => (
+            StoreOperation::Auth,
+            store.unwrap_or_else(|| "current".to_owned()),
+            false,
+            false,
+        ),
+        StoreCliCommand::AuthList => (StoreOperation::AuthList, "current".to_owned(), false, false),
+        StoreCliCommand::Info { store } => (StoreOperation::Info, store, false, false),
+        StoreCliCommand::Execute { store, .. } => (StoreOperation::Execute, store, false, false),
+        StoreCliCommand::CreateDev { store } => (StoreOperation::CreateDev, store, true, false),
+        StoreCliCommand::CreatePreview { store } => {
+            (StoreOperation::CreatePreview, store, true, false)
+        }
+        StoreCliCommand::BulkExecute { store, .. } => {
+            (StoreOperation::BulkExecute, store, false, false)
+        }
+        StoreCliCommand::BulkStatus { store } => (StoreOperation::BulkStatus, store, false, false),
+        StoreCliCommand::StripeAuth { store } => (StoreOperation::StripeAuth, store, false, false),
+    };
+
+    let _target = StoreTarget::parse(&target)?;
+    cfy_store::ConfirmationPolicy {
+        non_interactive,
+        confirm,
+        destructive,
+    }
+    .authorize()?;
+    Err(cfy_store::StoreError::Unsupported(operation).into())
 }
 
 async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Output) -> Result<u8> {
@@ -75,10 +207,13 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                     })?;
                 return Ok(0);
             }
-            let _ = output.lifecycle("Browser/device login provider is not configured in this build; use --non-interactive with SHOPIFY_CLI_TOKEN");
-            Err(Error::invalid_input(
-                "auth provider endpoint is not configured",
-            ))
+            let config_error = IdentityConfig::from_env(|key| env::var(key).ok()).err();
+            let detail = config_error
+                .map(|error| format!(": {error}"))
+                .unwrap_or_default();
+            Err(Error::invalid_input(format!(
+                "interactive login is not available in this build{detail}; set CFY_IDENTITY_CLIENT_ID, or use --non-interactive with SHOPIFY_CLI_TOKEN"
+            )))
         }
         AuthCommand::Logout { identity } => {
             store.delete(&identity).await?;
@@ -792,7 +927,10 @@ pub enum Command {
         command: OrganizationCommand,
     },
     /// Work directly with Shopify stores.
-    Store,
+    Store {
+        #[command(subcommand)]
+        command: StoreCliCommand,
+    },
     /// Search Shopify developer documentation.
     Search {
         /// Search query.
@@ -925,10 +1063,12 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
         Some(Command::Organization { command }) => {
             organization_command(command, output).await?;
         }
+        Some(Command::Store { command }) => {
+            store_command(command, cli.global.non_interactive, output).await?;
+        }
         Some(Command::Config)
         | Some(Command::Doc)
         | Some(Command::Hydrogen)
-        | Some(Command::Store)
         | Some(Command::Search { .. }) => return Err(not_implemented("this command topic")),
         Some(Command::Theme {
             command: ThemeCommand::Check(args),
