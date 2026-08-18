@@ -7,6 +7,7 @@ use crate::{
 use async_trait::async_trait;
 use cfy_core::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::time::sleep;
 use url::Url;
@@ -18,6 +19,149 @@ pub struct IdentityConfig {
     pub token_url: Url,
     pub scopes: Vec<String>,
     pub max_poll_attempts: u32,
+}
+
+#[derive(Clone)]
+pub struct HttpIdentityTransport {
+    client: reqwest::Client,
+}
+
+impl HttpIdentityTransport {
+    pub fn new() -> Result<Self> {
+        static TLS: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+        TLS.get_or_init(|| {
+            rustls::crypto::ring::default_provider()
+                .install_default()
+                .map_err(|_| "a different Rustls provider is already installed".to_owned())
+        })
+        .clone()
+        .map_err(|error| Error::new(ErrorKind::Config, error))?;
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("crabpify/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Api,
+                    "could not create identity HTTP client",
+                    error,
+                )
+            })?;
+        Ok(Self { client })
+    }
+
+    async fn post_form<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &Url,
+        body: &[(String, String)],
+    ) -> Result<T> {
+        let encoded = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(body)
+            .finish();
+        let response = self
+            .client
+            .post(url.clone())
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(encoded)
+            .send()
+            .await
+            .map_err(|error| {
+                Error::with_source(ErrorKind::Api, "identity request failed", error)
+            })?;
+        let status = response.status();
+        if !status.is_success() && status.as_u16() != 400 {
+            return Err(Error::new(
+                ErrorKind::Api,
+                format!("identity endpoint returned HTTP {status}"),
+            ));
+        }
+        response
+            .json()
+            .await
+            .map_err(|error| Error::with_source(ErrorKind::Api, "invalid identity response", error))
+    }
+}
+
+#[async_trait]
+impl IdentityTransport for HttpIdentityTransport {
+    async fn device_authorization(&self, config: &IdentityConfig) -> Result<DeviceAuthorization> {
+        #[derive(Deserialize)]
+        struct Response {
+            device_code: String,
+            user_code: String,
+            verification_uri: String,
+            #[serde(default)]
+            verification_uri_complete: Option<String>,
+            #[serde(default = "default_interval")]
+            interval: u64,
+            #[serde(default)]
+            expires_in: u64,
+        }
+        fn default_interval() -> u64 {
+            5
+        }
+        let body = vec![
+            ("client_id".into(), config.client_id.clone()),
+            ("scope".into(), config.scopes.join(" ")),
+        ];
+        let response: Response = self
+            .post_form(&config.device_authorization_url, &body)
+            .await?;
+        Ok(DeviceAuthorization {
+            verification_uri: response
+                .verification_uri_complete
+                .unwrap_or(response.verification_uri),
+            user_code: response.user_code,
+            device_code: Secret::new(response.device_code),
+            interval_seconds: response.interval,
+            expires_in_seconds: response.expires_in,
+        })
+    }
+
+    async fn token(
+        &self,
+        config: &IdentityConfig,
+        body: Vec<(String, String)>,
+    ) -> Result<std::result::Result<TokenResponse, TokenError>> {
+        let encoded = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(&body)
+            .finish();
+        let response = self
+            .client
+            .post(config.token_url.clone())
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(encoded)
+            .send()
+            .await
+            .map_err(|error| {
+                Error::with_source(ErrorKind::Api, "identity token request failed", error)
+            })?;
+        if response.status().is_success() {
+            return response
+                .json::<TokenResponse>()
+                .await
+                .map(Ok)
+                .map_err(|error| {
+                    Error::with_source(ErrorKind::Api, "invalid identity token response", error)
+                });
+        }
+        response
+            .json::<TokenError>()
+            .await
+            .map(Err)
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Api,
+                    "invalid identity token error response",
+                    error,
+                )
+            })
+    }
 }
 
 impl IdentityConfig {
@@ -94,7 +238,22 @@ impl<T: IdentityTransport> IdentityClient<T> {
         store: &S,
         identity: &str,
     ) -> Result<Session> {
-        let mut session = self.device_login().await?;
+        self.login_and_save_with_notice(store, identity, |_| {})
+            .await
+    }
+
+    pub async fn login_and_save_with_notice<
+        S: crate::CredentialStore,
+        F: FnOnce(&DeviceAuthorization),
+    >(
+        &self,
+        store: &S,
+        identity: &str,
+        notice: F,
+    ) -> Result<Session> {
+        let authorization = self.transport.device_authorization(&self.config).await?;
+        notice(&authorization);
+        let mut session = self.device_login_with_authorization(&authorization).await?;
         session.identity = identity.to_owned();
         store.save(&session).await?;
         Ok(session)
@@ -102,6 +261,13 @@ impl<T: IdentityTransport> IdentityClient<T> {
 
     pub async fn device_login(&self) -> Result<Session> {
         let authorization = self.transport.device_authorization(&self.config).await?;
+        self.device_login_with_authorization(&authorization).await
+    }
+
+    async fn device_login_with_authorization(
+        &self,
+        authorization: &DeviceAuthorization,
+    ) -> Result<Session> {
         let mut delay = authorization.interval_seconds.max(1);
         for _ in 0..self.config.max_poll_attempts {
             let response = self

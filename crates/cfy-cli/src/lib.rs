@@ -6,7 +6,7 @@ use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_auth::{
     CredentialStore, NativeCredentialStore, Session,
     flow::{LoginMode, headless_from_env},
-    identity::IdentityConfig,
+    identity::{HttpIdentityTransport, IdentityClient, IdentityConfig},
 };
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
@@ -391,13 +391,27 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                     })?;
                 return Ok(0);
             }
-            let config_error = IdentityConfig::from_env(|key| env::var(key).ok()).err();
-            let detail = config_error
-                .map(|error| format!(": {error}"))
-                .unwrap_or_default();
-            Err(Error::invalid_input(format!(
-                "interactive login is not available in this build{detail}; set CFY_IDENTITY_CLIENT_ID, or use --non-interactive with SHOPIFY_CLI_TOKEN"
-            )))
+            let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
+            let client = IdentityClient::new(HttpIdentityTransport::new()?, config);
+            let identity_name = identity.clone();
+            let session = client
+                .login_and_save_with_notice(&store, &identity, |authorization| {
+                    let message = format!(
+                        "Open {} and enter code {}",
+                        authorization.verification_uri, authorization.user_code
+                    );
+                    let _ = output.lifecycle(&message);
+                })
+                .await?;
+            output
+                .success(
+                    "Authentication succeeded",
+                    &serde_json::json!({"identity": identity_name, "scopes": session.scopes}),
+                )
+                .map_err(|error| {
+                    Error::with_source(ErrorKind::Process, "could not write login result", error)
+                })?;
+            Ok(0)
         }
         AuthCommand::Logout { identity } => {
             store.delete(&identity).await?;
