@@ -40,7 +40,7 @@ Every normalization rule belongs in the test harness and requires review; snapsh
 
 Shopify CLI is MIT licensed. Public behavior, documentation, tests, and source may be studied. Copied or substantially adapted code must retain its upstream copyright and MIT notice in the relevant file or `THIRD_PARTY_NOTICES.md`, with source path and commit. Prefer clean, independent implementations from observed behavior.
 
-The command inventory records the exact upstream commit. Dependency licenses are checked in CI with `cargo-deny`; only approved permissive licenses are allowed without maintainer review. Certificate root data used by the Rustls platform verifier is licensed under CDLA-Permissive-2.0. This data-specific permissive license is explicitly allowed in `deny.toml`; it is not a blanket exception for other CDLA licenses.
+The command inventory records the exact upstream commit. Dependency licenses are checked in CI with `cargo-deny`; only approved permissive licenses are allowed without maintainer review. Certificate root data used by the Rustls platform verifier is licensed under CDLA-Permissive-2.0. This data-specific permissive license is explicitly allowed in `deny.toml`; it is not a blanket exception for other CDLA licenses. The native filesystem watcher crate `notify` uses CC0-1.0, a public-domain dedication with a permissive fallback; that exact license is allowed for the watcher dependency rather than as permission to bypass dependency review.
 
 ## Naming and trademarks
 
