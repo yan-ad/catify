@@ -166,7 +166,25 @@ impl IdentityTransport for HttpIdentityTransport {
 
 impl IdentityConfig {
     pub fn from_env(env: impl Fn(&str) -> Option<String>) -> Result<Self> {
-        let client_id = env("CFY_IDENTITY_CLIENT_ID").ok_or_else(|| Error::new(ErrorKind::Config, "CFY_IDENTITY_CLIENT_ID is required; Crabpify cannot redistribute Shopify's private OAuth client ID"))?;
+        Self::from_env_with_client_id(env, None)
+    }
+
+    pub fn from_env_with_client_id(
+        env: impl Fn(&str) -> Option<String>,
+        project_client_id: Option<String>,
+    ) -> Result<Self> {
+        let client_id = env("CFY_IDENTITY_CLIENT_ID")
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Config,
+                    if project_client_id.is_some() {
+                        "shopify.app.toml contains an app client_id, but cfy auth login requires a Crabpify Identity client ID; set CFY_IDENTITY_CLIENT_ID"
+                    } else {
+                        "identity client ID is required; set CFY_IDENTITY_CLIENT_ID"
+                    },
+                )
+            })?;
         let base =
             env("CFY_IDENTITY_BASE_URL").unwrap_or_else(|| "https://accounts.shopify.com".into());
         let base = Url::parse(&base).map_err(|error| {

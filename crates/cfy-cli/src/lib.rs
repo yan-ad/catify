@@ -15,7 +15,7 @@ use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
-use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
+use cfy_config::{AppConfigGraph, AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
@@ -46,6 +46,36 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn open_browser(url: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(url).status();
+
+    #[cfg(target_os = "linux")]
+    let result = std::process::Command::new("xdg-open").arg(url).status();
+
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .status();
+
+    result.is_ok_and(|status| status.success())
+}
+
+fn project_app_client_id() -> Result<Option<String>> {
+    let current = env::current_dir().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not determine current directory",
+            error,
+        )
+    })?;
+    let Ok(project) = discover(&current, Some(ProjectKind::App)) else {
+        return Ok(None);
+    };
+    let graph = AppConfigGraph::load(&project)?;
+    Ok(graph.apps.into_iter().find_map(|app| app.config.client_id))
 }
 
 fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -657,16 +687,26 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                     })?;
                 return Ok(0);
             }
-            let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
+            let project_client_id = project_app_client_id()?;
+            let config = IdentityConfig::from_env_with_client_id(
+                |key| env::var(key).ok(),
+                project_client_id,
+            )?;
             let client = IdentityClient::new(HttpIdentityTransport::new()?, config);
             let identity_name = identity.clone();
             let session = client
                 .login_and_save_with_notice(&store, &identity, |authorization| {
-                    let message = format!(
-                        "Open {} and enter code {}",
-                        authorization.verification_uri, authorization.user_code
-                    );
-                    let _ = output.lifecycle(&message);
+                    let opened = open_browser(&authorization.verification_uri);
+                    let _ = output.lifecycle(if opened {
+                        "Opening Shopify authentication in your browser..."
+                    } else {
+                        "Could not open a browser automatically; use the URL below..."
+                    });
+                    let _ = output.lifecycle(&format!("URL: {}", authorization.verification_uri));
+                    let _ = output.lifecycle(&format!(
+                        "Code: {} (waiting for authentication)",
+                        authorization.user_code
+                    ));
                 })
                 .await?;
             output
