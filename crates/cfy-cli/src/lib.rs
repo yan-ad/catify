@@ -1185,11 +1185,110 @@ fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
     Ok(0)
 }
 
+fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
+    match command {
+        AppCommand::Init { destination } => {
+            std::fs::create_dir_all(destination.join("extensions"))
+                .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
+            std::fs::create_dir_all(destination.join("web"))
+                .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
+            let marker = destination.join("shopify.app.toml");
+            if !marker.exists() {
+                std::fs::write(&marker, "# Crabpify app configuration\nname = \"my-app\"\n")
+                    .map_err(|error| {
+                        Error::api(format!("could not write {}: {error}", marker.display()))
+                    })?;
+            }
+            output
+                .success(
+                    "App project initialized",
+                    &serde_json::json!({"initialized": true}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        AppCommand::Info => {
+            let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
+            let project = cfy_config::project::discover(&cwd, None).ok();
+            if project.is_none() {
+                return Err(not_implemented(
+                    "app info requires a discovered app project; app backend is not implemented yet",
+                ));
+            }
+            output
+                .success(
+                    "App information",
+                    &serde_json::json!({"cwd": cwd, "project_found": project.is_some()}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        _ => Err(not_implemented(
+            "this app command backend is not configured yet",
+        )),
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum AppCommand {
     /// Display the currently selected app.
     #[command(alias = "show")]
     Info,
+    /// Initialize a new app project.
+    Init {
+        #[arg(long, short = 'd', default_value = ".")]
+        destination: PathBuf,
+    },
+    /// Show app environment variables.
+    Env {
+        #[arg(long)]
+        show: bool,
+    },
+    /// Pull app environment configuration.
+    EnvPull,
+    /// Validate app configuration.
+    ConfigValidate,
+    /// Link the current project to an app.
+    ConfigLink,
+    /// Pull linked app configuration.
+    ConfigPull,
+    /// Select an app configuration.
+    ConfigUse { name: String },
+    /// Build app functions.
+    Function {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// List app versions.
+    VersionsList,
+    /// Show application logs.
+    Logs {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Trigger an app webhook.
+    WebhookTrigger {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Execute an Admin API query for the app.
+    Execute { query: String },
+    /// Open GraphiQL for the app.
+    Graphiql,
+    /// Run a release operation.
+    Release {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Import app extensions.
+    ImportExtensions,
+    /// Generate an extension.
+    GenerateExtension {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Import custom data definitions.
+    ImportCustomDataDefinitions,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1395,7 +1494,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             tokio::time::sleep(Duration::from_secs(seconds)).await;
             drop(watcher.take());
         }
-        Some(Command::App { .. }) => return Err(not_implemented("app")),
+        Some(Command::App { command }) => {
+            app_command(command, output)?;
+        }
         Some(Command::Auth { command }) => {
             auth_command(command, cli.global.non_interactive, output).await?;
         }
