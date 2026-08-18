@@ -35,6 +35,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc;
+use zip::write::SimpleFileOptions;
 
 const SHOPIFY_API_VERSION: &str = "2026-07";
 
@@ -44,6 +45,19 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(current).map_err(|error| Error::api(error.to_string()))? {
+        let entry = entry.map_err(|error| Error::api(error.to_string()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(root, &path, files)?;
+        } else if path.is_file() && path != root.join("theme.zip") {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
 
 fn store_token() -> Result<String> {
@@ -72,6 +86,47 @@ async fn theme_parity_command(
                 .success(
                     "Theme directory initialized",
                     &serde_json::json!({"initialized": true}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Package {
+            source,
+            output: archive,
+        } => {
+            let archive = archive.unwrap_or_else(|| {
+                source
+                    .file_name()
+                    .map(|name| PathBuf::from(format!("{}.zip", name.to_string_lossy())))
+                    .unwrap_or_else(|| PathBuf::from("theme.zip"))
+            });
+            let file = std::fs::File::create(&archive).map_err(|error| {
+                Error::api(format!("could not create {}: {error}", archive.display()))
+            })?;
+            let mut zip = zip::ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            let mut paths = Vec::new();
+            collect_files(&source, &source, &mut paths)?;
+            paths.sort();
+            let file_count = paths.len();
+            for path in &paths {
+                let relative = path
+                    .strip_prefix(&source)
+                    .map_err(|error| Error::api(error.to_string()))?;
+                let name = relative.to_string_lossy().replace('\\', "/");
+                zip.start_file(name, options)
+                    .map_err(|error| Error::api(error.to_string()))?;
+                let bytes = std::fs::read(path).map_err(|error| Error::api(error.to_string()))?;
+                std::io::Write::write_all(&mut zip, &bytes)
+                    .map_err(|error| Error::api(error.to_string()))?;
+            }
+            zip.finish()
+                .map_err(|error| Error::api(error.to_string()))?;
+            output
+                .success(
+                    "Theme packaged",
+                    &serde_json::json!({"archive": archive, "files": file_count}),
                 )
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
