@@ -2,7 +2,7 @@ use cfy_process::{OutputMode, OutputStream, ProcessSpec, Supervisor};
 use std::{
     env,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -22,6 +22,11 @@ fn process_helper_entry() {
             print!("captured stdout");
             eprint!("captured stderr");
             std::process::exit(23);
+        }
+        "stdin" => {
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input).unwrap();
+            fs::write(required_path("CFY_STDIN_PATH"), input).unwrap();
         }
         "sleep" => loop {
             thread::sleep(Duration::from_secs(1));
@@ -81,6 +86,27 @@ async fn preserves_exit_code_and_captures_both_output_streams() {
     assert!(output.stdout.ends_with(b"captured stdout"));
     assert!(output.stderr.ends_with(b"captured stderr"));
     assert!(!output.cancelled);
+}
+
+#[tokio::test]
+async fn writes_configured_stdin_and_closes_the_pipe() {
+    let directory = unique_temp_directory();
+    fs::create_dir_all(&directory).unwrap();
+    let output_path = directory.join("stdin");
+    let output = Supervisor::default()
+        .spawn(
+            helper_spec("stdin", OutputMode::Capture)
+                .env("CFY_STDIN_PATH", output_path.display().to_string())
+                .stdin(b"request payload".to_vec()),
+        )
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(fs::read(output_path).unwrap(), b"request payload");
+    fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]

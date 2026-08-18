@@ -369,6 +369,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfy-extension-adapter"
+version = "0.1.0"
+dependencies = [
+ "cfy-core",
+ "cfy-process",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "cfy-process"
 version = "0.1.0"
 dependencies = [

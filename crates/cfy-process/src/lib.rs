@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::{Child, Command},
     sync::{Notify, mpsc, oneshot, watch},
     task::JoinHandle,
@@ -28,6 +28,7 @@ pub struct ProcessSpec {
     pub environment: Vec<(String, String)>,
     pub current_dir: Option<PathBuf>,
     pub output: OutputMode,
+    pub stdin: Option<Vec<u8>>,
 }
 
 impl ProcessSpec {
@@ -39,6 +40,7 @@ impl ProcessSpec {
             environment: Vec::new(),
             current_dir: None,
             output: OutputMode::Capture,
+            stdin: None,
         }
     }
 
@@ -63,6 +65,12 @@ impl ProcessSpec {
     #[must_use]
     pub const fn output(mut self, output: OutputMode) -> Self {
         self.output = output;
+        self
+    }
+
+    #[must_use]
+    pub fn stdin(mut self, bytes: impl Into<Vec<u8>>) -> Self {
+        self.stdin = Some(bytes.into());
         self
     }
 }
@@ -159,14 +167,18 @@ impl Supervisor {
             command.current_dir(current_dir);
         }
 
-        if spec.output == OutputMode::Inherit {
+        if spec.output == OutputMode::Inherit && spec.stdin.is_none() {
             command
                 .stdin(Stdio::inherit())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
         } else {
             command
-                .stdin(Stdio::null())
+                .stdin(if spec.stdin.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
         }
@@ -179,6 +191,15 @@ impl Supervisor {
                 error,
             )
         })?;
+        if let Some(bytes) = spec.stdin {
+            let mut stdin = child.stdin.take().ok_or_else(|| {
+                Error::process(format!("could not open stdin for {}", spec.program))
+            })?;
+            tokio::spawn(async move {
+                let _ = stdin.write_all(&bytes).await;
+                let _ = stdin.shutdown().await;
+            });
+        }
         let process_tree = platform::ProcessTree::attach(&mut child).map_err(|error| {
             let _ = child.start_kill();
             Error::with_source(
