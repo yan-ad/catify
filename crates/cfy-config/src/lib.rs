@@ -1,5 +1,7 @@
 //! Configuration loading, filesystem primitives, and project path handling.
 
+pub mod project;
+
 use cfy_core::{Error, ErrorKind, Result};
 use serde::Deserialize;
 use std::{
