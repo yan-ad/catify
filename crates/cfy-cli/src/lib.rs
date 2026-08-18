@@ -44,6 +44,27 @@ impl Drop for AbortOnDrop {
     }
 }
 
+fn theme_parity_command(command: ThemeCommand, output: &Output) -> Result<u8> {
+    match command {
+        ThemeCommand::Init { destination } => {
+            std::fs::create_dir_all(destination.join("assets"))
+                .map_err(|error| Error::api(format!("could not initialize theme: {error}")))?;
+            std::fs::create_dir_all(destination.join("config"))
+                .map_err(|error| Error::api(format!("could not initialize theme: {error}")))?;
+            output
+                .success(
+                    "Theme directory initialized",
+                    &serde_json::json!({"initialized": true}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        _ => Err(not_implemented(
+            "this theme command backend is not configured yet",
+        )),
+    }
+}
+
 fn config_path() -> PathBuf {
     env::var_os("CFY_CONFIG_FILE")
         .map(PathBuf::from)
@@ -1195,6 +1216,104 @@ pub enum ThemeCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Open the theme in Shopify admin.
+    Open {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+    },
+    /// Show theme metadata.
+    Info {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+    },
+    /// Delete a theme. Requires --confirm.
+    Delete {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Duplicate a theme.
+    Duplicate {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        name: String,
+    },
+    /// Rename a theme.
+    Rename {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        name: String,
+    },
+    /// Publish a theme. Requires --confirm.
+    Publish {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Create a shareable preview link.
+    Share {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+    },
+    /// Preview a theme locally or remotely.
+    Preview {
+        #[arg(long)]
+        theme: Option<u64>,
+        #[arg(long)]
+        store: Option<String>,
+    },
+    /// Start the interactive theme console.
+    Console {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Initialize a theme directory with Shopify markers.
+    Init {
+        #[arg(long, short = 'd', default_value = ".")]
+        destination: PathBuf,
+    },
+    /// Package a theme directory into a zip archive.
+    Package {
+        #[arg(long, short = 'd', default_value = ".")]
+        source: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Run the Theme Language Server adapter.
+    LanguageServer {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Pull theme metafields.
+    MetafieldsPull {
+        #[arg(long)]
+        theme: u64,
+        #[arg(long)]
+        store: String,
+    },
+    /// Profile theme operations.
+    Profile {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1323,6 +1442,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
                 output,
             )
             .await?
+        }
+        Some(Command::Theme { command }) => {
+            return theme_parity_command(command, output);
         }
         None => {
             Cli::command()
