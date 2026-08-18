@@ -13,6 +13,7 @@ members = [
   "crates/cfy-tunnel",
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
+  "crates/cfy-docs",
 ]
 default-members = ["crates/cfy-cli"]
 resolver = "2"
@@ -32,6 +33,7 @@ cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-dev = { version = "0.1.0", path = "crates/cfy-dev" }
+cfy-docs = { version = "0.1.0", path = "crates/cfy-docs" }
 cfy-organization = { version = "0.1.0", path = "crates/cfy-organization" }
 cfy-store = { version = "0.1.0", path = "crates/cfy-store" }
 cfy-tunnel = { version = "0.1.0", path = "crates/cfy-tunnel" }
@@ -43,7 +45,7 @@ clap = { version = "4.5.45", features = ["derive"] }
 clap_complete = "4.6.9"
 keyring = { version = "3.6.3", default-features = false }
 notify = "8.2.0"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls-no-provider"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
 rustls = { version = "0.23.37", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"

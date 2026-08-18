@@ -16,6 +16,7 @@ use cfy_config::theme::{
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
+use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_store::{StoreCommand as StoreOperation, StoreTarget, browser_url};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -39,6 +40,64 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn docs_cache() -> DocsCache {
+    let root = env::var_os("CFY_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("crabpify/docs"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/crabpify/docs"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".crabpify-cache/docs"));
+    DocsCache::new(root)
+}
+
+fn docs_client() -> Result<DocsClient<HttpDocsTransport>> {
+    Ok(DocsClient::new(HttpDocsTransport::new()?))
+}
+
+fn docs_command(command: DocCommand, output: &Output) -> Result<u8> {
+    match command {
+        DocCommand::ClearCache => {
+            docs_cache().clear()?;
+            output
+                .success(
+                    "Documentation cache cleared",
+                    &serde_json::json!({"cleared": true}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+        }
+        DocCommand::Search { query } => {
+            let query = query.join(" ");
+            let results = docs_client()?.with_cache(docs_cache()).search(&query)?;
+            output
+                .success(
+                    &format!("{} documentation result(s)", results.len()),
+                    &results,
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+        }
+        DocCommand::Fetch { url } => {
+            let document = docs_client()?.with_cache(docs_cache()).fetch(&url)?;
+            output
+                .success(&document.url, &document)
+                .map_err(|error| Error::process(error.to_string()))?;
+        }
+    }
+    Ok(0)
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DocCommand {
+    /// Search Shopify developer documentation.
+    Search { query: Vec<String> },
+    /// Fetch a complete document from shopify.dev.
+    Fetch { url: String },
+    /// Clear the local documentation cache.
+    ClearCache,
 }
 
 #[derive(Debug, Subcommand)]
@@ -918,7 +977,10 @@ pub enum Command {
     /// Crabpify configuration options.
     Config,
     /// Search and fetch Shopify documentation.
-    Doc,
+    Doc {
+        #[command(subcommand)]
+        command: DocCommand,
+    },
     /// Build Hydrogen storefronts.
     Hydrogen,
     /// List Shopify organizations.
@@ -1066,10 +1128,15 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
         Some(Command::Store { command }) => {
             store_command(command, cli.global.non_interactive, output).await?;
         }
-        Some(Command::Config)
-        | Some(Command::Doc)
-        | Some(Command::Hydrogen)
-        | Some(Command::Search { .. }) => return Err(not_implemented("this command topic")),
+        Some(Command::Doc { command }) => {
+            tokio::task::block_in_place(|| docs_command(command, output))?;
+        }
+        Some(Command::Search { query }) => {
+            tokio::task::block_in_place(|| docs_command(DocCommand::Search { query }, output))?;
+        }
+        Some(Command::Config) | Some(Command::Hydrogen) => {
+            return Err(not_implemented("this command topic"));
+        }
         Some(Command::Theme {
             command: ThemeCommand::Check(args),
         }) => return theme_check::run(&args).await,

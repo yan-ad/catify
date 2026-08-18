@@ -14,6 +14,7 @@ path = "src/main.rs"
 cfy-api.workspace = true
 cfy-auth.workspace = true
 cfy-config.workspace = true
+cfy-docs.workspace = true
 cfy-organization.workspace = true
 cfy-core.workspace = true
 cfy-process.workspace = true
