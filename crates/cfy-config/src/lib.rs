@@ -1,7 +1,13 @@
 //! Configuration loading, filesystem primitives, and project path handling.
 
+pub mod graph;
 pub mod project;
 pub mod theme;
+
+pub use graph::{
+    AppConfig, AppConfigGraph, AppNode, BuildConfig, ConfigDiagnostic, DiagnosticSeverity,
+    ExtensionConfig, ExtensionFamily, SourceLocation, WebConfig, extensions_by_handle,
+};
 pub mod theme_dev;
 
 use cfy_core::{Error, ErrorKind, Result};

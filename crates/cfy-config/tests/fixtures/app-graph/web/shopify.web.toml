@@ -1,0 +1,5 @@
+name = "Storefront web"
+roles = ["frontend"]
+
+[commands]
+dev = "npm run dev"

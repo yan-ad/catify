@@ -1,0 +1,8 @@
+name = "Discount function"
+type = "product_discounts"
+handle = "discount-function"
+api_version = "2025-01"
+
+[build]
+command = "cargo wasi build --release"
+path = "target/wasm32-wasip1/release/function.wasm"

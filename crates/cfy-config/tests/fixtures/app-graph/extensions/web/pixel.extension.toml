@@ -1,0 +1,4 @@
+name = "Pixel component"
+type = "web_pixel_extension"
+handle = "pixel-component"
+runtime_context = "strict"

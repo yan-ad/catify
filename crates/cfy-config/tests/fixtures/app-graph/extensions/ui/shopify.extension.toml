@@ -1,0 +1,8 @@
+name = "Checkout banner"
+type = "ui_extension"
+handle = "checkout-banner"
+api_version = "2025-01"
+
+[[targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.jsx"
