@@ -29,6 +29,21 @@ class InventoryParserTests(unittest.TestCase):
         source = "await spawn('cloudflared', ['tunnel'])"
         self.assertEqual(MODULE.external_executables(source), ["cloudflared"])
 
+    def test_runtime_manifest_normalizes_ids_flags_and_env(self):
+        records = MODULE.runtime_command_records([{
+            "id": "theme:push",
+            "summary": "Push a theme",
+            "aliases": ["theme:upload"],
+            "flags": {"store": {"char": "s", "env": "SHOPIFY_FLAG_STORE"}},
+            "pluginName": "@shopify/cli",
+            "pluginType": "core",
+        }], "test")
+        self.assertEqual(records[0]["name"], "theme push")
+        self.assertEqual(records[0]["id"], "theme:push")
+        self.assertEqual(records[0]["flags"], [{"name": "store", "short": "s"}])
+        self.assertEqual(records[0]["environment_variables"], ["SHOPIFY_FLAG_STORE"])
+        self.assertEqual(records[0]["provenance"], "test")
+
 
 if __name__ == "__main__":
     unittest.main()

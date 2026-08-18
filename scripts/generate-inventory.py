@@ -152,6 +152,87 @@ def build(upstream: pathlib.Path) -> dict:
         "commands": commands,
     }
 
+def runtime_command_records(payload: list[dict], source: str) -> list[dict]:
+    """Normalize `shopify commands --json` output without executing commands."""
+    commands = []
+    for record in payload:
+        command_id = record.get("id")
+        if not command_id:
+            continue
+        name = command_id.replace(":", " ")
+        flags = []
+        for flag_name, flag in sorted((record.get("flags") or {}).items()):
+            flags.append({"name": flag_name, "short": flag.get("char")})
+        commands.append({
+            "name": name,
+            "id": command_id,
+            "group": name.split()[0],
+            "nested_groups": name.split()[:-1],
+            "aliases": sorted(record.get("aliases") or []),
+            "flags": flags,
+            "environment_variables": sorted({
+                flag.get("env") for flag in (record.get("flags") or {}).values()
+                if flag.get("env")
+            }),
+            "config_files": [],
+            "external_executables": [],
+            "shopify_apis": [],
+            "classification": classify(name),
+            "summary": record.get("summary", ""),
+            "plugin_name": record.get("pluginName"),
+            "plugin_type": record.get("pluginType"),
+            "hidden": bool(record.get("hidden", False)),
+            "provenance": source,
+        })
+    return commands
+
+def manifest_command_records(manifest: dict, source: str) -> list[dict]:
+    records = []
+    for command_id, record in sorted((manifest.get("commands") or {}).items()):
+        records.append({
+            "id": command_id,
+            "summary": record.get("description", "").split("\n", 1)[0],
+            "aliases": record.get("aliases", []),
+            "flags": record.get("flags", {}),
+            "hidden": record.get("hidden", False),
+            "pluginName": manifest.get("pluginName"),
+            "pluginType": manifest.get("pluginType"),
+        })
+    return runtime_command_records(records, source)
+
+def build_runtime(executable: str) -> dict:
+    try:
+        output = subprocess.check_output([executable, "commands", "--json"], text=True)
+        payload = json.loads(output)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"unable to read runtime command manifest from {executable}: {error}") from error
+    version = subprocess.check_output([executable, "--version"], text=True).strip()
+    executable_path = pathlib.Path(subprocess.check_output(["realpath", executable], text=True).strip())
+    package_root = executable_path.parent.parent
+    manifest_paths = sorted(package_root.glob("oclif.manifest.json"))
+    manifest_paths.extend(package_root.glob("node_modules/**/oclif.manifest.json"))
+    manifest_commands = []
+    for path in manifest_paths:
+        try:
+            manifest_commands.extend(manifest_command_records(json.loads(path.read_text()), str(path)))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {
+        "schema_version": 2,
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "runtime": {"executable": executable, "version": version},
+        "manifests": {
+            "paths": [str(path) for path in manifest_paths],
+            "command_count": len(manifest_commands),
+            "commands": manifest_commands,
+        },
+        "limitations": [
+            "Runtime inventory is derived from the installed CLI and is not a reproducible source snapshot.",
+            "Commands hidden by the runtime manifest are retained and marked hidden.",
+        ],
+        "commands": runtime_command_records(payload, "runtime:shopify commands --json"),
+    }
+
 def markdown(data: dict) -> str:
     rows = [
         "# Shopify CLI parity inventory",
@@ -178,9 +259,29 @@ def canonical_for_check(data: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("upstream", type=pathlib.Path)
+    parser.add_argument("upstream", type=pathlib.Path, nargs="?")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--runtime", metavar="EXECUTABLE", help="capture an installed Shopify CLI runtime manifest")
+    parser.add_argument("--runtime-output", type=pathlib.Path, default=ROOT / "inventory/runtime-shopify-cli.json")
     args = parser.parse_args()
+    if args.runtime:
+        data = build_runtime(args.runtime)
+        rendered = json.dumps(data, indent=2) + "\n"
+        if args.check:
+            if not args.runtime_output.exists():
+                print("runtime inventory is stale; rerun without --check", file=sys.stderr)
+                return 1
+            existing = json.loads(args.runtime_output.read_text())
+            if canonical_for_check(existing) != canonical_for_check(data):
+                print("runtime inventory is stale; rerun without --check", file=sys.stderr)
+                return 1
+            return 0
+        args.runtime_output.parent.mkdir(parents=True, exist_ok=True)
+        args.runtime_output.write_text(rendered)
+        print(f"generated {len(data['commands'])} runtime commands")
+        return 0
+    if args.upstream is None:
+        parser.error("upstream checkout is required unless --runtime is used")
     data = build(args.upstream.resolve())
     rendered_json = json.dumps(data, indent=2) + "\n"
     rendered_md = markdown(data)
