@@ -213,6 +213,45 @@ impl ThemeClient {
         Ok(themes)
     }
 
+    /// Create a session-scoped development theme. The caller owns its lifecycle.
+    pub async fn create_development_theme(
+        &self,
+        name: &str,
+        cancellation: &Cancellation,
+    ) -> Result<Theme, ApiError> {
+        check_cancelled(cancellation)?;
+        if name.trim().is_empty() {
+            return Err(ApiError::Configuration(
+                "theme name cannot be empty".to_owned(),
+            ));
+        }
+        let mut request = HttpRequest::new(Method::POST, format!("{}/themes.json", self.api_root));
+        request.body = Some(serde_json::json!({"theme": {"name": name, "role": "development"}}));
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        let response = self.http.execute(&request).await.map_err(theme_api_error)?;
+        #[derive(Deserialize)]
+        struct Response {
+            theme: Theme,
+        }
+        response.json::<Response>().map(|response| response.theme)
+    }
+
+    /// Permanently delete a theme.
+    pub async fn delete_theme(
+        &self,
+        theme_id: u64,
+        cancellation: &Cancellation,
+    ) -> Result<(), ApiError> {
+        check_cancelled(cancellation)?;
+        let mut request = HttpRequest::new(
+            Method::DELETE,
+            format!("{}/themes/{theme_id}.json", self.api_root),
+        );
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        self.http.execute(&request).await.map_err(theme_api_error)?;
+        Ok(())
+    }
+
     /// Download all selected assets before returning them to the caller.
     pub async fn pull(
         &self,
@@ -652,6 +691,56 @@ mod tests {
             .await;
         assert_eq!(summary.skipped_deletions, ["assets/old.js"]);
         assert!(summary.succeeded());
+    }
+
+    #[tokio::test]
+    async fn creates_and_deletes_session_owned_development_theme() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for index in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let (status, body) = if index == 0 {
+                    assert!(request.contains("POST /themes"));
+                    assert!(request.contains(r#""name":"cfy dev""#));
+                    assert!(request.contains(r#""role":"development""#));
+                    (
+                        "201 Created",
+                        r#"{"theme":{"id":42,"name":"cfy dev","role":"development"}}"#,
+                    )
+                } else {
+                    assert!(request.contains("DELETE /themes/42.json"));
+                    ("200 OK", "{}")
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base)
+            .unwrap()
+            .with_retry_policy(RetryPolicy {
+                max_retries: 0,
+                base_delay: Duration::ZERO,
+                max_delay: Duration::ZERO,
+            });
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        let cancellation = Cancellation::default();
+
+        let theme = client
+            .create_development_theme("cfy dev", &cancellation)
+            .await
+            .unwrap();
+        assert_eq!(theme.id, 42);
+        assert_eq!(theme.role, "development");
+        client.delete_theme(theme.id, &cancellation).await.unwrap();
+        server.await.unwrap();
     }
 
     #[tokio::test]

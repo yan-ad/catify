@@ -27,6 +27,7 @@ cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 clap = { version = "4.5.45", features = ["derive"] }
 clap_complete = "4.6.9"
 keyring = { version = "3.6.3", default-features = false }
+notify = "8.2.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls-no-provider"] }
 rustls = { version = "0.23.37", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.219", features = ["derive"] }

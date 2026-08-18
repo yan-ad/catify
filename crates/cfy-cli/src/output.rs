@@ -41,6 +41,12 @@ impl Output {
         }
     }
 
+    /// Emit an always-visible lifecycle message without corrupting JSON stdout.
+    pub fn lifecycle(&self, message: &str) -> std::io::Result<()> {
+        let stderr = std::io::stderr();
+        writeln!(stderr.lock(), "{}", self.redactor.redact(message))
+    }
+
     #[must_use]
     pub const fn mode(&self) -> OutputMode {
         self.mode

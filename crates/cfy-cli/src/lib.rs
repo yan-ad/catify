@@ -1,22 +1,28 @@
 pub mod output;
 
 use crate::output::Output;
-use cfy_api::theme::{Theme, ThemeClient, diff_assets};
+use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
 use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
+use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_core::{Cancellation, Error, Result};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
+use notify::{
+    EventKind, RecursiveMode, Watcher,
+    event::{ModifyKind, RenameMode},
+};
 use std::{
     env,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
+use tokio::sync::mpsc;
 
 const SHOPIFY_API_VERSION: &str = "2026-07";
 
@@ -26,6 +32,172 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn theme_dev(
+    requested_theme: Option<u64>,
+    explicit_store: Option<&str>,
+    source: &Path,
+    debounce_ms: u64,
+    output: &Output,
+) -> Result<()> {
+    let source = source.canonicalize().map_err(|error| {
+        Error::with_source(
+            cfy_core::ErrorKind::Config,
+            format!("could not resolve theme directory {}", source.display()),
+            error,
+        )
+    })?;
+    if !source.is_dir() {
+        return Err(Error::new(
+            cfy_core::ErrorKind::Config,
+            format!("theme source {} is not a directory", source.display()),
+        ));
+    }
+    let store = resolve_store(explicit_store)?;
+    let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(
+        cfy_core::ErrorKind::Api,
+        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+    ))?;
+    let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+    let cancellation = Cancellation::default();
+    let (theme_id, created) = if let Some(id) = requested_theme {
+        (id, false)
+    } else {
+        output
+            .lifecycle("Creating development theme...")
+            .map_err(|e| {
+                Error::with_source(
+                    cfy_core::ErrorKind::Process,
+                    "could not write lifecycle state",
+                    e,
+                )
+            })?;
+        let name = format!("Crabpify development {}", std::process::id());
+        (
+            client
+                .create_development_theme(&name, &cancellation)
+                .await
+                .map_err(Error::from)?
+                .id,
+            true,
+        )
+    };
+    let result = async {
+        output.lifecycle("Initial sync in progress...").map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, "could not write lifecycle state", e))?;
+        let local = read_theme_files(&source).map_err(|e| Error::with_source(cfy_core::ErrorKind::Config, format!("could not safely scan {}", source.display()), e))?;
+        let changes = local.into_iter().map(|(key, contents)| ThemeChange::Upload(ThemeAsset { key, contents })).collect::<Vec<_>>();
+        sync_with_retry(&client, theme_id, &changes, &cancellation).await?;
+        let preview = format!("https://{store}/?preview_theme_id={theme_id}");
+        let editor = format!("https://{store}/admin/themes/{theme_id}/editor");
+        output.lifecycle(&format!("Ready and watching {}\nPreview: {preview}\nEditor: {editor}", source.display())).map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, "could not write lifecycle state", e))?;
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut watcher = notify::recommended_watcher(move |event| { let _ = tx.send(event); })
+            .map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, "could not create filesystem watcher", e))?;
+        watcher.watch(&source, RecursiveMode::Recursive).map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, format!("could not watch {}", source.display()), e))?;
+        loop {
+            let first = tokio::select! {
+                _ = tokio::signal::ctrl_c() => break,
+                event = rx.recv() => event.ok_or_else(|| Error::new(cfy_core::ErrorKind::Process, "filesystem watcher stopped unexpectedly"))?,
+            };
+            let mut events = vec![first.map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, "filesystem watcher error", e))?];
+            tokio::time::sleep(Duration::from_millis(debounce_ms.max(10))).await;
+            while let Ok(event) = rx.try_recv() { events.push(event.map_err(|e| Error::with_source(cfy_core::ErrorKind::Process, "filesystem watcher error", e))?); }
+            let mut changes = Vec::new();
+            for action in coalesce(events.into_iter().flat_map(filesystem_event)) {
+                let path = match &action { SyncAction::Upload(path) | SyncAction::Delete(path) => path };
+                    let Ok(relative) = path.strip_prefix(&source) else { continue };
+                    let Ok(relative) = safe_relative_path(&relative.to_string_lossy()) else { continue };
+                    let key = relative.to_string_lossy().replace('\\', "/");
+                    match action {
+                        SyncAction::Delete(_) => changes.push(ThemeChange::Delete(key)),
+                        SyncAction::Upload(path) => {
+                            let Ok(metadata) = std::fs::symlink_metadata(&path) else { continue };
+                            if metadata.file_type().is_symlink() || !metadata.is_file() { continue; }
+                            let Ok(canonical) = path.canonicalize() else { continue };
+                            if !canonical.starts_with(&source) { continue; }
+                            if let Ok(contents) = std::fs::read(canonical) {
+                                changes.push(ThemeChange::Upload(ThemeAsset { key, contents }));
+                            }
+                        }
+                    }
+            }
+            if !changes.is_empty() { sync_with_retry(&client, theme_id, &changes, &cancellation).await?; }
+        }
+        drop(watcher);
+        Ok(())
+    }.await;
+    if created {
+        output.lifecycle("Cleaning up development theme...").ok();
+        if let Err(cleanup) = client
+            .delete_theme(theme_id, &Cancellation::default())
+            .await
+        {
+            return Err(Error::new(
+                cfy_core::ErrorKind::Api,
+                format!("session ended; failed to delete development theme {theme_id}: {cleanup}"),
+            ));
+        }
+    }
+    result
+}
+
+fn filesystem_event(event: notify::Event) -> Vec<FileEvent> {
+    if let EventKind::Modify(ModifyKind::Name(mode)) = event.kind {
+        return match (mode, event.paths.as_slice()) {
+            (RenameMode::Both, [from, to, ..]) => vec![FileEvent::Rename {
+                from: from.clone(),
+                to: to.clone(),
+            }],
+            (RenameMode::From, paths) => paths.iter().cloned().map(FileEvent::Remove).collect(),
+            (RenameMode::To, paths) => paths.iter().cloned().map(FileEvent::Upsert).collect(),
+            (_, paths) if paths.len() >= 2 => vec![FileEvent::Rename {
+                from: paths[0].clone(),
+                to: paths[1].clone(),
+            }],
+            (_, paths) => paths.iter().cloned().map(FileEvent::Upsert).collect(),
+        };
+    }
+    let remove = matches!(event.kind, EventKind::Remove(_));
+    event
+        .paths
+        .into_iter()
+        .map(|path| {
+            if remove {
+                FileEvent::Remove(path)
+            } else {
+                FileEvent::Upsert(path)
+            }
+        })
+        .collect()
+}
+
+async fn sync_with_retry(
+    client: &ThemeClient,
+    theme_id: u64,
+    changes: &[ThemeChange],
+    cancellation: &Cancellation,
+) -> Result<()> {
+    let mut delay = Duration::from_millis(150);
+    for attempt in 1..=4 {
+        let summary = client.push(theme_id, changes, true, cancellation).await;
+        if summary.succeeded() {
+            return Ok(());
+        }
+        if attempt == 4 {
+            return Err(Error::new(
+                cfy_core::ErrorKind::Api,
+                format!(
+                    "theme sync failed after {attempt} attempts: {}. Check connectivity and asset paths, then retry",
+                    summary.failed.join("; ")
+                ),
+            ));
+        }
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).min(Duration::from_secs(2));
+    }
+    unreachable!()
 }
 
 fn live_push_requires_confirmation(
@@ -371,6 +543,21 @@ pub enum AppCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ThemeCommand {
+    /// Create or reuse a development theme and continuously sync local changes.
+    Dev {
+        /// Existing numeric theme ID to reuse. Reused themes are never deleted.
+        #[arg(long)]
+        theme: Option<u64>,
+        /// Store handle or myshopify.com domain.
+        #[arg(long)]
+        store: Option<String>,
+        /// Theme directory. Defaults to the current directory.
+        #[arg(long, short = 'd', default_value = ".")]
+        source: PathBuf,
+        /// Filesystem-event debounce window in milliseconds.
+        #[arg(long, default_value_t = 200)]
+        debounce_ms: u64,
+    },
     /// List themes available on a store.
     List {
         /// Store handle or myshopify.com domain.
@@ -421,6 +608,9 @@ pub enum InternalCommand {
     Idle {
         #[arg(long, default_value_t = 10)]
         seconds: u64,
+        /// Attach the native filesystem watcher to this directory while idle.
+        #[arg(long)]
+        watch: Option<PathBuf>,
     },
 }
 
@@ -430,9 +620,37 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
         Some(Command::Version) => print_version(output)?,
         Some(Command::Completion { shell }) => print_completion(shell),
         Some(Command::Internal {
-            command: InternalCommand::Idle { seconds },
-        }) => tokio::time::sleep(Duration::from_secs(seconds)).await,
+            command: InternalCommand::Idle { seconds, watch },
+        }) => {
+            let mut watcher = if let Some(path) = watch {
+                let mut watcher = notify::recommended_watcher(|_| {}).map_err(|error| {
+                    Error::api(format!("failed to create benchmark watcher: {error}"))
+                })?;
+                watcher
+                    .watch(&path, RecursiveMode::Recursive)
+                    .map_err(|error| {
+                        Error::api(format!(
+                            "failed to watch benchmark directory {}: {error}",
+                            path.display()
+                        ))
+                    })?;
+                Some(watcher)
+            } else {
+                None
+            };
+            tokio::time::sleep(Duration::from_secs(seconds)).await;
+            drop(watcher.take());
+        }
         Some(Command::App { .. }) => return Err(not_implemented("app")),
+        Some(Command::Theme {
+            command:
+                ThemeCommand::Dev {
+                    theme,
+                    store,
+                    source,
+                    debounce_ms,
+                },
+        }) => theme_dev(theme, store.as_deref(), &source, debounce_ms, output).await?,
         Some(Command::Theme {
             command: ThemeCommand::List { store },
         }) => list_themes(store.as_deref(), output).await?,
@@ -526,15 +744,49 @@ fn not_implemented(group: &str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Command, ThemeCommand, format_themes, live_push_requires_confirmation, select_store,
+        Cli, Command, ThemeCommand, filesystem_event, format_themes,
+        live_push_requires_confirmation, select_store,
     };
     use cfy_api::theme::Theme;
     use cfy_config::project::Environment;
+    use cfy_config::theme_dev::FileEvent;
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use notify::{
+        Event, EventKind,
+        event::{ModifyKind, RenameMode},
+    };
 
     #[test]
     fn command_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn filesystem_rename_events_are_portable() {
+        let both = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+            .add_path("assets/old.css".into())
+            .add_path("assets/new.css".into());
+        assert_eq!(
+            filesystem_event(both),
+            vec![FileEvent::Rename {
+                from: "assets/old.css".into(),
+                to: "assets/new.css".into(),
+            }]
+        );
+
+        let from = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
+            .add_path("assets/old.css".into());
+        assert_eq!(
+            filesystem_event(from),
+            vec![FileEvent::Remove("assets/old.css".into())]
+        );
+
+        let to = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
+            .add_path("assets/new.css".into());
+        assert_eq!(
+            filesystem_event(to),
+            vec![FileEvent::Upsert("assets/new.css".into())]
+        );
     }
 
     #[test]

@@ -99,3 +99,16 @@ Only new and changed assets are uploaded. Remote-only assets are retained unless
 `--allow-delete` is explicitly supplied. A live theme requires confirmation;
 non-interactive automation must pass `--force`. Individual API failures produce
 a non-zero actionable summary while preserving the successful operation counts.
+
+Run a development session with an initial sync and incremental watching:
+
+```sh
+SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme dev --store example --source ./theme
+```
+
+Without `--theme`, Crabpify creates a temporary development theme and deletes it
+when the session ends, including on Ctrl-C or a sync error. Pass `--theme ID` to
+reuse an existing theme; a user-supplied theme is never deleted. Lifecycle state,
+preview URL, and editor URL are printed clearly. Creates and updates upload,
+deletes remove the remote asset, and renames delete the old key and upload the new
+key. Noisy events are debounced and sync failures use bounded retry/backoff.

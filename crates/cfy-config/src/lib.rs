@@ -2,6 +2,7 @@
 
 pub mod project;
 pub mod theme;
+pub mod theme_dev;
 
 use cfy_core::{Error, ErrorKind, Result};
 use serde::Deserialize;
