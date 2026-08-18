@@ -19,7 +19,9 @@ use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
-use cfy_store::{StoreCommand as StoreOperation, StoreTarget, browser_url};
+use cfy_store::{
+    AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreTarget, browser_url,
+};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use notify::{
@@ -42,6 +44,17 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn store_token() -> Result<String> {
+    env::var("SHOPIFY_CLI_TOKEN")
+        .or_else(|_| env::var("SHOPIFY_CLI_THEME_TOKEN"))
+        .map_err(|_| {
+            Error::new(
+                ErrorKind::Api,
+                "store authentication is required; set SHOPIFY_CLI_TOKEN or complete cfy auth login",
+            )
+        })
 }
 
 fn theme_parity_command(command: ThemeCommand, output: &Output) -> Result<u8> {
@@ -302,6 +315,47 @@ async fn store_command(
     non_interactive: bool,
     output: &Output,
 ) -> Result<u8> {
+    match command {
+        StoreCliCommand::Info { store } => {
+            let target = StoreTarget::parse(&store)?;
+            let token = store_token()?;
+            let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
+            let info = backend.info(&target).await.map_err(Error::from)?;
+            output
+                .success(&format!("Store {}", target.domain), &info)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Execute { store, query } => {
+            let target = StoreTarget::parse(&store)?;
+            let token = store_token()?;
+            let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
+            let data = backend
+                .execute(&target, &query)
+                .await
+                .map_err(Error::from)?;
+            output
+                .success("Store query completed", &data)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::BulkExecute { store, query } => {
+            let target = StoreTarget::parse(&store)?;
+            let token = store_token()?;
+            let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
+            let cancellation = Cancellation::default();
+            let mut progress = |_event| {};
+            let report = backend
+                .bulk_execute(&target, &[query], &mut progress, &cancellation)
+                .await
+                .map_err(Error::from)?;
+            output
+                .success("Store bulk operation completed", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        _ => {}
+    }
     let (operation, target, destructive, confirm) = match command {
         StoreCliCommand::Open { store } => {
             let target = StoreTarget::parse(&store)?;

@@ -330,6 +330,8 @@ dependencies = [
  "async-trait",
  "cfy-core",
  "keyring",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
@@ -481,7 +483,9 @@ name = "cfy-store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cfy-api",
  "cfy-core",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror",

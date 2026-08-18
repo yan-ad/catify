@@ -1,6 +1,7 @@
 //! Store command contracts: selection, safety, progress, and adapters.
 
 use async_trait::async_trait;
+use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
 use cfy_core::{Cancellation, Error, ErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,6 +14,113 @@ type Result<T> = std::result::Result<T, StoreError>;
 pub struct StoreTarget {
     pub handle: String,
     pub domain: String,
+}
+
+pub struct AdminStoreBackend {
+    client: GraphQlClient,
+}
+
+impl AdminStoreBackend {
+    pub fn new(target: &StoreTarget, token: &str) -> std::result::Result<Self, StoreError> {
+        let http = HttpClient::new(&format!("https://{}", target.domain))
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .with_sensitive_header(
+                reqwest::header::HeaderName::from_static("x-shopify-access-token"),
+                reqwest::header::HeaderValue::from_str(token)
+                    .map_err(|error| StoreError::Backend(format!("invalid token: {error}")))?,
+            );
+        Ok(Self {
+            client: GraphQlClient::new(http, "/admin/api/2025-01/graphql.json"),
+        })
+    }
+
+    pub async fn execute_query(&self, query: &str) -> Result<serde_json::Value> {
+        let request = GraphQlRequest::query(query, serde_json::json!({}));
+        let response = self
+            .client
+            .execute::<_, serde_json::Value>(&request)
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        Ok(response.data)
+    }
+}
+
+#[async_trait]
+impl StoreBackend for AdminStoreBackend {
+    async fn info(&self, target: &StoreTarget) -> Result<HashMap<String, String>> {
+        let data = self
+            .execute_query("query StoreInfo { shop { name myshopifyDomain plan { displayName } } }")
+            .await?;
+        let shop = data
+            .get("shop")
+            .ok_or_else(|| StoreError::Backend("response omitted shop data".into()))?;
+        let mut info = HashMap::new();
+        info.insert("domain".into(), target.domain.clone());
+        if let Some(value) = shop.get("name").and_then(serde_json::Value::as_str) {
+            info.insert("name".into(), value.into());
+        }
+        if let Some(value) = shop
+            .get("myshopifyDomain")
+            .and_then(serde_json::Value::as_str)
+        {
+            info.insert("myshopify_domain".into(), value.into());
+        }
+        if let Some(value) = shop
+            .pointer("/plan/displayName")
+            .and_then(serde_json::Value::as_str)
+        {
+            info.insert("plan".into(), value.into());
+        }
+        Ok(info)
+    }
+
+    async fn execute(&self, _target: &StoreTarget, query: &str) -> Result<serde_json::Value> {
+        self.execute_query(query).await
+    }
+
+    async fn bulk_execute(
+        &self,
+        target: &StoreTarget,
+        items: &[String],
+        progress: &mut (dyn FnMut(ProgressEvent) + Send),
+        cancellation: &Cancellation,
+    ) -> Result<BulkReport> {
+        let mut completed = 0;
+        let mut failed = Vec::new();
+        for query in items {
+            if cancellation.is_cancelled() {
+                return Ok(BulkReport {
+                    operation: "store.execute".into(),
+                    completed,
+                    failed,
+                    cancelled: true,
+                });
+            }
+            match self.execute(target, query).await {
+                Ok(_) => {
+                    completed += 1;
+                    progress(ProgressEvent {
+                        operation: "store.execute".into(),
+                        completed,
+                        total: items.len(),
+                        failed: failed.len(),
+                        detail: Some("completed".into()),
+                    });
+                }
+                Err(error) => failed.push(PartialFailure {
+                    item: query.clone(),
+                    error: error.to_string(),
+                    retryable: false,
+                }),
+            }
+        }
+        Ok(BulkReport {
+            operation: "store.execute".into(),
+            completed,
+            failed,
+            cancelled: false,
+        })
+    }
 }
 
 impl StoreTarget {
