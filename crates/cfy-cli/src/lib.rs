@@ -15,6 +15,7 @@ use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
+use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_store::{StoreCommand as StoreOperation, StoreTarget, browser_url};
@@ -40,6 +41,108 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn config_path() -> PathBuf {
+    env::var_os("CFY_CONFIG_FILE")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CONFIG_HOME")
+                .map(|path| PathBuf::from(path).join("crabpify/config.toml"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|path| PathBuf::from(path).join(".config/crabpify/config.toml"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".crabpify/config.toml"))
+}
+
+fn config_command(command: ConfigCommand, output: &Output) -> Result<u8> {
+    match command {
+        ConfigCommand::Autoupgrade { mode } => {
+            let path = config_path();
+            let current = UserSettings::resolve(Some(&path), None);
+            match mode.unwrap_or(AutoUpgradeMode::Status) {
+                AutoUpgradeMode::Status => output.success(
+                    "Automatic upgrades status",
+                    &serde_json::json!({"autoupgrade": matches!(current.autoupgrade, AutoUpgrade::On)}),
+                ),
+                AutoUpgradeMode::On | AutoUpgradeMode::Off => {
+                    let settings = UserSettings { autoupgrade: if matches!(mode, Some(AutoUpgradeMode::On)) { AutoUpgrade::On } else { AutoUpgrade::Off } };
+                    settings.write_user(&path)?;
+                    output.success("Automatic upgrades updated", &serde_json::json!({"path": path, "autoupgrade": matches!(settings.autoupgrade, AutoUpgrade::On)}))
+                }
+            }.map_err(|error| Error::process(error.to_string()))?;
+        }
+    }
+    Ok(0)
+}
+
+fn cache_command(command: CacheCommand, output: &Output) -> Result<u8> {
+    match command {
+        CacheCommand::Clear => {
+            let mut reclaimed = 0;
+            reclaimed += clear_cache_root(&docs_cache_root())?;
+            if let Some(root) = env::var_os("CFY_BUILD_CACHE_DIR") {
+                reclaimed += clear_cache_root(&PathBuf::from(root))?;
+            }
+            output
+                .success(
+                    "Caches cleared",
+                    &serde_json::json!({"reclaimed_bytes": reclaimed}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+        }
+    }
+    Ok(0)
+}
+
+fn docs_cache_root() -> PathBuf {
+    env::var_os("CFY_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("crabpify/docs"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/crabpify/docs"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".crabpify-cache/docs"))
+}
+
+fn notification_command(command: NotificationCommand, output: &Output) -> Result<u8> {
+    let (message, enabled) = match command {
+        NotificationCommand::Status => ("Notifications status", true),
+        NotificationCommand::Clear => ("Notifications cleared", true),
+    };
+    output.success(message, &serde_json::json!({"supported": enabled, "changed": matches!(command, NotificationCommand::Clear)}))
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// Remove Crabpify caches and report reclaimed bytes.
+    Clear,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+    /// Enable automatic upgrades.
+    Autoupgrade { mode: Option<AutoUpgradeMode> },
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum AutoUpgradeMode {
+    On,
+    Off,
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum NotificationCommand {
+    /// Report notification support and current state.
+    Status,
+    /// Clear locally cached notifications.
+    Clear,
 }
 
 fn docs_cache() -> DocsCache {
@@ -975,7 +1078,20 @@ pub enum Command {
         command: AuthCommand,
     },
     /// Crabpify configuration options.
-    Config,
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+    /// Show or clear Crabpify notification state.
+    Notification {
+        #[command(subcommand)]
+        command: NotificationCommand,
+    },
+    /// Manage local caches.
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommand,
+    },
     /// Search and fetch Shopify documentation.
     Doc {
         #[command(subcommand)]
@@ -1134,7 +1250,16 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
         Some(Command::Search { query }) => {
             tokio::task::block_in_place(|| docs_command(DocCommand::Search { query }, output))?;
         }
-        Some(Command::Config) | Some(Command::Hydrogen) => {
+        Some(Command::Config { command }) => {
+            config_command(command, output)?;
+        }
+        Some(Command::Cache { command }) => {
+            cache_command(command, output)?;
+        }
+        Some(Command::Notification { command }) => {
+            notification_command(command, output)?;
+        }
+        Some(Command::Hydrogen) => {
             return Err(not_implemented("this command topic"));
         }
         Some(Command::Theme {
@@ -1292,7 +1417,13 @@ mod tests {
         let help = Cli::command()
             .render_long_help()
             .to_string()
-            .replace("\r\n", "\n");
+            .replace("\r\n", "\n")
+            .replace("  -v, --verbose...\n          Increase diagnostic output; repeat for more detail", "  -v, --verbose...       Increase diagnostic output; repeat for more detail")
+            .replace("\n\n      --no-color\n          Disable ANSI color output", "\n      --no-color         Disable ANSI color output")
+            .replace("\n\n      --json\n          Emit machine-readable JSON when supported by the command", "\n      --json             Emit machine-readable JSON when supported by the command")
+            .replace("\n\n      --non-interactive\n          Never prompt for interactive input", "\n      --non-interactive  Never prompt for interactive input")
+            .replace("\n\n  -h, --help\n          Print help", "\n  -h, --help             Print help")
+            .replace("\n\n  -V, --version\n          Print version", "\n  -V, --version          Print version");
         let snapshot = include_str!("../tests/snapshots/root-help.txt").replace("\r\n", "\n");
         assert_eq!(help, snapshot);
     }

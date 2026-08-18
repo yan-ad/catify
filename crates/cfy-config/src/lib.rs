@@ -26,6 +26,67 @@ use std::{
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub telemetry: Option<Telemetry>,
+    pub autoupgrade: Option<bool>,
+}
+
+/// Remove files below a cache root and return the number of reclaimed bytes.
+pub fn clear_cache_root(root: &Path) -> Result<u64> {
+    if !root.exists() {
+        return Ok(0);
+    }
+    let mut reclaimed = 0;
+    for entry in fs::read_dir(root).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            format!("could not read cache {}", root.display()),
+            error,
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            Error::with_source(ErrorKind::Config, "could not inspect cache entry", error)
+        })?;
+        let path = entry.path();
+        let metadata = entry.metadata().map_err(|error| {
+            Error::with_source(ErrorKind::Config, "could not inspect cache metadata", error)
+        })?;
+        if metadata.is_file() {
+            reclaimed += metadata.len();
+            fs::remove_file(path).map_err(|error| {
+                Error::with_source(ErrorKind::Config, "could not remove cache entry", error)
+            })?;
+        } else if metadata.is_dir() {
+            let size = directory_size(&path)?;
+            fs::remove_dir_all(path).map_err(|error| {
+                Error::with_source(ErrorKind::Config, "could not remove cache directory", error)
+            })?;
+            reclaimed += size;
+        }
+    }
+    Ok(reclaimed)
+}
+
+fn directory_size(root: &Path) -> Result<u64> {
+    let mut total = 0;
+    for entry in fs::read_dir(root).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not inspect cache directory",
+            error,
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            Error::with_source(ErrorKind::Config, "could not inspect cache entry", error)
+        })?;
+        let metadata = entry.metadata().map_err(|error| {
+            Error::with_source(ErrorKind::Config, "could not inspect cache metadata", error)
+        })?;
+        total += if metadata.is_dir() {
+            directory_size(&entry.path())?
+        } else {
+            metadata.len()
+        };
+    }
+    Ok(total)
 }
 
 fn write_complete(writer: &mut impl Write, contents: &[u8]) -> io::Result<()> {
@@ -42,6 +103,53 @@ pub struct Telemetry {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overrides {
     pub telemetry_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoUpgrade {
+    #[default]
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UserSettings {
+    pub autoupgrade: AutoUpgrade,
+}
+
+impl UserSettings {
+    #[must_use]
+    pub fn resolve(user: Option<&Path>, project: Option<&Path>) -> Self {
+        let mut settings = Self::default();
+        for path in [user, project].into_iter().flatten() {
+            if let Ok(input) = fs::read_to_string(path)
+                && let Ok(config) = toml::from_str::<Config>(&input)
+                && let Some(value) = config.autoupgrade
+            {
+                settings.autoupgrade = if value {
+                    AutoUpgrade::On
+                } else {
+                    AutoUpgrade::Off
+                };
+            }
+        }
+        settings
+    }
+
+    pub fn write_user(&self, path: &Path) -> Result<()> {
+        let content = format!(
+            "autoupgrade = {}\n",
+            matches!(self.autoupgrade, AutoUpgrade::On)
+        );
+        write_atomic(path, content.as_bytes()).map_err(|error| {
+            Error::with_source(
+                ErrorKind::Config,
+                format!("could not write configuration {}", path.display()),
+                error,
+            )
+        })
+    }
 }
 
 /// Fully resolved configuration consumed by commands.

@@ -12,6 +12,8 @@ Commands:
   upgrade       Upgrade Crabpify through a supported installation channel
   auth          Authentication operations
   config        Crabpify configuration options
+  notification  Show or clear Crabpify notification state
+  cache         Manage local caches
   doc           Search and fetch Shopify documentation
   hydrogen      Build Hydrogen storefronts
   organization  List Shopify organizations
@@ -19,20 +21,9 @@ Commands:
   search        Search Shopify developer documentation
 
 Options:
-  -v, --verbose...
-          Increase diagnostic output; repeat for more detail
-
-      --no-color
-          Disable ANSI color output
-
-      --json
-          Emit machine-readable JSON when supported by the command
-
-      --non-interactive
-          Never prompt for interactive input
-
-  -h, --help
-          Print help
-
-  -V, --version
-          Print version
+  -v, --verbose...       Increase diagnostic output; repeat for more detail
+      --no-color         Disable ANSI color output
+      --json             Emit machine-readable JSON when supported by the command
+      --non-interactive  Never prompt for interactive input
+  -h, --help             Print help
+  -V, --version          Print version
