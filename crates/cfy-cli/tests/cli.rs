@@ -7,6 +7,84 @@ fn cfy(args: &[&str]) -> Output {
         .expect("cfy should execute")
 }
 
+#[cfg(unix)]
+fn fake_shopify(script: &str) -> std::path::PathBuf {
+    use std::{
+        fs,
+        os::unix::fs::PermissionsExt,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    let directory = std::env::temp_dir().join(format!(
+        "cfy-theme-check-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&directory).unwrap();
+    let executable = directory.join("shopify");
+    fs::write(&executable, script).unwrap();
+    let mut permissions = fs::metadata(&executable).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&executable, permissions).unwrap();
+    executable
+}
+
+#[cfg(unix)]
+#[test]
+fn theme_check_preserves_streams_and_child_exit_code() {
+    let executable = fake_shopify(
+        "#!/bin/sh\nif [ \"$1\" = version ]; then echo 3.90.0; exit 0; fi\nprintf 'theme-json\\n'\nprintf 'theme-warning\\n' >&2\nexit 7\n",
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args([
+            "theme",
+            "check",
+            "--path",
+            "tests/fixtures/theme-check/failing",
+            "--output",
+            "json",
+        ])
+        .env("CFY_THEME_CHECK_BIN", executable)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "theme-json\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "theme-warning\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn theme_check_version_mismatch_is_actionable() {
+    let executable = fake_shopify("#!/bin/sh\necho 1.0.0\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["theme", "check"])
+        .env("CFY_THEME_CHECK_BIN", executable)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported Theme Check adapter version"));
+    assert!(stderr.contains("CFY_THEME_CHECK_BIN"));
+}
+
+#[test]
+fn theme_check_missing_dependency_is_actionable() {
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["theme", "check"])
+        .env(
+            "CFY_THEME_CHECK_BIN",
+            "cfy-definitely-missing-theme-check-adapter",
+        )
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("npm install -g @shopify/cli @shopify/theme"));
+    assert!(stderr.contains("CFY_THEME_CHECK_BIN"));
+}
+
 #[test]
 fn json_runtime_errors_leave_stdout_empty() {
     let output = cfy(&["app", "info", "--json"]);

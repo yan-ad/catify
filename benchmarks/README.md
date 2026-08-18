@@ -34,3 +34,12 @@ BENCH_ITERATIONS=10 \
 Cold startup is measured after rebuilding/copying the executable into a fresh temporary path; this is a reproducible proxy, not a guarantee that the OS disk cache is empty. Warm startup is the median of repeated executions. Peak RSS comes from the platform `time` tool. Idle RSS samples a deliberately quiescent command after two seconds. `workflow_idle_rss_kib.cfy_theme_native_watcher` attaches the same native recursive watcher used by `theme dev` to an empty temporary directory before sampling, requiring no store or credentials.
 
 Commit intentional baselines manually. CI runs smoke measurements and compares medians to a checked baseline only when one exists. A regression warning requires both a relative change (default 20%) and an absolute change (default 5 ms or 4 MiB), avoiding flaky hard limits on shared runners.
+
+## Theme Check adapter
+
+`benchmarks/theme-check.sh` compares end-to-end startup and peak RSS for
+`cfy theme check` and `shopify theme check`. It is separate because Shopify CLI
+is an optional runtime dependency. Build a release binary, install `hyperfine`
+and Shopify CLI, then run it with optional `BENCH_THEME_PATH`, `CFY_BIN`,
+`SHOPIFY_BIN`, and `CFY_BENCH_THEME_CHECK_RUNS` overrides. The script prints
+both versions so benchmark results pin the external engine used.

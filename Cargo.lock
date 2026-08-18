@@ -343,6 +343,7 @@ dependencies = [
  "cfy-api",
  "cfy-config",
  "cfy-core",
+ "cfy-process",
  "clap",
  "clap_complete",
  "notify",

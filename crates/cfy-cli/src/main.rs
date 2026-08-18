@@ -9,7 +9,7 @@ async fn main() -> ExitCode {
     let _ = output.diagnostic("debug diagnostics enabled");
 
     match run(cli, &output).await {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(error) => {
             let _ = output.error(&error);
             error.exit_code()

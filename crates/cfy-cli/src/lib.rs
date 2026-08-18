@@ -1,4 +1,5 @@
 pub mod output;
+mod theme_check;
 
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
@@ -543,6 +544,8 @@ pub enum AppCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ThemeCommand {
+    /// Analyze theme code using the official Shopify Theme Check engine
+    Check(theme_check::ThemeCheckArgs),
     /// Create or reuse a development theme and continuously sync local changes.
     Dev {
         /// Existing numeric theme ID to reuse. Reused themes are never deleted.
@@ -615,7 +618,7 @@ pub enum InternalCommand {
 }
 
 /// Execute a parsed command.
-pub async fn run(cli: Cli, output: &Output) -> Result<()> {
+pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
     match cli.command {
         Some(Command::Version) => print_version(output)?,
         Some(Command::Completion { shell }) => print_completion(shell),
@@ -642,6 +645,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
             drop(watcher.take());
         }
         Some(Command::App { .. }) => return Err(not_implemented("app")),
+        Some(Command::Theme {
+            command: ThemeCommand::Check(args),
+        }) => return theme_check::run(&args).await,
         Some(Command::Theme {
             command:
                 ThemeCommand::Dev {
@@ -703,7 +709,7 @@ pub async fn run(cli: Cli, output: &Output) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(0)
 }
 
 fn print_version(output: &Output) -> Result<()> {
