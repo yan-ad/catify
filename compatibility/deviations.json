@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "deviations": {
+    "root-help": "cfy has a native Rust command tree and therefore differs in usage/topic text while preserving the help contract.",
+    "invalid-command": "cfy uses exit code 2 for structured CLI parse errors; Shopify CLI 4.6.1 uses exit code 1 for this scenario.",
+    "theme-help": "cfy exposes the implemented native theme surface and explicit backend adapters; the topic help is intentionally not text-identical.",
+    "app-help": "cfy exposes the native app pipeline and adapter-backed commands; the topic help is intentionally not text-identical.",
+    "version-json": "cfy reports its own Rust release metadata instead of the Shopify Node runtime string.",
+    "config-help": "cfy exposes native config/cache/autoupgrade commands; Shopify exposes a different config topic tree.",
+    "theme-check-missing": "cfy delegates Theme Check through an adapter and reports adapter remediation.",
+    "app-info-outside-project": "cfy uses native project discovery and typed diagnostics; Shopify uses its Node project error format.",
+    "app-build-outside-project": "cfy native build pipeline diagnostics differ from Shopify's JS toolchain diagnostics.",
+    "deploy-dry-run": "cfy deploy backend is fixture/adapter based until live Admin API credentials are configured."
+  }
+}

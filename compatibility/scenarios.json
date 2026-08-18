@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "scenarios": [
+    {"name":"root-help","args":["--help"]},
+    {"name":"version-json","args":["version","--json"]},
+    {"name":"invalid-command","args":["not-a-command"]},
+    {"name":"config-help","args":["config","--help"]},
+    {"name":"theme-help","args":["theme","--help"]},
+    {"name":"theme-check-missing","args":["theme","check"],"env":{"CFY_THEME_CHECK_BIN":"definitely-missing"}},
+    {"name":"app-help","args":["app","--help"]},
+    {"name":"app-info-outside-project","args":["app","info"]},
+    {"name":"app-build-outside-project","args":["app","build"]},
+    {"name":"deploy-dry-run","args":["app","deploy","--dry-run"]}
+  ]
+}
