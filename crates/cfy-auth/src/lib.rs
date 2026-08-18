@@ -1,6 +1,7 @@
 //! Secure credential persistence and race-safe Shopify session lifecycle.
 
 pub mod flow;
+pub mod identity;
 mod session;
 mod storage;
 
