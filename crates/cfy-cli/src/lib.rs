@@ -19,7 +19,6 @@ use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
-use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
     StoreTarget, browser_url,
@@ -56,13 +55,28 @@ async fn delegate_shopify_login(output: &Output) -> Result<u8> {
         .map_err(|error| {
             Error::with_source(ErrorKind::Process, "could not write login status", error)
         })?;
-    let process = Supervisor::default().spawn(
-        ProcessSpec::new(&executable)
+    // Interactive terminal applications must remain in the terminal's foreground
+    // process group. The regular supervisor creates an isolated process group so it
+    // can terminate full process trees, which prevents Shopify CLI's TUI from
+    // receiving raw arrow-key input correctly.
+    let status = tokio::task::spawn_blocking(move || {
+        std::process::Command::new(&executable)
             .args(["auth", "login"])
-            .output(OutputMode::Inherit),
-    )?;
-    let result = process.wait().await?;
-    let code = result.exit_code().unwrap_or(1);
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
+    })
+    .await
+    .map_err(|error| Error::process(format!("Shopify login task failed: {error}")))?
+    .map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not start the official Shopify CLI login",
+            error,
+        )
+    })?;
+    let code = status.code().unwrap_or(1);
     if code == 0 {
         output
             .lifecycle(
