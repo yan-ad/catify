@@ -8,6 +8,25 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[cfg(unix)]
+#[test]
+fn auth_login_delegates_to_official_shopify_cli_without_identity_client_id() {
+    let executable = fake_shopify(
+        "#!/bin/sh\n[ \"$1 $2\" = \"auth login\" ] || exit 9\nprintf 'delegated-login\\n'\nexit 0\n",
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["auth", "login"])
+        .env_remove("CFY_IDENTITY_CLIENT_ID")
+        .env("CFY_SHOPIFY_BIN", executable)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("delegated-login"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Delegating authentication to the official Shopify CLI"));
+    assert!(stderr.contains("session remains managed by Shopify CLI"));
+}
+
+#[cfg(unix)]
 fn fake_shopify(script: &str) -> std::path::PathBuf {
     use std::{
         fs,

@@ -15,10 +15,11 @@ use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
-use cfy_config::{AppConfigGraph, AutoUpgrade, UserSettings, clear_cache_root};
+use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
+use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
     StoreTarget, browser_url,
@@ -48,6 +49,32 @@ impl Drop for AbortOnDrop {
     }
 }
 
+async fn delegate_shopify_login(output: &Output) -> Result<u8> {
+    let executable = env::var("CFY_SHOPIFY_BIN").unwrap_or_else(|_| "shopify".to_owned());
+    output
+        .lifecycle("Delegating authentication to the official Shopify CLI...")
+        .map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not write login status", error)
+        })?;
+    let process = Supervisor::default().spawn(
+        ProcessSpec::new(&executable)
+            .args(["auth", "login"])
+            .output(OutputMode::Inherit),
+    )?;
+    let result = process.wait().await?;
+    let code = result.exit_code().unwrap_or(1);
+    if code == 0 {
+        output
+            .lifecycle(
+                "Shopify CLI authentication succeeded. The session remains managed by Shopify CLI.",
+            )
+            .map_err(|error| {
+                Error::with_source(ErrorKind::Process, "could not write login status", error)
+            })?;
+    }
+    Ok(u8::try_from(code).unwrap_or(1))
+}
+
 fn open_browser(url: &str) -> bool {
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(url).status();
@@ -61,21 +88,6 @@ fn open_browser(url: &str) -> bool {
         .status();
 
     result.is_ok_and(|status| status.success())
-}
-
-fn project_app_client_id() -> Result<Option<String>> {
-    let current = env::current_dir().map_err(|error| {
-        Error::with_source(
-            ErrorKind::Config,
-            "could not determine current directory",
-            error,
-        )
-    })?;
-    let Ok(project) = discover(&current, Some(ProjectKind::App)) else {
-        return Ok(None);
-    };
-    let graph = AppConfigGraph::load(&project)?;
-    Ok(graph.apps.into_iter().find_map(|app| app.config.client_id))
 }
 
 fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -687,11 +699,10 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                     })?;
                 return Ok(0);
             }
-            let project_client_id = project_app_client_id()?;
-            let config = IdentityConfig::from_env_with_client_id(
-                |key| env::var(key).ok(),
-                project_client_id,
-            )?;
+            if env::var_os("CFY_IDENTITY_CLIENT_ID").is_none() {
+                return delegate_shopify_login(output).await;
+            }
+            let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
             let client = IdentityClient::new(HttpIdentityTransport::new()?, config);
             let identity_name = identity.clone();
             let session = client
