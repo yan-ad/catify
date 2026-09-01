@@ -15,7 +15,11 @@ use cfy_config::theme::{
     StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
-use cfy_config::{AutoUpgrade, UserSettings, clear_cache_root};
+use cfy_config::{
+    AutoUpgrade, UserSettings,
+    app_env::{from_project as app_environment, redacted as redact_app_environment, render_dotenv},
+    clear_cache_root, write_atomic,
+};
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_hydrogen::run as run_hydrogen;
@@ -1759,6 +1763,13 @@ fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
     Ok(0)
 }
 
+fn selected_app_environment() -> Result<cfy_config::project::ProjectEnvironment> {
+    let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
+    let project = discover(&cwd, Some(ProjectKind::App))?;
+    let environment = env::vars().collect::<Environment>();
+    resolve_environment(project, &ProjectOverrides::default(), &environment)
+}
+
 fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
     match command {
         AppCommand::Init { destination } => {
@@ -1797,18 +1808,53 @@ fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::Env { show } => Err(backend_unavailable(
-            "app env show",
-            40,
-            format!(
-                "the linked-app environment backend is pending (show values: {show}); use Shopify CLI for remote environment values for now"
-            ),
-        )),
-        AppCommand::EnvPull => Err(backend_unavailable(
-            "app env pull",
-            40,
-            "the linked-app environment download backend is pending; use Shopify CLI for this command for now",
-        )),
+        AppCommand::Env { show } => {
+            let selected = selected_app_environment()?;
+            let values = app_environment(&selected);
+            let displayed = if show {
+                values.clone()
+            } else {
+                redact_app_environment(&values)
+            };
+            output
+                .success(
+                    "App environment",
+                    &serde_json::json!({
+                        "config": selected.config_name,
+                        "config_path": selected.config_path,
+                        "values": displayed,
+                        "secrets_visible": show,
+                        "remote_values_included": false,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        AppCommand::EnvPull => {
+            let selected = selected_app_environment()?;
+            let values = app_environment(&selected);
+            let destination = selected.project.root().join(".env");
+            let contents = render_dotenv(&values);
+            write_atomic(&destination, contents.as_bytes()).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not write {}", destination.display()),
+                    error,
+                )
+            })?;
+            output
+                .success(
+                    "App environment written",
+                    &serde_json::json!({
+                        "config": selected.config_name,
+                        "destination": destination,
+                        "variables": values.len(),
+                        "remote_values_included": false,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         AppCommand::ConfigValidate => Err(backend_unavailable(
             "app config validate",
             24,
