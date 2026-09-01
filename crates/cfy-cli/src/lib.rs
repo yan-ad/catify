@@ -33,7 +33,7 @@ use std::{
     env,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc;
 use zip::write::SimpleFileOptions;
@@ -46,6 +46,17 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn reusable_session(session: &Session, now_unix: u64) -> bool {
+    session.is_valid_at(now_unix, 60)
+}
+
+fn current_unix_time() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 async fn delegate_shopify_login(output: &Output) -> Result<u8> {
@@ -715,6 +726,27 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
             }
             if delegate {
                 return delegate_shopify_login(output).await;
+            }
+            if let Some(session) = store.load(&identity).await?
+                && reusable_session(&session, current_unix_time())
+            {
+                output
+                    .success(
+                        "Using existing authenticated session",
+                        &serde_json::json!({
+                            "identity": session.identity,
+                            "scopes": session.scopes,
+                            "reused": true
+                        }),
+                    )
+                    .map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Process,
+                            "could not write login result",
+                            error,
+                        )
+                    })?;
+                return Ok(0);
             }
             let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
             let client = IdentityClient::new(HttpIdentityTransport::new()?, config);
@@ -1985,9 +2017,10 @@ fn not_implemented(group: &str) -> Error {
 mod tests {
     use super::{
         Cli, Command, ThemeCommand, filesystem_event, format_themes,
-        live_push_requires_confirmation, select_store,
+        live_push_requires_confirmation, reusable_session, select_store,
     };
     use cfy_api::theme::Theme;
+    use cfy_auth::{Secret, Session};
     use cfy_config::project::Environment;
     use cfy_config::theme_dev::FileEvent;
     use clap::{CommandFactory, Parser, error::ErrorKind};
@@ -1999,6 +2032,24 @@ mod tests {
     #[test]
     fn command_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn valid_sessions_are_reused_before_device_login() {
+        let valid = Session {
+            identity: "account@example.com".to_owned(),
+            access_token: Secret::new("access"),
+            refresh_token: Secret::new("refresh"),
+            expires_at_unix: 1_000,
+            scopes: Vec::new(),
+        };
+        let expired = Session {
+            expires_at_unix: 100,
+            ..valid.clone()
+        };
+
+        assert!(reusable_session(&valid, 900));
+        assert!(!reusable_session(&expired, 900));
     }
 
     #[test]
