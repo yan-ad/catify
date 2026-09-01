@@ -66,6 +66,111 @@ impl Drop for AbortOnDrop {
     }
 }
 
+#[derive(Debug, Subcommand)]
+pub enum AppConfigCommand {
+    /// Fetch app configuration from the Developer Dashboard.
+    Link {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_APP_CONFIG_FILE_NAME")]
+        file_name: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_FORCE")]
+        force: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
+    /// Refresh an already-linked app configuration.
+    Pull,
+    /// Activate an app configuration.
+    Use { config: Option<String> },
+    /// Validate app configuration and extensions.
+    Validate,
+}
+
+fn app_config_command(command: AppConfigCommand) -> Result<u8> {
+    match command {
+        AppConfigCommand::Link {
+            config,
+            auth_alias,
+            client_id,
+            file_name,
+            force,
+            path,
+            reset,
+        } => {
+            let mut args = vec!["config".to_owned(), "link".to_owned()];
+            push_option(&mut args, "--config", config);
+            push_option(&mut args, "--auth-alias", auth_alias);
+            push_option(&mut args, "--client-id", client_id);
+            push_option(&mut args, "--file-name", file_name);
+            if force {
+                args.push("--force".to_owned());
+            }
+            if let Some(path) = path {
+                args.push("--path".to_owned());
+                args.push(path.to_string_lossy().into_owned());
+            }
+            if reset {
+                args.push("--reset".to_owned());
+            }
+            delegate_shopify_command("app", &args)
+        }
+        AppConfigCommand::Pull => Err(backend_unavailable(
+            "app config pull",
+            40,
+            "the linked app configuration download backend is pending",
+        )),
+        AppConfigCommand::Use { config } => Err(backend_unavailable(
+            "app config use",
+            24,
+            format!(
+                "configuration selection is not wired yet{}",
+                config
+                    .as_deref()
+                    .map(|name| format!(" for `{name}`"))
+                    .unwrap_or_default()
+            ),
+        )),
+        AppConfigCommand::Validate => Err(backend_unavailable(
+            "app config validate",
+            24,
+            "the project graph parser is available, but validation reporting is not wired yet",
+        )),
+    }
+}
+
+fn push_option(args: &mut Vec<String>, flag: &str, value: Option<String>) {
+    if let Some(value) = value {
+        args.push(flag.to_owned());
+        args.push(value);
+    }
+}
+
+fn delegate_shopify_command(command: &str, args: &[String]) -> Result<u8> {
+    let executable = env::var("CFY_SHOPIFY_BIN").unwrap_or_else(|_| "shopify".to_owned());
+    let status = std::process::Command::new(&executable)
+        .arg(command)
+        .args(args)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::Process,
+                format!("could not start `{executable} {command}`"),
+                error,
+            )
+        })?;
+    Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
+}
+
 struct AuthTerminalGuard;
 
 impl Drop for AuthTerminalGuard {
@@ -1855,28 +1960,7 @@ fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::ConfigValidate => Err(backend_unavailable(
-            "app config validate",
-            24,
-            "the project graph parser is available, but CLI validation reporting is not wired yet",
-        )),
-        AppCommand::ConfigLink => Err(backend_unavailable(
-            "app config link",
-            40,
-            "the Partner API app-selection backend is pending; use Shopify CLI for linking for now",
-        )),
-        AppCommand::ConfigPull => Err(backend_unavailable(
-            "app config pull",
-            40,
-            "the linked app configuration download backend is pending; use Shopify CLI for this command for now",
-        )),
-        AppCommand::ConfigUse { name } => Err(backend_unavailable(
-            "app config use",
-            24,
-            format!(
-                "configuration selection for `{name}` is parsed by cfy-config but is not wired to the CLI yet"
-            ),
-        )),
+        AppCommand::Config { command } => app_config_command(command),
         AppCommand::Function { args } => Err(backend_unavailable(
             "app function",
             25,
@@ -1965,14 +2049,11 @@ pub enum AppCommand {
     },
     /// Pull app environment configuration.
     EnvPull,
-    /// Validate app configuration.
-    ConfigValidate,
-    /// Link the current project to an app.
-    ConfigLink,
-    /// Pull linked app configuration.
-    ConfigPull,
-    /// Select an app configuration.
-    ConfigUse { name: String },
+    /// Manage app configuration.
+    Config {
+        #[command(subcommand)]
+        command: AppConfigCommand,
+    },
     /// Build app functions.
     Function {
         #[arg(trailing_var_arg = true)]

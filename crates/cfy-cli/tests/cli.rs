@@ -9,6 +9,53 @@ fn cfy(args: &[&str]) -> Output {
 
 #[cfg(unix)]
 #[test]
+fn app_config_link_forwards_the_exact_shopify_command_path_and_flags() {
+    let executable = fake_shopify("#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args([
+            "app",
+            "config",
+            "link",
+            "--config",
+            "staging",
+            "--client-id",
+            "client-123",
+            "--file-name",
+            "shopify.app.staging.toml",
+            "--force",
+            "--path",
+            "/tmp/example",
+            "--reset",
+        ])
+        .env("CFY_SHOPIFY_BIN", executable)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        concat!(
+            "app\nconfig\nlink\n--config\nstaging\n--client-id\nclient-123\n",
+            "--file-name\nshopify.app.staging.toml\n--force\n--path\n/tmp/example\n--reset\n"
+        )
+    );
+}
+
+#[test]
+fn app_config_uses_shopify_compatible_nested_command_names() {
+    let nested = cfy(&["app", "config", "link", "--help"]);
+    assert!(nested.status.success());
+    let nested_help = String::from_utf8_lossy(&nested.stdout);
+    assert!(nested_help.contains("Usage: cfy app config link"));
+    assert!(nested_help.contains("--client-id"));
+    assert!(nested_help.contains("--file-name"));
+
+    let flat = cfy(&["app", "config-link"]);
+    assert_eq!(flat.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&flat.stderr).contains("unrecognized subcommand"));
+}
+
+#[cfg(unix)]
+#[test]
 fn auth_login_can_explicitly_delegate_to_official_shopify_cli() {
     let executable = fake_shopify(
         "#!/bin/sh\n[ \"$1 $2\" = \"auth login\" ] || exit 9\nprintf 'delegated-login\\n'\nexit 0\n",
@@ -158,10 +205,10 @@ fn runtime_command_error_uses_core_exit_code() {
 
 #[test]
 fn unavailable_backends_have_command_specific_diagnostics() {
-    let app = cfy(&["app", "config-link"]);
+    let app = cfy(&["app", "config", "pull"]);
     assert_eq!(app.status.code(), Some(1));
     let app_stderr = String::from_utf8_lossy(&app.stderr);
-    assert!(app_stderr.contains("app config link is not available"));
+    assert!(app_stderr.contains("app config pull is not available"));
     assert!(app_stderr.contains("issues/40"));
     assert!(!app_stderr.contains("reserved but not implemented yet"));
 
