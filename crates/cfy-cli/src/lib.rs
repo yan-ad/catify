@@ -680,7 +680,7 @@ async fn store_command(
 async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     let store = NativeCredentialStore::default();
     match command {
-        AuthCommand::Login { identity } => {
+        AuthCommand::Login { identity, delegate } => {
             let mode = headless_from_env(&identity, |key| env::var(key).ok());
             if non_interactive {
                 let LoginMode::Headless {
@@ -713,7 +713,7 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                     })?;
                 return Ok(0);
             }
-            if env::var_os("CFY_IDENTITY_CLIENT_ID").is_none() {
+            if delegate {
                 return delegate_shopify_login(output).await;
             }
             let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
@@ -777,6 +777,9 @@ pub enum AuthCommand {
         /// Identity key used for credential storage.
         #[arg(long, default_value = "default")]
         identity: String,
+        /// Delegate login to an installed official Shopify CLI instead of using cfy's native flow.
+        #[arg(long)]
+        delegate: bool,
     },
     /// Remove local credentials. Remote revocation is provider-dependent.
     Logout {

@@ -9,12 +9,12 @@ fn cfy(args: &[&str]) -> Output {
 
 #[cfg(unix)]
 #[test]
-fn auth_login_delegates_to_official_shopify_cli_without_identity_client_id() {
+fn auth_login_can_explicitly_delegate_to_official_shopify_cli() {
     let executable = fake_shopify(
         "#!/bin/sh\n[ \"$1 $2\" = \"auth login\" ] || exit 9\nprintf 'delegated-login\\n'\nexit 0\n",
     );
     let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
-        .args(["auth", "login"])
+        .args(["auth", "login", "--delegate"])
         .env_remove("CFY_IDENTITY_CLIENT_ID")
         .env("CFY_SHOPIFY_BIN", executable)
         .output()

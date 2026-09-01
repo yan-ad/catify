@@ -73,16 +73,18 @@ Observed source: [`packages/cli-kit/src/private/node/session/scopes.ts`](https:/
 Identity scopes always include:
 
 - `openid`
-- `https://api.shopify.com/auth/userinfo.email`
-- `https://api.shopify.com/auth/userinfo.profile`
 - `https://api.shopify.com/auth/shop.admin.graphql`
+- `https://api.shopify.com/auth/shop.admin.themes`
+- `https://api.shopify.com/auth/partners.collaborator-relationships.readonly`
+- `https://api.shopify.com/auth/shop.storefront-renderer.devtools`
 - `https://api.shopify.com/auth/partners.app.cli.access`
 - `https://api.shopify.com/auth/destinations.readonly`
 - `https://api.shopify.com/auth/organization.store-management`
+- `https://api.shopify.com/auth/organization.on-demand-user-access`
 - `https://api.shopify.com/auth/organization.apps.manage`
-- `https://api.shopify.com/auth/organization.apps.deploy`
-- `https://api.shopify.com/auth/app-management`
-- `https://api.shopify.com/auth/organization.readonly`
+
+The list above was revalidated against the installed Shopify CLI 4.6.1 runtime
+and a successful production device-authorization handshake on 2026-09-01.
 
 Callers can append additional scopes. The upstream validation accepts a stored identity token only when every requested scope is present.
 

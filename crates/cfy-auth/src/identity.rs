@@ -12,6 +12,25 @@ use std::time::Duration;
 use tokio::time::sleep;
 use url::Url;
 
+/// Public OAuth device-flow client used by Shopify CLI production builds.
+///
+/// This identifier is not a secret. Keeping it here preserves wire compatibility
+/// with the pinned Shopify CLI authentication contract.
+pub const SHOPIFY_CLI_IDENTITY_CLIENT_ID: &str = "fbdb2649-e327-4907-8f67-908d24cfd7e3";
+
+const SHOPIFY_CLI_IDENTITY_SCOPES: &[&str] = &[
+    "openid",
+    "https://api.shopify.com/auth/shop.admin.graphql",
+    "https://api.shopify.com/auth/shop.admin.themes",
+    "https://api.shopify.com/auth/partners.collaborator-relationships.readonly",
+    "https://api.shopify.com/auth/shop.storefront-renderer.devtools",
+    "https://api.shopify.com/auth/partners.app.cli.access",
+    "https://api.shopify.com/auth/destinations.readonly",
+    "https://api.shopify.com/auth/organization.store-management",
+    "https://api.shopify.com/auth/organization.on-demand-user-access",
+    "https://api.shopify.com/auth/organization.apps.manage",
+];
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IdentityConfig {
     pub client_id: String,
@@ -19,6 +38,25 @@ pub struct IdentityConfig {
     pub token_url: Url,
     pub scopes: Vec<String>,
     pub max_poll_attempts: u32,
+}
+
+fn expires_at_unix(expires_in: u64) -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .saturating_add(expires_in)
+}
+
+fn jwt_subject(token: &str) -> Option<String> {
+    use base64::Engine;
+
+    let payload = token.split('.').nth(1)?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
+    let claims: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    claims.get("sub")?.as_str().map(str::to_owned)
 }
 
 #[derive(Clone)]
@@ -175,16 +213,8 @@ impl IdentityConfig {
     ) -> Result<Self> {
         let client_id = env("CFY_IDENTITY_CLIENT_ID")
             .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| {
-                Error::new(
-                    ErrorKind::Config,
-                    if project_client_id.is_some() {
-                        "shopify.app.toml contains an app client_id, but cfy auth login requires a Crabpify Identity client ID; set CFY_IDENTITY_CLIENT_ID"
-                    } else {
-                        "identity client ID is required; set CFY_IDENTITY_CLIENT_ID"
-                    },
-                )
-            })?;
+            .unwrap_or_else(|| SHOPIFY_CLI_IDENTITY_CLIENT_ID.to_owned());
+        let _ = project_client_id;
         let base =
             env("CFY_IDENTITY_BASE_URL").unwrap_or_else(|| "https://accounts.shopify.com".into());
         let base = Url::parse(&base).map_err(|error| {
@@ -201,7 +231,10 @@ impl IdentityConfig {
             token_url: base
                 .join("oauth/token")
                 .map_err(|error| Error::new(ErrorKind::Config, error.to_string()))?,
-            scopes: vec!["openid".into(), "profile".into(), "email".into()],
+            scopes: SHOPIFY_CLI_IDENTITY_SCOPES
+                .iter()
+                .map(|scope| (*scope).to_owned())
+                .collect(),
             max_poll_attempts: 120,
         })
     }
@@ -214,6 +247,8 @@ pub struct TokenResponse {
     pub expires_in: u64,
     #[serde(default)]
     pub scope: String,
+    #[serde(default)]
+    pub id_token: Option<Secret>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -307,11 +342,16 @@ impl<T: IdentityTransport> IdentityClient<T> {
                 .await?;
             match response {
                 Ok(token) => {
+                    let identity = token
+                        .id_token
+                        .as_ref()
+                        .and_then(|token| jwt_subject(token.expose()))
+                        .unwrap_or_else(|| "default".to_owned());
                     return Ok(Session {
-                        identity: "default".into(),
+                        identity,
                         access_token: token.access_token,
                         refresh_token: token.refresh_token.unwrap_or_else(|| Secret::new("")),
-                        expires_at_unix: token.expires_in,
+                        expires_at_unix: expires_at_unix(token.expires_in),
                         scopes: token.scope.split_whitespace().map(str::to_owned).collect(),
                     });
                 }
@@ -344,29 +384,7 @@ impl<T: IdentityTransport> IdentityProvider for IdentityClient<T> {
         &self,
         authorization: &DeviceAuthorization,
     ) -> Result<Session> {
-        let response = self
-            .transport
-            .token(
-                &self.config,
-                vec![(
-                    "device_code".into(),
-                    authorization.device_code.expose().into(),
-                )],
-            )
-            .await?;
-        match response {
-            Ok(token) => Ok(Session {
-                identity: "default".into(),
-                access_token: token.access_token,
-                refresh_token: token.refresh_token.unwrap_or_else(|| Secret::new("")),
-                expires_at_unix: token.expires_in,
-                scopes: token.scope.split_whitespace().map(str::to_owned).collect(),
-            }),
-            Err(error) => Err(Error::new(
-                ErrorKind::Api,
-                format!("identity device login failed: {error:?}"),
-            )),
-        }
+        self.device_login_with_authorization(authorization).await
     }
     async fn revoke(&self, _session: &Session) -> Result<()> {
         Ok(())
@@ -407,6 +425,7 @@ mod tests {
                     refresh_token: Some(Secret::new("secret-refresh-token")),
                     expires_in: 3600,
                     scope: "openid profile".into(),
+                    id_token: None,
                 }))
             }
         }
@@ -438,7 +457,36 @@ mod tests {
     }
 
     #[test]
-    fn client_id_is_required_from_environment() {
-        assert!(IdentityConfig::from_env(|_| None).is_err());
+    fn production_client_id_and_scopes_are_available_without_user_configuration() {
+        let config = IdentityConfig::from_env(|_| None).unwrap();
+        assert_eq!(config.client_id, SHOPIFY_CLI_IDENTITY_CLIENT_ID);
+        assert_eq!(
+            config.scopes,
+            SHOPIFY_CLI_IDENTITY_SCOPES
+                .iter()
+                .map(|scope| (*scope).to_owned())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn environment_can_override_the_bundled_client_id() {
+        let config = IdentityConfig::from_env(|key| {
+            (key == "CFY_IDENTITY_CLIENT_ID").then(|| "custom-client".to_owned())
+        })
+        .unwrap();
+        assert_eq!(config.client_id, "custom-client");
+    }
+
+    #[test]
+    fn extracts_the_identity_subject_from_an_id_token() {
+        use base64::Engine;
+
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"sub":"gid://shopify/User/123"}"#);
+        assert_eq!(
+            jwt_subject(&format!("header.{payload}.signature")),
+            Some("gid://shopify/User/123".to_owned())
+        );
     }
 }
