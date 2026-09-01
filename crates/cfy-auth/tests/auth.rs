@@ -17,6 +17,7 @@ use tokio::sync::{Barrier, RwLock};
 fn session(identity: &str, access: &str, refresh: &str, expires_at_unix: u64) -> Session {
     Session {
         identity: identity.to_owned(),
+        display_name: Some(identity.to_owned()),
         access_token: Secret::new(access),
         refresh_token: Secret::new(refresh),
         expires_at_unix,

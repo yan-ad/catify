@@ -56,6 +56,8 @@ impl fmt::Debug for Secret {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Session {
     pub identity: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
     pub access_token: Secret,
     pub refresh_token: Secret,
     pub expires_at_unix: u64,
@@ -68,6 +70,7 @@ impl fmt::Debug for Session {
         formatter
             .debug_struct("Session")
             .field("identity", &self.identity)
+            .field("display_name", &self.display_name)
             .field("access_token", &"[REDACTED]")
             .field("refresh_token", &"[REDACTED]")
             .field("expires_at_unix", &self.expires_at_unix)

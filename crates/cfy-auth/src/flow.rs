@@ -51,6 +51,7 @@ pub async fn login<P: IdentityProvider>(
             expires_at_unix,
         } => Ok(LoginResult::Session(Session {
             identity: identity.to_owned(),
+            display_name: Some(identity.to_owned()),
             access_token,
             refresh_token: refresh_token.unwrap_or_else(|| Secret::new("")),
             expires_at_unix,

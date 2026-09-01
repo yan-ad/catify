@@ -25,9 +25,23 @@ use cfy_store::{
 };
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
+};
 use notify::{
     EventKind, RecursiveMode, Watcher,
     event::{ModifyKind, RenameMode},
+};
+use ratatui::{
+    Terminal, TerminalOptions, Viewport,
+    backend::CrosstermBackend,
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Paragraph},
 };
 use std::{
     env,
@@ -45,6 +59,134 @@ struct AbortOnDrop(tokio::task::JoinHandle<()>);
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+struct AuthTerminalGuard;
+
+impl Drop for AuthTerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stderr(), cursor::Show, Clear(ClearType::CurrentLine));
+    }
+}
+
+fn update_auth_selection(selected: usize, code: KeyCode) -> Result<Option<(usize, bool)>> {
+    match code {
+        KeyCode::Up | KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('k') => {
+            Ok(Some((1 - selected, false)))
+        }
+        KeyCode::Enter => Ok(Some((selected, true))),
+        KeyCode::Esc | KeyCode::Char('q') => {
+            Err(Error::invalid_input("account selection cancelled"))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn select_auth_account(session: &Session) -> Result<bool> {
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not enable account selector",
+            error,
+        )
+    })?;
+    let _guard = AuthTerminalGuard;
+    execute!(io::stderr(), cursor::Hide).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not initialize account selector",
+            error,
+        )
+    })?;
+    let backend = CrosstermBackend::new(io::stderr());
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(8),
+        },
+    )
+    .map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not create account selector",
+            error,
+        )
+    })?;
+    let account = session.display_name.as_deref().unwrap_or(&session.identity);
+    let mut selected = 0usize;
+
+    loop {
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let width = area.width.min(72);
+                let height = area.height.min(8);
+                let area = Rect::new(area.x, area.y, width, height);
+                let marker = |index| {
+                    if selected == index {
+                        Span::styled(
+                            "> ",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                    } else {
+                        Span::raw("  ")
+                    }
+                };
+                let selected_style = |index| {
+                    if selected == index {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    }
+                };
+                let lines = vec![
+                    Line::styled(
+                        "Which account would you like to use?",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Line::raw(""),
+                    Line::from(vec![marker(0), Span::styled(account, selected_style(0))]),
+                    Line::from(vec![
+                        marker(1),
+                        Span::styled("Log in with a different account", selected_style(1)),
+                    ]),
+                    Line::raw(""),
+                    Line::styled(
+                        "Press ↑↓ arrows to select, enter to confirm.",
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ];
+                frame.render_widget(Paragraph::new(lines).block(Block::new()), area);
+            })
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Process,
+                    "could not render account selector",
+                    error,
+                )
+            })?;
+
+        if let Event::Key(key) = event::read().map_err(|error| {
+            Error::with_source(
+                ErrorKind::Process,
+                "could not read account selection",
+                error,
+            )
+        })? && key.kind == KeyEventKind::Press
+            && let Some((next, confirmed)) = update_auth_selection(selected, key.code)?
+        {
+            selected = next;
+            if confirmed {
+                terminal.clear().ok();
+                return Ok(selected == 0);
+            }
+        }
     }
 }
 
@@ -704,6 +846,7 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                 };
                 let session = Session {
                     identity: identity.clone(),
+                    display_name: Some(identity.clone()),
                     access_token,
                     refresh_token: refresh_token.unwrap_or_else(|| cfy_auth::Secret::new("")),
                     expires_at_unix,
@@ -730,23 +873,34 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
             if let Some(session) = store.load(&identity).await?
                 && reusable_session(&session, current_unix_time())
             {
-                output
-                    .success(
-                        "Using existing authenticated session",
-                        &serde_json::json!({
-                            "identity": session.identity,
-                            "scopes": session.scopes,
-                            "reused": true
-                        }),
-                    )
-                    .map_err(|error| {
-                        Error::with_source(
-                            ErrorKind::Process,
-                            "could not write login result",
-                            error,
+                let reuse = if output.mode() == output::OutputMode::Human
+                    && io::stdin().is_terminal()
+                    && io::stderr().is_terminal()
+                {
+                    select_auth_account(&session)?
+                } else {
+                    true
+                };
+                if reuse {
+                    output
+                        .success(
+                            "Using existing authenticated session",
+                            &serde_json::json!({
+                                "identity": session.identity,
+                                "account": session.display_name,
+                                "scopes": session.scopes,
+                                "reused": true
+                            }),
                         )
-                    })?;
-                return Ok(0);
+                        .map_err(|error| {
+                            Error::with_source(
+                                ErrorKind::Process,
+                                "could not write login result",
+                                error,
+                            )
+                        })?;
+                    return Ok(0);
+                }
             }
             let config = IdentityConfig::from_env(|key| env::var(key).ok())?;
             let client = IdentityClient::new(HttpIdentityTransport::new()?, config);
@@ -2017,13 +2171,14 @@ fn not_implemented(group: &str) -> Error {
 mod tests {
     use super::{
         Cli, Command, ThemeCommand, filesystem_event, format_themes,
-        live_push_requires_confirmation, reusable_session, select_store,
+        live_push_requires_confirmation, reusable_session, select_store, update_auth_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
     use cfy_config::project::Environment;
     use cfy_config::theme_dev::FileEvent;
     use clap::{CommandFactory, Parser, error::ErrorKind};
+    use crossterm::event::KeyCode;
     use notify::{
         Event, EventKind,
         event::{ModifyKind, RenameMode},
@@ -2038,18 +2193,37 @@ mod tests {
     fn valid_sessions_are_reused_before_device_login() {
         let valid = Session {
             identity: "account@example.com".to_owned(),
+            display_name: Some("account@example.com".to_owned()),
             access_token: Secret::new("access"),
             refresh_token: Secret::new("refresh"),
             expires_at_unix: 1_000,
             scopes: Vec::new(),
         };
         let expired = Session {
+            display_name: Some("account@example.com".to_owned()),
             expires_at_unix: 100,
             ..valid.clone()
         };
 
         assert!(reusable_session(&valid, 900));
         assert!(!reusable_session(&expired, 900));
+    }
+
+    #[test]
+    fn account_selector_supports_arrows_enter_and_cancel() {
+        assert_eq!(
+            update_auth_selection(0, KeyCode::Down).unwrap(),
+            Some((1, false))
+        );
+        assert_eq!(
+            update_auth_selection(1, KeyCode::Up).unwrap(),
+            Some((0, false))
+        );
+        assert_eq!(
+            update_auth_selection(1, KeyCode::Enter).unwrap(),
+            Some((1, true))
+        );
+        assert!(update_auth_selection(0, KeyCode::Esc).is_err());
     }
 
     #[test]

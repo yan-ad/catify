@@ -48,7 +48,7 @@ fn expires_at_unix(expires_in: u64) -> u64 {
         .saturating_add(expires_in)
 }
 
-fn jwt_subject(token: &str) -> Option<String> {
+fn jwt_claim(token: &str, claim: &str) -> Option<String> {
     use base64::Engine;
 
     let payload = token.split('.').nth(1)?;
@@ -56,7 +56,7 @@ fn jwt_subject(token: &str) -> Option<String> {
         .decode(payload)
         .ok()?;
     let claims: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
-    claims.get("sub")?.as_str().map(str::to_owned)
+    claims.get(claim)?.as_str().map(str::to_owned)
 }
 
 #[derive(Clone)]
@@ -345,10 +345,16 @@ impl<T: IdentityTransport> IdentityClient<T> {
                     let identity = token
                         .id_token
                         .as_ref()
-                        .and_then(|token| jwt_subject(token.expose()))
+                        .and_then(|token| jwt_claim(token.expose(), "sub"))
                         .unwrap_or_else(|| "default".to_owned());
+                    let display_name = token.id_token.as_ref().and_then(|token| {
+                        jwt_claim(token.expose(), "email")
+                            .or_else(|| jwt_claim(token.expose(), "preferred_username"))
+                            .or_else(|| jwt_claim(token.expose(), "sub"))
+                    });
                     return Ok(Session {
                         identity,
+                        display_name,
                         access_token: token.access_token,
                         refresh_token: token.refresh_token.unwrap_or_else(|| Secret::new("")),
                         expires_at_unix: expires_at_unix(token.expires_in),
@@ -485,7 +491,7 @@ mod tests {
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(br#"{"sub":"gid://shopify/User/123"}"#);
         assert_eq!(
-            jwt_subject(&format!("header.{payload}.signature")),
+            jwt_claim(&format!("header.{payload}.signature"), "sub"),
             Some("gid://shopify/User/123".to_owned())
         );
     }
