@@ -422,8 +422,48 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        _ => Err(not_implemented(
-            "this theme command backend is not configured yet",
+        ThemeCommand::Preview { theme, store } => Err(backend_unavailable(
+            "theme preview",
+            39,
+            format!(
+                "preview session orchestration is pending{}{}; use `cfy theme open --theme <id> --store <store>` for an existing remote theme",
+                theme
+                    .map(|value| format!(" for theme {value}"))
+                    .unwrap_or_default(),
+                store
+                    .map(|value| format!(" on {value}"))
+                    .unwrap_or_default(),
+            ),
+        )),
+        ThemeCommand::Console { args } => Err(backend_unavailable(
+            "theme console",
+            39,
+            format!(
+                "the interactive Liquid console adapter is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
+                args.len()
+            ),
+        )),
+        ThemeCommand::Check(_)
+        | ThemeCommand::Dev { .. }
+        | ThemeCommand::List { .. }
+        | ThemeCommand::Pull { .. }
+        | ThemeCommand::Push { .. } => Err(Error::process(
+            "internal command dispatch error: specialized theme command reached parity fallback",
+        )),
+        ThemeCommand::MetafieldsPull { theme, store } => Err(backend_unavailable(
+            "theme metafields pull",
+            39,
+            format!(
+                "the metafields API adapter is pending for theme {theme} on {store}; use Shopify CLI for this command for now"
+            ),
+        )),
+        ThemeCommand::Profile { args } => Err(backend_unavailable(
+            "theme profile",
+            39,
+            format!(
+                "the profiler adapter is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
+                args.len()
+            ),
         )),
     }
 }
@@ -1745,8 +1785,8 @@ fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
             let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
             let project = cfy_config::project::discover(&cwd, None).ok();
             if project.is_none() {
-                return Err(not_implemented(
-                    "app info requires a discovered app project; app backend is not implemented yet",
+                return Err(Error::invalid_input(
+                    "app info requires a Shopify app project; run it inside a directory containing shopify.app.toml or pass through a project directory",
                 ));
             }
             output
@@ -1757,8 +1797,107 @@ fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        _ => Err(not_implemented(
-            "this app command backend is not configured yet",
+        AppCommand::Env { show } => Err(backend_unavailable(
+            "app env show",
+            40,
+            format!(
+                "the linked-app environment backend is pending (show values: {show}); use Shopify CLI for remote environment values for now"
+            ),
+        )),
+        AppCommand::EnvPull => Err(backend_unavailable(
+            "app env pull",
+            40,
+            "the linked-app environment download backend is pending; use Shopify CLI for this command for now",
+        )),
+        AppCommand::ConfigValidate => Err(backend_unavailable(
+            "app config validate",
+            24,
+            "the project graph parser is available, but CLI validation reporting is not wired yet",
+        )),
+        AppCommand::ConfigLink => Err(backend_unavailable(
+            "app config link",
+            40,
+            "the Partner API app-selection backend is pending; use Shopify CLI for linking for now",
+        )),
+        AppCommand::ConfigPull => Err(backend_unavailable(
+            "app config pull",
+            40,
+            "the linked app configuration download backend is pending; use Shopify CLI for this command for now",
+        )),
+        AppCommand::ConfigUse { name } => Err(backend_unavailable(
+            "app config use",
+            24,
+            format!(
+                "configuration selection for `{name}` is parsed by cfy-config but is not wired to the CLI yet"
+            ),
+        )),
+        AppCommand::Function { args } => Err(backend_unavailable(
+            "app function",
+            25,
+            format!(
+                "the extension adapter exists but function dispatch is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
+                args.len()
+            ),
+        )),
+        AppCommand::VersionsList => Err(backend_unavailable(
+            "app versions list",
+            40,
+            "the app management GraphQL backend requires a verified Shopify endpoint and schema",
+        )),
+        AppCommand::Logs { args } => Err(backend_unavailable(
+            "app logs",
+            40,
+            format!(
+                "the streaming app logs backend is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
+                args.len()
+            ),
+        )),
+        AppCommand::WebhookTrigger { args } => Err(backend_unavailable(
+            "app webhook trigger",
+            40,
+            format!(
+                "the webhook trigger backend is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
+                args.len()
+            ),
+        )),
+        AppCommand::Execute { query } => Err(backend_unavailable(
+            "app execute",
+            40,
+            format!(
+                "the app-scoped GraphQL backend is not configured (query length: {} bytes); use `cfy store execute` for store Admin API queries",
+                query.len()
+            ),
+        )),
+        AppCommand::Graphiql => Err(backend_unavailable(
+            "app graphiql",
+            40,
+            "the app-scoped GraphiQL session backend is pending; use Shopify CLI for this command for now",
+        )),
+        AppCommand::Release { args } => Err(backend_unavailable(
+            "app release",
+            40,
+            format!(
+                "the verified app release mutation backend is pending ({} forwarded argument(s)); `cfy app deploy` orchestration is available at the library boundary",
+                args.len()
+            ),
+        )),
+        AppCommand::ImportExtensions => Err(backend_unavailable(
+            "app import-extensions",
+            24,
+            "extension discovery exists, but the import workflow is not wired to the CLI yet",
+        )),
+        AppCommand::GenerateExtension { args } => Err(backend_unavailable(
+            "app generate extension",
+            24,
+            format!(
+                "extension schema discovery exists, but template generation is pending ({} forwarded argument(s))",
+                args.len()
+            ),
+        )),
+        AppCommand::ImportCustomDataDefinitions => Err(backend_unavailable(
+            "app import-custom-data-definitions",
+            40,
+            "the remote custom-data definitions backend is pending; use Shopify CLI for this command for now",
         )),
     }
 }
@@ -2161,10 +2300,14 @@ fn print_completion(shell: Shell) {
     generate(shell, &mut command, "cfy", &mut io::stdout());
 }
 
-fn not_implemented(group: &str) -> Error {
-    Error::invalid_input(format!(
-        "the '{group}' command group is reserved but not implemented yet"
-    ))
+fn backend_unavailable(command: &str, issue: u32, detail: impl AsRef<str>) -> Error {
+    Error::new(
+        ErrorKind::Api,
+        format!(
+            "{command} is not available: {}. Tracking: https://github.com/yan-ad/catify/issues/{issue}",
+            detail.as_ref()
+        ),
+    )
 }
 
 #[cfg(test)]

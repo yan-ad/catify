@@ -151,7 +151,26 @@ fn invalid_command_has_stable_usage_exit_code_and_suggestion() {
 fn runtime_command_error_uses_core_exit_code() {
     let output = cfy(&["a", "show"]);
     assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("not implemented yet"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("app info requires a Shopify app project"));
+    assert!(!stderr.contains("reserved but not implemented yet"));
+}
+
+#[test]
+fn unavailable_backends_have_command_specific_diagnostics() {
+    let app = cfy(&["app", "env"]);
+    assert_eq!(app.status.code(), Some(1));
+    let app_stderr = String::from_utf8_lossy(&app.stderr);
+    assert!(app_stderr.contains("app env show is not available"));
+    assert!(app_stderr.contains("issues/40"));
+    assert!(!app_stderr.contains("reserved but not implemented yet"));
+
+    let theme = cfy(&["theme", "preview"]);
+    assert_eq!(theme.status.code(), Some(1));
+    let theme_stderr = String::from_utf8_lossy(&theme.stderr);
+    assert!(theme_stderr.contains("theme preview is not available"));
+    assert!(theme_stderr.contains("issues/39"));
+    assert!(!theme_stderr.contains("reserved but not implemented yet"));
 }
 
 #[test]
