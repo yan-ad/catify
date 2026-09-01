@@ -1,0 +1,8 @@
+name = "Graph fixture"
+client_id = "fixture-client"
+application_url = "https://example.test"
+embedded = true
+mystery_app_key = "preserved"
+
+[build]
+automatically_update_urls_on_dev = true
