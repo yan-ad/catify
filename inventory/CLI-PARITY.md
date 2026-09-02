@@ -5,8 +5,8 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **61**
-- Commands with automated evidence: **79**
+- Implemented (`native` + `adapter`): **70**
+- Commands with automated evidence: **88**
 - Live-verified commands: **7**
 
 | Status | Count | Meaning |
@@ -14,8 +14,7 @@
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
-| `missing` | 9 | No compatible command implementation yet. |
-| `native` | 34 | Implemented in Rust and exposed at the upstream command path. |
+| `native` | 43 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 16 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -91,15 +90,15 @@
 | `hydrogen unlink` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen upgrade` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `organization list` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Native Business Platform token exchange and organization listing are exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs::BusinessPlatformClient; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags. |
-| `plugins add` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins inspect` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins install` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins link` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins remove` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins reset` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins uninstall` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins unlink` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
-| `plugins update` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
+| `plugins add` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust plugin registry and install orchestration; npm is used only as the intrinsic JavaScript package runtime. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins inspect` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust inspection of installed and linked plugin registry records. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins install` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust plugin registry and install orchestration; npm is used only as the intrinsic JavaScript package runtime. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins link` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust linked-plugin registration with optional npm dependency installation. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins remove` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust effective plugin removal with interactive selection and non-interactive safety. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins reset` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust registry reset with confined artifact cleanup and optional reinstall. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins uninstall` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust installed-plugin removal and managed artifact cleanup. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins unlink` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust linked-plugin removal without deleting the linked source directory. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
+| `plugins update` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust update orchestration; npm is used only as the intrinsic JavaScript package runtime. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
 | `search` | `native` | yes | no | [#41](https://github.com/yan-ad/catify/issues/41) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-docs/src/lib.rs tests; compatibility/scenarios.json. |
 | `store auth` | `blocked` | no | no | [#38](https://github.com/yan-ad/catify/issues/38) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `store auth list` | `blocked` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | The exact nested command path and flags are exposed, but the local store-auth credential registry backend is not implemented yet. Evidence: crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags. Execution remains blocked until store-auth sessions can be enumerated safely. |

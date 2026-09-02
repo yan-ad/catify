@@ -19,6 +19,7 @@ Commands:
   hydrogen      Build Hydrogen storefronts
   organization  List Shopify organizations
   store         Work directly with Shopify stores
+  plugins       Manage CLI plugins
   search        Search Shopify developer documentation
 
 Options:

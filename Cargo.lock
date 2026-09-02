@@ -505,6 +505,7 @@ dependencies = [
  "cfy-extension-adapter",
  "cfy-hydrogen",
  "cfy-organization",
+ "cfy-plugins",
  "cfy-process",
  "cfy-store",
  "cfy-tunnel",
@@ -615,6 +616,19 @@ dependencies = [
  "reqwest",
  "serde",
  "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "cfy-plugins"
+version = "0.1.0"
+dependencies = [
+ "cfy-config",
+ "cfy-core",
+ "cfy-process",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 

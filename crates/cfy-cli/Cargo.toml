@@ -22,6 +22,7 @@ cfy-extension-adapter.workspace = true
 cfy-hydrogen.workspace = true
 cfy-organization.workspace = true
 cfy-core.workspace = true
+cfy-plugins.workspace = true
 cfy-process.workspace = true
 cfy-store.workspace = true
 cfy-tunnel.workspace = true

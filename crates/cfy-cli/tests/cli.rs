@@ -8,6 +8,195 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn plugins_use_exact_public_paths_and_shopify_compatible_flags() {
+    for command in [
+        "add",
+        "install",
+        "inspect",
+        "link",
+        "remove",
+        "reset",
+        "uninstall",
+        "unlink",
+        "update",
+    ] {
+        let output = cfy(&["plugins", command, "--help"]);
+        assert!(output.status.success(), "plugins {command} help failed");
+        let help = String::from_utf8_lossy(&output.stdout);
+        assert!(help.contains(&format!("Usage: cfy plugins {command}")));
+        assert!(help.contains("--verbose"));
+        assert!(help.contains("-v"));
+    }
+
+    for command in ["add", "install"] {
+        let help = cfy(&["plugins", command, "--help"]);
+        let help = String::from_utf8_lossy(&help.stdout);
+        assert!(help.contains("<PLUGIN>..."));
+        assert!(help.contains("--force"));
+        assert!(help.contains("-f"));
+        assert!(help.contains("--silent"));
+        assert!(help.contains("-s"));
+        assert_eq!(
+            cfy(&["plugins", command, "example", "--silent", "--verbose"])
+                .status
+                .code(),
+            Some(2)
+        );
+    }
+
+    let inspect = cfy(&["plugins", "inspect", "--help"]);
+    assert!(String::from_utf8_lossy(&inspect.stdout).contains("[PLUGIN]..."));
+    let link = cfy(&["plugins", "link", "--help"]);
+    let link = String::from_utf8_lossy(&link.stdout);
+    assert!(link.contains("[PATH]"));
+    assert!(link.contains("--install"));
+    assert!(link.contains("--no-install"));
+    assert_eq!(
+        cfy(&["plugins", "link", "--install", "--no-install"])
+            .status
+            .code(),
+        Some(2)
+    );
+    let reset = cfy(&["plugins", "reset", "--help"]);
+    let reset = String::from_utf8_lossy(&reset.stdout);
+    assert!(reset.contains("--hard"));
+    assert!(reset.contains("--reinstall"));
+
+    for command in ["remove", "uninstall", "unlink"] {
+        let help = cfy(&["plugins", command, "--help"]);
+        assert!(String::from_utf8_lossy(&help.stdout).contains("[PLUGIN]..."));
+    }
+    assert_eq!(cfy(&["plugin", "inspect", "--help"]).status.code(), Some(2));
+    assert_eq!(cfy(&["plugins-inspect", "--help"]).status.code(), Some(2));
+}
+
+#[cfg(unix)]
+fn fake_package_manager(root: &std::path::Path, exit_code: i32) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let executable = root.join("fake-npm");
+    std::fs::write(
+        &executable,
+        format!(
+            r#"#!/bin/sh
+printf '%s\n' "$@" >> "{}"
+prefix=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '--prefix' ]; then prefix="$argument"; fi
+  previous="$argument"
+done
+if [ "$1" = install ] && [ -n "$prefix" ] && [ "$#" -ge 5 ]; then
+  source=''
+  for argument in "$@"; do source="$argument"; done
+  name="${{source%%@*}}"
+  mkdir -p "$prefix/node_modules/$name"
+  printf '{{"name":"%s","version":"1.0.0"}}\n' "$name" > "$prefix/node_modules/$name/package.json"
+fi
+exit {exit_code}
+"#,
+            root.join("calls.log").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable
+}
+
+#[cfg(unix)]
+#[test]
+fn plugins_inspect_link_and_reset_use_native_registry_and_package_manager() {
+    let root = std::env::temp_dir().join(format!(
+        "cfy-plugins-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let registry = root.join("registry");
+    let plugin = root.join("linked-plugin");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(
+        plugin.join("package.json"),
+        r#"{"name":"linked-plugin","version":"2.0.0"}"#,
+    )
+    .unwrap();
+    let package_manager = fake_package_manager(&root, 0);
+
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .args(args)
+            .env("CFY_PLUGIN_ROOT", &registry)
+            .env("CFY_PACKAGE_MANAGER", &package_manager)
+            .output()
+            .unwrap()
+    };
+
+    let linked = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["--json", "plugins", "link"])
+        .arg(&plugin)
+        .arg("--no-install")
+        .env("CFY_PLUGIN_ROOT", &registry)
+        .env("CFY_PACKAGE_MANAGER", &package_manager)
+        .output()
+        .unwrap();
+    assert!(linked.status.success());
+    let linked: serde_json::Value = serde_json::from_slice(&linked.stdout).unwrap();
+    assert_eq!(linked["plugin"]["name"], "linked-plugin");
+    assert_eq!(linked["plugin"]["kind"], "linked");
+
+    let inspected = run(&["--json", "plugins", "inspect", "linked-plugin"]);
+    assert!(inspected.status.success());
+    let inspected: serde_json::Value = serde_json::from_slice(&inspected.stdout).unwrap();
+    assert_eq!(inspected[0]["version"], "2.0.0");
+
+    let installed = run(&["--json", "plugins", "add", "installed-plugin"]);
+    assert!(installed.status.success());
+    let installed: serde_json::Value = serde_json::from_slice(&installed.stdout).unwrap();
+    assert_eq!(installed[0]["action"], "install");
+    assert_eq!(installed[0]["plugin"]["name"], "installed-plugin");
+
+    let reset = run(&["--json", "plugins", "reset", "--hard", "--reinstall"]);
+    assert!(reset.status.success());
+    let reset: serde_json::Value = serde_json::from_slice(&reset.stdout).unwrap();
+    assert_eq!(reset["removed_registry"], true);
+    assert_eq!(reset["removed_artifacts"], true);
+    assert_eq!(
+        reset["reinstalled"][0]["plugin"]["name"],
+        "installed-plugin"
+    );
+    assert!(root.join("calls.log").exists());
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn plugins_propagate_package_manager_nonzero_exit() {
+    let root = std::env::temp_dir().join(format!(
+        "cfy-plugins-exit-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let package_manager = fake_package_manager(&root, 7);
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["--json", "plugins", "install", "broken-plugin"])
+        .env("CFY_PLUGIN_ROOT", root.join("registry"))
+        .env("CFY_PACKAGE_MANAGER", package_manager)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value[0]["process"]["exit_code"], 7);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn config_autocorrect_commands_persist_exact_native_state() {
     let root = std::env::temp_dir().join(format!(
         "catify-autocorrect-{}-{}",

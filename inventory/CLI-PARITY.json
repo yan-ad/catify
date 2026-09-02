@@ -5,15 +5,14 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 61,
-    "tested": 79,
+    "implemented": 70,
+    "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "missing": 9,
-      "native": 34,
+      "native": 43,
       "partial": 16
     },
     "by_domain": {
@@ -46,7 +45,7 @@
         "native": 1
       },
       "plugins": {
-        "missing": 9
+        "native": 9
       },
       "search": {
         "native": 1
@@ -963,99 +962,135 @@
     {
       "command": "plugins add",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust plugin registry and install orchestration; npm is used only as the intrinsic JavaScript package runtime.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins inspect",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust inspection of installed and linked plugin registry records.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins install",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust plugin registry and install orchestration; npm is used only as the intrinsic JavaScript package runtime.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins link",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust linked-plugin registration with optional npm dependency installation.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins remove",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust effective plugin removal with interactive selection and non-interactive safety.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins reset",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust registry reset with confined artifact cleanup and optional reinstall.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins uninstall",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust installed-plugin removal and managed artifact cleanup.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins unlink",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust linked-plugin removal without deleting the linked source directory.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "plugins update",
       "domain": "plugins",
-      "status": "missing",
+      "status": "native",
       "owner": 45,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native Rust update orchestration; npm is used only as the intrinsic JavaScript package runtime.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-plugins/src/lib.rs tests",
+        "crates/cfy-plugins/tests/plugins.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
