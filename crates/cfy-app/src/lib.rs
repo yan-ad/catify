@@ -53,7 +53,7 @@ const APP_VERSIONS_QUERY: &str = r#"query AppVersions($appId: ID!) {
 }"#;
 const APP_QUERY: &str = r#"query ActiveAppReleaseFromApiKey($apiKey: String!) {
   app: appByKey(key: $apiKey) {
-    id key handle organizationId
+    id key organizationId
     activeRoot { grantedShopifyApprovalScopes }
     activeRelease { version { name appModules { config specification { externalIdentifier } } } }
   }
@@ -380,7 +380,6 @@ impl AppManagementClient {
         struct App {
             id: String,
             key: String,
-            handle: Option<String>,
             #[serde(rename = "organizationId")]
             organization_id: String,
             #[serde(rename = "activeRoot")]
@@ -447,7 +446,11 @@ impl AppManagementClient {
             id: app.id,
             client_id: app.key,
             name: app.release.version.name,
-            handle: app.handle,
+            // The App Management `App` type queried by API key does not expose
+            // a top-level handle. Preserve an existing local handle during the
+            // TOML merge instead of making the whole link operation fail by
+            // requesting an unsupported GraphQL field.
+            handle: None,
             organization_id: app.organization_id,
             application_url: home
                 .and_then(|value| value.get("app_url"))
@@ -1280,7 +1283,7 @@ uri = "/webhooks"
         let server = tokio::spawn(async move {
             for (index, body) in [
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
-                r#"{"data":{"app":{"id":"app-1","key":"client-1","handle":"example-app","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"scopes":"read_products,write_orders","optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy/","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":false},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"topic":"orders/create","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"topic":"orders/updated","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"api_version":"2025-07","customers_data_request_url":"/webhooks","customers_redact_url":"/webhooks","shop_redact_url":"/webhooks"},"specification":{"externalIdentifier":"privacy_compliance_webhooks"}}]}}}}}"#,
+                r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"scopes":"read_products,write_orders","optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy/","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":false},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"topic":"orders/create","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"topic":"orders/updated","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"api_version":"2025-07","customers_data_request_url":"/webhooks","customers_redact_url":"/webhooks","shop_redact_url":"/webhooks"},"specification":{"externalIdentifier":"privacy_compliance_webhooks"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
             ]
             .into_iter()
@@ -1312,7 +1315,7 @@ uri = "/webhooks"
         assert_eq!(apps[0].name, "Example");
         let app = client.app_by_client_id("client-1").await.unwrap();
         assert_eq!(app.application_url.as_deref(), Some("https://example.test"));
-        assert_eq!(app.handle.as_deref(), Some("example-app"));
+        assert_eq!(app.handle, None);
         assert_eq!(app.scopes, ["read_products"]);
         assert_eq!(
             app.remote_configuration["auth"]["redirect_urls"][0].as_str(),
