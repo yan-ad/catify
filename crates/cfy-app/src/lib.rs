@@ -20,6 +20,15 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+const APP_VERSION_BY_TAG_QUERY: &str = r#"query AppVersionByTag($versionTag: String!) {
+  versionByTag(tag: $versionTag) { id metadata { message versionTag } }
+}"#;
+const RELEASE_VERSION_MUTATION: &str = r#"mutation ReleaseVersion($appId: ID!, $versionId: ID!) {
+  appReleaseCreate(appId: $appId, versionId: $versionId) {
+    release { version { id metadata { message versionTag } } }
+    userErrors { message }
+  }
+}"#;
 const APP_VERSIONS_QUERY: &str = r#"query AppVersions($appId: ID!) {
   app(id: $appId) {
     activeRelease { version { id } }
@@ -69,6 +78,14 @@ pub struct RemoteAppVersion {
 pub struct AppVersionsReport {
     pub versions: Vec<RemoteAppVersion>,
     pub total: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReleaseReport {
+    pub app_id: String,
+    pub version_id: String,
+    pub version: String,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -376,6 +393,110 @@ impl AppManagementClient {
             total: app.versions_count,
         })
     }
+
+    pub async fn release_version(&self, app_id: &str, version_tag: &str) -> Result<ReleaseReport> {
+        #[derive(Deserialize)]
+        struct VersionData {
+            #[serde(rename = "versionByTag")]
+            version: Option<Version>,
+        }
+        #[derive(Deserialize)]
+        struct Version {
+            id: String,
+            metadata: Option<Metadata>,
+        }
+        #[derive(Deserialize)]
+        struct Metadata {
+            message: Option<String>,
+            #[serde(rename = "versionTag")]
+            version_tag: Option<String>,
+        }
+        let version = self
+            .graphql
+            .execute::<_, VersionData>(&GraphQlRequest::query(
+                APP_VERSION_BY_TAG_QUERY,
+                serde_json::json!({"versionTag": version_tag}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("could not find app version `{version_tag}`: {error}"),
+                )
+            })?
+            .data
+            .version
+            .ok_or_else(|| {
+                Error::invalid_input(format!("app version `{version_tag}` was not found"))
+            })?;
+
+        #[derive(Deserialize)]
+        struct ReleaseData {
+            #[serde(rename = "appReleaseCreate")]
+            result: ReleaseResult,
+        }
+        #[derive(Deserialize)]
+        struct ReleaseResult {
+            release: Option<Release>,
+            #[serde(rename = "userErrors", default)]
+            user_errors: Vec<UserError>,
+        }
+        #[derive(Deserialize)]
+        struct Release {
+            version: Version,
+        }
+        #[derive(Deserialize)]
+        struct UserError {
+            message: String,
+        }
+        let response = self
+            .graphql
+            .execute::<_, ReleaseData>(&GraphQlRequest::mutation(
+                RELEASE_VERSION_MUTATION,
+                serde_json::json!({"appId": app_id, "versionId": version.id}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("could not release app version `{version_tag}`: {error}"),
+                )
+            })?;
+        if !response.data.result.user_errors.is_empty() {
+            return Err(Error::new(
+                ErrorKind::Api,
+                response
+                    .data
+                    .result
+                    .user_errors
+                    .into_iter()
+                    .map(|error| error.message)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ));
+        }
+        let released = response
+            .data
+            .result
+            .release
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    "release response omitted the released version",
+                )
+            })?
+            .version;
+        let metadata = released.metadata.or(version.metadata);
+        Ok(ReleaseReport {
+            app_id: app_id.to_owned(),
+            version_id: released.id,
+            version: metadata
+                .as_ref()
+                .and_then(|value| value.version_tag.clone())
+                .unwrap_or_else(|| version_tag.to_owned()),
+            message: metadata.and_then(|value| value.message).unwrap_or_default(),
+        })
+    }
 }
 
 pub async fn exchange_app_management_token(session: &Session) -> Result<Secret> {
@@ -668,6 +789,40 @@ uri = "/webhooks"
         assert_eq!(versions.total, 2);
         assert_eq!(versions.versions[0].status, "active");
         assert_eq!(versions.versions[1].status, "inactive");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn releases_an_existing_version_and_reports_user_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for body in [
+                r#"{"data":{"versionByTag":{"id":"version-2","metadata":{"message":"Ship it","versionTag":"2"}}}}"#,
+                r#"{"data":{"appReleaseCreate":{"release":{"version":{"id":"version-2","metadata":{"message":"Ship it","versionTag":"2"}}},"userErrors":[]}}}"#,
+            ] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 8192];
+                let read = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                assert!(request.contains("authorization: Bearer token"));
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let client = AppManagementClient::new(
+            &format!("http://{address}/app_management/unstable/graphql.json"),
+            "token",
+        )
+        .unwrap();
+        let report = client.release_version("app-1", "2").await.unwrap();
+        assert_eq!(report.version_id, "version-2");
+        assert_eq!(report.version, "2");
+        assert_eq!(report.message, "Ship it");
         server.await.unwrap();
     }
 }

@@ -2708,14 +2708,61 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
             40,
             "the app-scoped GraphiQL session backend is pending; use Shopify CLI for this command for now",
         )),
-        AppCommand::Release { args } => Err(backend_unavailable(
-            "app release",
-            40,
-            format!(
-                "the verified app release mutation backend is pending ({} forwarded argument(s)); `cfy app deploy` orchestration is available at the library boundary",
-                args.len()
-            ),
-        )),
+        AppCommand::Release {
+            config,
+            auth_alias,
+            client_id,
+            path,
+            reset,
+            allow_updates,
+            allow_deletes,
+            version,
+        } => {
+            if non_interactive && !allow_updates && !allow_deletes {
+                return Err(Error::invalid_input(
+                    "app release requires --allow-updates or --allow-deletes in non-interactive mode",
+                ));
+            }
+            if !non_interactive && !allow_updates && !allow_deletes {
+                eprint!("Release app version `{version}`? [y/N] ");
+                io::stderr().flush().ok();
+                let mut answer = String::new();
+                io::stdin().read_line(&mut answer).map_err(|error| {
+                    Error::with_source(ErrorKind::Process, "could not read confirmation", error)
+                })?;
+                if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                    return Err(Error::invalid_input("app release was cancelled"));
+                }
+            }
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let client_id = selected
+                .document
+                .get("client_id")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Error::invalid_input("selected app configuration has no client_id")
+                })?;
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+            let session = sessions.session(&identity).await?.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"),
+                )
+            })?;
+            let backend = AppManagementClient::from_session(&session).await?;
+            let app = backend.app_by_client_id(client_id).await?;
+            let report = backend.release_version(&app.id, &version).await?;
+            output
+                .success("Version released to users", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         AppCommand::ImportExtensions => Err(backend_unavailable(
             "app import-extensions",
             24,
@@ -2934,10 +2981,25 @@ pub enum AppCommand {
     Execute { query: String },
     /// Open GraphiQL for the app.
     Graphiql,
-    /// Run a release operation.
+    /// Release an app version.
+    #[command(disable_version_flag = true)]
     Release {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_UPDATES")]
+        allow_updates: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_DELETES")]
+        allow_deletes: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: String,
     },
     /// Import app extensions.
     ImportExtensions,
