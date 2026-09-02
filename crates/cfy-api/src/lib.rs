@@ -31,9 +31,8 @@ pub struct RetryPolicy {
 fn install_tls_provider() -> Result<(), ApiError> {
     TLS_PROVIDER
         .get_or_init(|| {
-            rustls::crypto::ring::default_provider()
-                .install_default()
-                .map_err(|_| "a different Rustls crypto provider is already installed".to_owned())
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            Ok(())
         })
         .clone()
         .map_err(ApiError::Configuration)

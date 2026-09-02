@@ -441,6 +441,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfy-app"
+version = "0.1.0"
+dependencies = [
+ "cfy-api",
+ "cfy-auth",
+ "cfy-config",
+ "cfy-core",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "url",
+]
+
+[[package]]
 name = "cfy-auth"
 version = "0.1.0"
 dependencies = [
@@ -477,6 +494,7 @@ name = "cfy-cli"
 version = "0.1.0"
 dependencies = [
  "cfy-api",
+ "cfy-app",
  "cfy-auth",
  "cfy-config",
  "cfy-core",

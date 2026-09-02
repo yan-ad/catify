@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 cfy-api.workspace = true
+cfy-app.workspace = true
 cfy-auth.workspace = true
 cfy-config.workspace = true
 cfy-docs.workspace = true

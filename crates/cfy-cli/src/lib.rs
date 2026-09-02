@@ -3,6 +3,7 @@ mod theme_check;
 
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
+use cfy_app::{AppManagementClient, LinkOptions, RemoteAppSummary, write_linked_config};
 use cfy_auth::{
     CredentialStore, NativeCredentialStore, Session,
     flow::{LoginMode, headless_from_env},
@@ -51,6 +52,7 @@ use std::{
     env,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc;
@@ -63,6 +65,110 @@ struct AbortOnDrop(tokio::task::JoinHandle<()>);
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+fn update_list_selection(
+    selected: usize,
+    total: usize,
+    code: KeyCode,
+) -> Result<Option<(usize, bool)>> {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            Ok(Some((selected.checked_sub(1).unwrap_or(total - 1), false)))
+        }
+        KeyCode::Down | KeyCode::Char('j') => Ok(Some(((selected + 1) % total, false))),
+        KeyCode::Enter => Ok(Some((selected, true))),
+        KeyCode::Esc | KeyCode::Char('q') => Err(Error::invalid_input("app selection cancelled")),
+        _ => Ok(None),
+    }
+}
+
+fn select_remote_app(apps: &[RemoteAppSummary]) -> Result<RemoteAppSummary> {
+    if apps.is_empty() {
+        return Err(Error::new(
+            ErrorKind::Api,
+            "no Shopify apps are available for this account; create an app first or pass --delegate",
+        ));
+    }
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not enable app selector", error)
+    })?;
+    let _guard = AuthTerminalGuard;
+    execute!(io::stderr(), cursor::Hide).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not initialize app selector",
+            error,
+        )
+    })?;
+    let backend = CrosstermBackend::new(io::stderr());
+    let height = u16::try_from(apps.len().min(8) + 4).unwrap_or(12);
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(height),
+        },
+    )
+    .map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not create app selector", error)
+    })?;
+    let mut selected = 0usize;
+    loop {
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let mut lines = vec![
+                    Line::styled(
+                        "Which app would you like to link?",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Line::raw(""),
+                ];
+                for (index, app) in apps.iter().enumerate().take(8) {
+                    let active = index == selected;
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            if active { "> " } else { "  " },
+                            if active {
+                                Style::default()
+                                    .fg(Color::Cyan)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                        Span::styled(
+                            format!("{}  {}", app.name, app.client_id),
+                            if active {
+                                Style::default()
+                                    .fg(Color::Cyan)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default()
+                            },
+                        ),
+                    ]));
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    "Press ↑↓ arrows to select, enter to confirm.",
+                    Style::default().fg(Color::DarkGray),
+                ));
+                frame.render_widget(Paragraph::new(lines).block(Block::new()), area);
+            })
+            .ok();
+        if let Event::Key(key) = event::read().map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not read app selection", error)
+        })? && key.kind == KeyEventKind::Press
+            && let Some((next, confirmed)) = update_list_selection(selected, apps.len(), key.code)?
+        {
+            selected = next;
+            if confirmed {
+                terminal.clear().ok();
+                return Ok(apps[selected].clone());
+            }
+        }
     }
 }
 
@@ -84,6 +190,9 @@ pub enum AppConfigCommand {
         path: Option<PathBuf>,
         #[arg(long, env = "SHOPIFY_FLAG_RESET")]
         reset: bool,
+        /// Delegate to the official Shopify CLI instead of using the native backend.
+        #[arg(long)]
+        delegate: bool,
     },
     /// Refresh an already-linked app configuration.
     Pull,
@@ -93,7 +202,11 @@ pub enum AppConfigCommand {
     Validate,
 }
 
-fn app_config_command(command: AppConfigCommand) -> Result<u8> {
+async fn app_config_command(
+    command: AppConfigCommand,
+    non_interactive: bool,
+    output: &Output,
+) -> Result<u8> {
     match command {
         AppConfigCommand::Link {
             config,
@@ -103,23 +216,85 @@ fn app_config_command(command: AppConfigCommand) -> Result<u8> {
             force,
             path,
             reset,
+            delegate,
         } => {
-            let mut args = vec!["config".to_owned(), "link".to_owned()];
-            push_option(&mut args, "--config", config);
-            push_option(&mut args, "--auth-alias", auth_alias);
-            push_option(&mut args, "--client-id", client_id);
-            push_option(&mut args, "--file-name", file_name);
-            if force {
-                args.push("--force".to_owned());
+            if delegate {
+                let mut args = vec!["config".to_owned(), "link".to_owned()];
+                push_option(&mut args, "--config", config);
+                push_option(&mut args, "--auth-alias", auth_alias);
+                push_option(&mut args, "--client-id", client_id);
+                push_option(&mut args, "--file-name", file_name);
+                if force {
+                    args.push("--force".to_owned());
+                }
+                if let Some(path) = path {
+                    args.push("--path".to_owned());
+                    args.push(path.to_string_lossy().into_owned());
+                }
+                if reset {
+                    args.push("--reset".to_owned());
+                }
+                return delegate_shopify_command("app", &args);
             }
-            if let Some(path) = path {
-                args.push("--path".to_owned());
-                args.push(path.to_string_lossy().into_owned());
-            }
-            if reset {
-                args.push("--reset".to_owned());
-            }
-            delegate_shopify_command("app", &args)
+
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+            let session = sessions.session(&identity).await?.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"),
+                )
+            })?;
+            let backend = AppManagementClient::from_session(&session).await?;
+            let selected_client_id = if let Some(client_id) = client_id {
+                client_id
+            } else {
+                if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+                    return Err(Error::invalid_input(
+                        "app config link requires --client-id outside an interactive terminal",
+                    ));
+                }
+                let apps = backend.list_apps().await?;
+                select_remote_app(&apps)?.client_id
+            };
+            let app = backend.app_by_client_id(&selected_client_id).await?;
+            let directory = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not determine app directory",
+                    error,
+                )
+            })?);
+            let requested_file_name = file_name.or_else(|| {
+                config.map(|name| {
+                    if name == "shopify.app.toml" || name.ends_with(".toml") {
+                        name
+                    } else {
+                        format!("shopify.app.{name}.toml")
+                    }
+                })
+            });
+            let report = write_linked_config(
+                &LinkOptions {
+                    directory,
+                    client_id: Some(selected_client_id),
+                    file_name: requested_file_name,
+                    force: force || reset,
+                },
+                &app,
+            )?;
+            output
+                .success(
+                    &format!("Linked {} to {}", report.app_name, report.path.display()),
+                    &report,
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
         }
         AppConfigCommand::Pull => Err(backend_unavailable(
             "app config pull",
@@ -1875,7 +2050,7 @@ fn selected_app_environment() -> Result<cfy_config::project::ProjectEnvironment>
     resolve_environment(project, &ProjectOverrides::default(), &environment)
 }
 
-fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
+async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     match command {
         AppCommand::Init { destination } => {
             std::fs::create_dir_all(destination.join("extensions"))
@@ -1960,7 +2135,9 @@ fn app_command(command: AppCommand, output: &Output) -> Result<u8> {
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::Config { command } => app_config_command(command),
+        AppCommand::Config { command } => {
+            app_config_command(command, non_interactive, output).await
+        }
         AppCommand::Function { args } => Err(backend_unavailable(
             "app function",
             25,
@@ -2295,7 +2472,7 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             drop(watcher.take());
         }
         Some(Command::App { command }) => {
-            app_command(command, output)?;
+            app_command(command, cli.global.non_interactive, output).await?;
         }
         Some(Command::Auth { command }) => {
             auth_command(command, cli.global.non_interactive, output).await?;
@@ -2442,6 +2619,7 @@ mod tests {
     use super::{
         Cli, Command, ThemeCommand, filesystem_event, format_themes,
         live_push_requires_confirmation, reusable_session, select_store, update_auth_selection,
+        update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -2494,6 +2672,23 @@ mod tests {
             Some((1, true))
         );
         assert!(update_auth_selection(0, KeyCode::Esc).is_err());
+    }
+
+    #[test]
+    fn app_selector_wraps_and_confirms() {
+        assert_eq!(
+            update_list_selection(0, 3, KeyCode::Up).unwrap(),
+            Some((2, false))
+        );
+        assert_eq!(
+            update_list_selection(2, 3, KeyCode::Down).unwrap(),
+            Some((0, false))
+        );
+        assert_eq!(
+            update_list_selection(1, 3, KeyCode::Enter).unwrap(),
+            Some((1, true))
+        );
+        assert!(update_list_selection(0, 3, KeyCode::Esc).is_err());
     }
 
     #[test]

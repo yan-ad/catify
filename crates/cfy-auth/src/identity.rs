@@ -40,6 +40,49 @@ pub struct IdentityConfig {
     pub max_poll_attempts: u32,
 }
 
+#[async_trait]
+impl<T: IdentityTransport> crate::SessionRefresher for IdentityClient<T> {
+    async fn refresh(&self, session: &Session) -> Result<Session> {
+        if session.refresh_token.expose().is_empty() {
+            return Err(Error::new(
+                ErrorKind::Api,
+                "the stored session cannot be refreshed; run `cfy auth login` again",
+            ));
+        }
+        let response = self
+            .transport
+            .token(
+                &self.config,
+                vec![
+                    ("grant_type".into(), "refresh_token".into()),
+                    ("access_token".into(), session.access_token.expose().into()),
+                    (
+                        "refresh_token".into(),
+                        session.refresh_token.expose().into(),
+                    ),
+                    ("client_id".into(), self.config.client_id.clone()),
+                ],
+            )
+            .await?;
+        let token = response.map_err(|error| {
+            Error::new(
+                ErrorKind::Api,
+                format!("identity session refresh failed: {error:?}"),
+            )
+        })?;
+        Ok(Session {
+            identity: session.identity.clone(),
+            display_name: session.display_name.clone(),
+            access_token: token.access_token,
+            refresh_token: token
+                .refresh_token
+                .unwrap_or_else(|| session.refresh_token.clone()),
+            expires_at_unix: expires_at_unix(token.expires_in),
+            scopes: token.scope.split_whitespace().map(str::to_owned).collect(),
+        })
+    }
+}
+
 fn expires_at_unix(expires_in: u64) -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -68,9 +111,8 @@ impl HttpIdentityTransport {
     pub fn new() -> Result<Self> {
         static TLS: OnceLock<std::result::Result<(), String>> = OnceLock::new();
         TLS.get_or_init(|| {
-            rustls::crypto::ring::default_provider()
-                .install_default()
-                .map_err(|_| "a different Rustls provider is already installed".to_owned())
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            Ok(())
         })
         .clone()
         .map_err(|error| Error::new(ErrorKind::Config, error))?;

@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/cfy-api",
+  "crates/cfy-app",
   "crates/cfy-auth",
   "crates/cfy-cli",
   "crates/cfy-config",
@@ -30,6 +31,7 @@ repository = "https://github.com/yan-ad/crabpify"
 base64 = "0.22"
 async-trait = "0.1.89"
 cfy-api = { version = "0.1.0", path = "crates/cfy-api" }
+cfy-app = { version = "0.1.0", path = "crates/cfy-app" }
 cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }

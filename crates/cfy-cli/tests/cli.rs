@@ -26,6 +26,7 @@ fn app_config_link_forwards_the_exact_shopify_command_path_and_flags() {
             "--path",
             "/tmp/example",
             "--reset",
+            "--delegate",
         ])
         .env("CFY_SHOPIFY_BIN", executable)
         .output()
