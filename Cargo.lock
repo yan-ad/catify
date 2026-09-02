@@ -491,6 +491,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfy-bulk"
+version = "0.1.0"
+dependencies = [
+ "cfy-core",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "cfy-cli"
 version = "0.1.0"
 dependencies = [
@@ -508,7 +523,9 @@ dependencies = [
  "cfy-plugins",
  "cfy-process",
  "cfy-store",
+ "cfy-theme-init",
  "cfy-tunnel",
+ "cfy-upgrade",
  "clap",
  "clap_complete",
  "crossterm",
@@ -657,6 +674,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfy-theme-init"
+version = "0.1.0"
+dependencies = [
+ "cfy-core",
+ "cfy-process",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "cfy-tunnel"
 version = "0.1.0"
 dependencies = [
@@ -668,6 +696,16 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "cfy-upgrade"
+version = "0.1.0"
+dependencies = [
+ "cfy-core",
+ "cfy-process",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

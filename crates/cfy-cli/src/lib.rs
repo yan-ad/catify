@@ -41,7 +41,11 @@ use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
     StoreTarget, browser_url,
 };
+use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
+use cfy_upgrade::{
+    ExecutionPolicy, detect as detect_upgrade, execute as execute_upgrade, plan as plan_upgrade,
+};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use crossterm::{
@@ -1989,15 +1993,34 @@ async fn theme_parity_command(
     output: &Output,
 ) -> Result<u8> {
     match command {
-        ThemeCommand::Init { destination } => {
-            std::fs::create_dir_all(destination.join("assets"))
-                .map_err(|error| Error::api(format!("could not initialize theme: {error}")))?;
-            std::fs::create_dir_all(destination.join("config"))
-                .map_err(|error| Error::api(format!("could not initialize theme: {error}")))?;
+        ThemeCommand::Init {
+            name,
+            path,
+            clone_url,
+            latest,
+        } => {
+            let name = name.ok_or_else(|| {
+                Error::invalid_input(
+                    "theme name is required in non-interactive mode; pass `cfy theme init <name>`",
+                )
+            })?;
+            let mut request = ThemeInitRequest::new(path, name);
+            request.clone_url = clone_url;
+            request.latest = latest;
+            request.interactive = !non_interactive;
+            let report = initialize_theme(request).await.map_err(|error| {
+                Error::with_source(ErrorKind::Process, error.to_string(), error)
+            })?;
             output
                 .success(
-                    "Theme directory initialized",
-                    &serde_json::json!({"initialized": true}),
+                    "Theme initialized",
+                    &serde_json::json!({
+                        "destination": report.destination,
+                        "repository": report.repository,
+                        "branch": report.branch,
+                        "tag": report.checked_out_tag,
+                        "shallow": report.shallow,
+                    }),
                 )
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
@@ -3008,31 +3031,34 @@ fn print_commands(
     })
 }
 
-fn upgrade(dry_run: bool, output: &Output) -> Result<()> {
-    let channel = env::var("CFY_INSTALL_CHANNEL")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let Some(channel) = channel else {
-        return Err(Error::invalid_input(
-            "cannot upgrade an unmanaged installation; set CFY_INSTALL_CHANNEL to cargo or homebrew, or reinstall cfy through a supported channel",
-        ));
-    };
-    if !matches!(channel.as_str(), "cargo" | "homebrew") {
-        return Err(Error::invalid_input(format!(
-            "unsupported install channel `{channel}`; supported channels: cargo, homebrew"
+async fn upgrade(non_interactive: bool, output: &Output) -> Result<()> {
+    let provenance = detect_upgrade()?;
+    let plan = plan_upgrade(&provenance)
+        .map_err(|error| Error::with_source(ErrorKind::Config, error.to_string(), error))?;
+    let result = execute_upgrade(
+        &plan,
+        ExecutionPolicy {
+            interactive: !non_interactive,
+            approved: !non_interactive,
+        },
+        &Supervisor::default(),
+    )
+    .await
+    .map_err(|error| Error::with_source(ErrorKind::Process, error.to_string(), error))?;
+    if !result.status.success() {
+        return Err(Error::process(format!(
+            "upgrade command exited with status {:?}",
+            result.exit_code()
         )));
     }
-    let message = if dry_run {
-        format!("upgrade check passed for {channel}; no files changed")
-    } else {
-        format!(
-            "upgrade is available through {channel}; run the channel's package manager to apply it"
-        )
-    };
     output
         .success(
-            &message,
-            &serde_json::json!({ "channel": channel, "dry_run": dry_run, "changed": false }),
+            "Catify upgraded",
+            &serde_json::json!({
+                "provenance": provenance.kind().to_string(),
+                "exit_code": result.exit_code(),
+                "changed": true,
+            }),
         )
         .map_err(|error| {
             Error::with_source(
@@ -3566,11 +3592,7 @@ pub enum Command {
     Version,
 
     /// Upgrade Catify through a supported installation channel.
-    Upgrade {
-        /// Validate the selected channel without changing the installation.
-        #[arg(long)]
-        dry_run: bool,
-    },
+    Upgrade,
 
     /// Authentication operations.
     Auth {
@@ -4520,10 +4542,15 @@ pub enum ThemeCommand {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// Initialize a theme directory with Shopify markers.
+    /// Clone a Git repository as a starting point for a theme.
     Init {
-        #[arg(long, short = 'd', default_value = ".")]
-        destination: PathBuf,
+        name: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH", default_value = ".")]
+        path: PathBuf,
+        #[arg(short = 'u', long, env = "SHOPIFY_FLAG_CLONE_URL", default_value = cfy_theme_init::SKELETON_THEME_URL)]
+        clone_url: String,
+        #[arg(short = 'l', long, env = "SHOPIFY_FLAG_LATEST")]
+        latest: bool,
     },
     /// Package a theme directory into a zip archive.
     Package {
@@ -4575,7 +4602,7 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             tree,
         }) => print_commands(columns, extended, hidden, deprecated, sort, tree, output)?,
         Some(Command::Version) => print_version(output)?,
-        Some(Command::Upgrade { dry_run }) => upgrade(dry_run, output)?,
+        Some(Command::Upgrade) => upgrade(cli.global.non_interactive, output).await?,
         Some(Command::Completion { shell }) => print_completion(shell),
         Some(Command::Internal {
             command: InternalCommand::Idle { seconds, watch },

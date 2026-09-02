@@ -1,0 +1,15 @@
+[package]
+name = "cfy-upgrade"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cfy-core.workspace = true
+cfy-process.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

@@ -5,15 +5,15 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 74,
+    "implemented": 76,
     "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "native": 47,
-      "partial": 12
+      "native": 49,
+      "partial": 10
     },
     "by_domain": {
       "app": {
@@ -57,11 +57,11 @@
       "theme": {
         "adapter": 2,
         "blocked": 4,
-        "native": 11,
-        "partial": 2
+        "native": 12,
+        "partial": 1
       },
       "upgrade": {
-        "partial": 1
+        "native": 1
       },
       "version": {
         "native": 1
@@ -1340,12 +1340,12 @@
     {
       "command": "theme init",
       "domain": "theme",
-      "status": "partial",
+      "status": "native",
       "owner": 39,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust owns validation, Git clone orchestration, branch/latest selection, origin removal, Skeleton cleanup, output, and errors. Git is the intrinsic external engine.",
       "tested": true,
       "evidence": [
-        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-theme-init/src/lib.rs tests",
         "crates/cfy-cli/tests/cli.rs"
       ],
       "live_verified": false,
@@ -1517,13 +1517,14 @@
     {
       "command": "upgrade",
       "domain": "upgrade",
-      "status": "partial",
+      "status": "native",
       "owner": 36,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust detects trusted install provenance and executes the exact Homebrew or Cargo upgrade plan with inherited TTY/signals. Source, unknown, and unverifiable standalone installs fail safely.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "crates/cfy-upgrade/src/lib.rs tests",
+        "crates/cfy-upgrade/tests/upgrade.rs",
+        "crates/cfy-cli/tests/cli.rs"
       ],
       "live_verified": false,
       "notes": "Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method."

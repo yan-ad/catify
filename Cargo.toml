@@ -7,16 +7,19 @@ members = [
   "crates/cfy-config",
   "crates/cfy-core",
   "crates/cfy-build",
+  "crates/cfy-bulk",
   "crates/cfy-deploy",
   "crates/cfy-dev",
   "crates/cfy-organization",
   "crates/cfy-store",
   "crates/cfy-tunnel",
+  "crates/cfy-upgrade",
   "crates/cfy-extension-adapter",
   "crates/cfy-process",
   "crates/cfy-plugins",
   "crates/cfy-docs",
   "crates/cfy-hydrogen",
+  "crates/cfy-theme-init",
 ]
 default-members = ["crates/cfy-cli"]
 resolver = "2"
@@ -35,13 +38,16 @@ cfy-api = { version = "0.1.0", path = "crates/cfy-api" }
 cfy-app = { version = "0.1.0", path = "crates/cfy-app" }
 cfy-auth = { version = "0.1.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.1.0", path = "crates/cfy-build" }
+cfy-bulk = { version = "0.1.0", path = "crates/cfy-bulk" }
 cfy-deploy = { version = "0.1.0", path = "crates/cfy-deploy" }
 cfy-dev = { version = "0.1.0", path = "crates/cfy-dev" }
 cfy-docs = { version = "0.1.0", path = "crates/cfy-docs" }
 cfy-hydrogen = { version = "0.1.0", path = "crates/cfy-hydrogen" }
 cfy-organization = { version = "0.1.0", path = "crates/cfy-organization" }
 cfy-store = { version = "0.1.0", path = "crates/cfy-store" }
+cfy-theme-init = { version = "0.1.0", path = "crates/cfy-theme-init" }
 cfy-tunnel = { version = "0.1.0", path = "crates/cfy-tunnel" }
+cfy-upgrade = { version = "0.1.0", path = "crates/cfy-upgrade" }
 cfy-config = { version = "0.1.0", path = "crates/cfy-config" }
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 cfy-extension-adapter = { version = "0.1.0", path = "crates/cfy-extension-adapter" }

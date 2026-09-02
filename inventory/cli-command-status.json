@@ -897,14 +897,14 @@
     },
     "theme init": {
       "evidence": [
-        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-theme-init/src/lib.rs tests",
         "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust owns validation, Git clone orchestration, branch/latest selection, origin removal, Skeleton cleanup, output, and errors. Git is the intrinsic external engine.",
       "live_verified": false,
       "notes": "Creates a minimal directory instead of cloning/selecting an upstream theme template.",
       "owner": 39,
-      "status": "partial"
+      "status": "native"
     },
     "theme language-server": {
       "evidence": [
@@ -1026,14 +1026,15 @@
     },
     "upgrade": {
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "crates/cfy-upgrade/src/lib.rs tests",
+        "crates/cfy-upgrade/tests/upgrade.rs",
+        "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust detects trusted install provenance and executes the exact Homebrew or Cargo upgrade plan with inherited TTY/signals. Source, unknown, and unverifiable standalone installs fail safely.",
       "live_verified": false,
       "notes": "Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method.",
       "owner": 36,
-      "status": "partial"
+      "status": "native"
     },
     "version": {
       "evidence": [

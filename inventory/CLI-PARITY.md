@@ -5,7 +5,7 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **74**
+- Implemented (`native` + `adapter`): **76**
 - Commands with automated evidence: **88**
 - Live-verified commands: **7**
 
@@ -14,8 +14,8 @@
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
-| `native` | 47 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
+| `native` | 49 | Implemented in Rust and exposed at the upstream command path. |
+| `partial` | 10 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
@@ -117,7 +117,7 @@
 | `theme dev` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme duplicate` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme info` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `theme init` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. Creates a minimal directory instead of cloning/selecting an upstream theme template. |
+| `theme init` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust owns validation, Git clone orchestration, branch/latest selection, origin removal, Skeleton cleanup, output, and errors. Git is the intrinsic external engine. Evidence: crates/cfy-theme-init/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Creates a minimal directory instead of cloning/selecting an upstream theme template. |
 | `theme language-server` | `adapter` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-cli/src/theme_check.rs tests. |
 | `theme list` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme metafields pull` | `blocked` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet. Evidence: crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path. Execution remains blocked on the Admin API metafield-definition contract. |
@@ -130,5 +130,5 @@
 | `theme push` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme rename` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme share` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. Returns an existing preview URL instead of creating a new randomized unpublished theme. |
-| `upgrade` | `partial` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; compatibility/scenarios.json. Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method. |
+| `upgrade` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust detects trusted install provenance and executes the exact Homebrew or Cargo upgrade plan with inherited TTY/signals. Source, unknown, and unverifiable standalone installs fail safely. Evidence: crates/cfy-upgrade/src/lib.rs tests; crates/cfy-upgrade/tests/upgrade.rs; crates/cfy-cli/tests/cli.rs. Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method. |
 | `version` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; compatibility/scenarios.json. |

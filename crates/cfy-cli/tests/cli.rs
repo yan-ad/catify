@@ -8,6 +8,24 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn theme_init_and_upgrade_match_shopify_public_command_shapes() {
+    let theme_help = cfy(&["theme", "init", "--help"]);
+    assert!(theme_help.status.success());
+    let theme_help = String::from_utf8_lossy(&theme_help.stdout);
+    assert!(theme_help.contains("Usage: cfy theme init [OPTIONS] [NAME]"));
+    for flag in ["--path", "--clone-url", "--latest"] {
+        assert!(theme_help.contains(flag), "missing theme init flag {flag}");
+    }
+    assert!(!theme_help.contains("--destination"));
+
+    let upgrade_help = cfy(&["upgrade", "--help"]);
+    assert!(upgrade_help.status.success());
+    let upgrade_help = String::from_utf8_lossy(&upgrade_help.stdout);
+    assert!(upgrade_help.contains("Usage: cfy upgrade"));
+    assert!(!upgrade_help.contains("--dry-run"));
+}
+
+#[test]
 fn app_info_matches_shopify_flags_and_reports_project_structure() {
     let root = std::env::temp_dir().join(format!(
         "cfy-app-info-{}-{}",

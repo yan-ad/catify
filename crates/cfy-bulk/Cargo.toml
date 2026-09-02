@@ -1,20 +1,18 @@
 [package]
-name = "cfy-deploy"
+name = "cfy-bulk"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
-async-trait.workspace = true
-cfy-build.workspace = true
-cfy-api.workspace = true
-cfy-config.workspace = true
 cfy-core.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-url.workspace = true
-reqwest.workspace = true
-
 tokio.workspace = true
+url.workspace = true
+zeroize.workspace = true
