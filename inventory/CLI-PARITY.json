@@ -5,15 +5,15 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 71,
+    "implemented": 72,
     "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "native": 44,
-      "partial": 15
+      "native": 45,
+      "partial": 14
     },
     "by_domain": {
       "app": {
@@ -23,8 +23,7 @@
         "partial": 4
       },
       "auth": {
-        "native": 1,
-        "partial": 1
+        "native": 2
       },
       "commands": {
         "native": 1
@@ -465,16 +464,16 @@
     {
       "command": "auth logout",
       "domain": "auth",
-      "status": "partial",
+      "status": "native",
       "owner": 37,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust local-session removal matches Shopify CLI logout semantics and does not invoke Shopify CLI.",
       "tested": true,
       "evidence": [
-        "crates/cfy-auth/tests/auth.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-auth/tests/auth.rs::valid_sessions_skip_refresh_and_logout_removes_storage",
+        "crates/cfy-cli/tests/cli.rs::auth_logout_matches_shopify_local_session_command_contract"
       ],
       "live_verified": true,
-      "notes": "Local credential deletion exists; remote OAuth revocation is not implemented."
+      "notes": "Shopify CLI logout is local-only; Catify removes the active default session idempotently."
     },
     {
       "command": "commands",

@@ -5,7 +5,7 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **71**
+- Implemented (`native` + `adapter`): **72**
 - Commands with automated evidence: **88**
 - Live-verified commands: **7**
 
@@ -14,8 +14,8 @@
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
-| `native` | 44 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 15 | Exact command path exists, but behavior is not yet fully compatible. |
+| `native` | 45 | Implemented in Rust and exposed at the upstream command path. |
+| `partial` | 14 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
@@ -53,7 +53,7 @@
 | `app versions list` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app webhook trigger` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `auth login` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-auth/tests/auth.rs; crates/cfy-cli/tests/cli.rs. |
-| `auth logout` | `partial` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-auth/tests/auth.rs; crates/cfy-cli/tests/cli.rs. Local credential deletion exists; remote OAuth revocation is not implemented. |
+| `auth logout` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Native Rust local-session removal matches Shopify CLI logout semantics and does not invoke Shopify CLI. Evidence: crates/cfy-auth/tests/auth.rs::valid_sessions_skip_refresh_and_logout_removes_storage; crates/cfy-cli/tests/cli.rs::auth_logout_matches_shopify_local_session_command_contract. Shopify CLI logout is local-only; Catify removes the active default session idempotently. |
 | `commands` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Native Rust listing embeds the pinned 111-command Shopify runtime inventory and supports JSON, columns, sorting, tree, hidden, deprecated, and extended output without invoking Shopify CLI. Evidence: crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory; crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree; inventory/runtime-shopify-cli.json. Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow. |
 | `config autocorrect off` | `native` | yes | yes | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values. Evidence: crates/cfy-config/src/lib.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
 | `config autocorrect on` | `native` | yes | yes | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values. Evidence: crates/cfy-config/src/lib.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |

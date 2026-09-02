@@ -2707,12 +2707,13 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
                 })?;
             Ok(0)
         }
-        AuthCommand::Logout { identity } => {
-            store.delete(&identity).await?;
+        AuthCommand::Logout => {
+            let identity = "default";
+            store.delete(identity).await?;
             output
                 .success(
-                    "Local credentials removed; remote token revocation depends on the provider.",
-                    &serde_json::json!({ "identity": identity, "remote_revoked": false }),
+                    "Logged out from Shopify.",
+                    &serde_json::json!({ "identity": identity, "removed": true }),
                 )
                 .map_err(|error| {
                     Error::with_source(ErrorKind::Process, "could not write logout result", error)
@@ -2766,12 +2767,8 @@ pub enum AuthCommand {
         #[arg(long)]
         delegate: bool,
     },
-    /// Remove local credentials. Remote revocation is provider-dependent.
-    Logout {
-        /// Identity key used for credential storage.
-        #[arg(long, default_value = "default")]
-        identity: String,
-    },
+    /// Log out of the active Shopify account by removing its local session.
+    Logout,
 }
 
 #[derive(Debug, Subcommand)]

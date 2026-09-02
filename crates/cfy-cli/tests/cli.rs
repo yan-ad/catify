@@ -8,6 +8,21 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn auth_logout_matches_shopify_local_session_command_contract() {
+    let help = cfy(&["auth", "logout", "--help"]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("Usage: cfy auth logout"));
+    assert!(!help.contains("--identity"));
+    assert_eq!(
+        cfy(&["auth", "logout", "--identity", "other"])
+            .status
+            .code(),
+        Some(2)
+    );
+}
+
+#[test]
 fn commands_lists_the_complete_embedded_runtime_inventory() {
     let output = cfy(&["--json", "commands"]);
     assert!(output.status.success());
