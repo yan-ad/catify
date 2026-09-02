@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 const SERVICE_NAME: &str = "dev.catify.cfy";
+const LEGACY_SERVICE_NAME: &str = "dev.crabpify.cfy";
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Secret text that is zeroized on drop and never exposed through `Debug`.
@@ -97,11 +98,15 @@ pub trait CredentialStore: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct NativeCredentialStore {
     service: String,
+    legacy_service: Option<String>,
 }
 
 impl Default for NativeCredentialStore {
     fn default() -> Self {
-        Self::new(SERVICE_NAME)
+        Self {
+            service: SERVICE_NAME.to_owned(),
+            legacy_service: Some(LEGACY_SERVICE_NAME.to_owned()),
+        }
     }
 }
 
@@ -110,6 +115,7 @@ impl NativeCredentialStore {
     pub fn new(service: impl Into<String>) -> Self {
         Self {
             service: service.into(),
+            legacy_service: None,
         }
     }
 
@@ -128,12 +134,48 @@ impl NativeCredentialStore {
 impl CredentialStore for NativeCredentialStore {
     async fn load(&self, identity: &str) -> Result<Option<Session>> {
         let service = self.service.clone();
+        let legacy_service = self.legacy_service.clone();
         let identity = identity.to_owned();
         tokio::task::spawn_blocking(move || {
             let entry = Self::entry(&service, &identity)?;
             match entry.get_password() {
                 Ok(payload) => decode_session(&payload).map(Some),
-                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(keyring::Error::NoEntry) => {
+                    let Some(legacy_service) = legacy_service else {
+                        return Ok(None);
+                    };
+                    let legacy_entry = Self::entry(&legacy_service, &identity)?;
+                    let payload = match legacy_entry.get_password() {
+                        Ok(payload) => payload,
+                        Err(keyring::Error::NoEntry) => return Ok(None),
+                        Err(source) => {
+                            return Err(Error::with_source(
+                                ErrorKind::Config,
+                                "could not read legacy credentials from the operating system store",
+                                source,
+                            ));
+                        }
+                    };
+                    let session = decode_session(&payload)?;
+                    entry.set_password(&payload).map_err(|source| {
+                        Error::with_source(
+                            ErrorKind::Config,
+                            "could not migrate credentials to the Catify credential store",
+                            source,
+                        )
+                    })?;
+                    match legacy_entry.delete_credential() {
+                        Ok(()) | Err(keyring::Error::NoEntry) => {}
+                        Err(source) => {
+                            return Err(Error::with_source(
+                                ErrorKind::Config,
+                                "credentials were migrated but the legacy entry could not be removed",
+                                source,
+                            ));
+                        }
+                    }
+                    Ok(Some(session))
+                }
                 Err(source) => Err(Error::with_source(
                     ErrorKind::Config,
                     "could not read credentials from the operating system store",
