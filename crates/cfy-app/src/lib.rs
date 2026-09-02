@@ -20,6 +20,15 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+const APP_VERSIONS_QUERY: &str = r#"query AppVersions($appId: ID!) {
+  app(id: $appId) {
+    activeRelease { version { id } }
+    versions(first: 20) {
+      edges { node { id createdAt createdBy metadata { message versionTag } } }
+    }
+    versionsCount
+  }
+}"#;
 const APP_QUERY: &str = r#"query ActiveAppReleaseFromApiKey($apiKey: String!) {
   app: appByKey(key: $apiKey) {
     id key organizationId
@@ -44,6 +53,22 @@ pub struct RemoteApp {
     pub application_url: Option<String>,
     pub embedded: Option<bool>,
     pub scopes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RemoteAppVersion {
+    pub id: String,
+    pub version: Option<String>,
+    pub status: String,
+    pub message: String,
+    pub created_at: String,
+    pub created_by: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppVersionsReport {
+    pub versions: Vec<RemoteAppVersion>,
+    pub total: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -256,6 +281,99 @@ impl AppManagementClient {
                 .and_then(|value| value.get("embedded"))
                 .and_then(serde_json::Value::as_bool),
             scopes: app.root.scopes,
+        })
+    }
+
+    pub async fn list_versions(&self, app_id: &str) -> Result<AppVersionsReport> {
+        #[derive(Deserialize)]
+        struct Data {
+            app: Option<App>,
+        }
+        #[derive(Deserialize)]
+        struct App {
+            #[serde(rename = "activeRelease")]
+            active_release: Option<ActiveRelease>,
+            versions: Connection,
+            #[serde(rename = "versionsCount")]
+            versions_count: u64,
+        }
+        #[derive(Deserialize)]
+        struct ActiveRelease {
+            version: VersionId,
+        }
+        #[derive(Deserialize)]
+        struct VersionId {
+            id: String,
+        }
+        #[derive(Deserialize)]
+        struct Connection {
+            edges: Vec<Edge>,
+        }
+        #[derive(Deserialize)]
+        struct Edge {
+            node: Node,
+        }
+        #[derive(Deserialize)]
+        struct Node {
+            id: String,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+            #[serde(rename = "createdBy")]
+            created_by: Option<String>,
+            metadata: Option<Metadata>,
+        }
+        #[derive(Deserialize)]
+        struct Metadata {
+            message: Option<String>,
+            #[serde(rename = "versionTag")]
+            version_tag: Option<String>,
+        }
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                APP_VERSIONS_QUERY,
+                serde_json::json!({"appId": app_id}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("could not list app versions: {error}"),
+                )
+            })?;
+        let app = response
+            .data
+            .app
+            .ok_or_else(|| Error::new(ErrorKind::Api, "Shopify app was not found"))?;
+        let active_id = app.active_release.map(|release| release.version.id);
+        let versions = app
+            .versions
+            .edges
+            .into_iter()
+            .map(|edge| {
+                let metadata = edge.node.metadata;
+                RemoteAppVersion {
+                    status: if active_id.as_deref() == Some(edge.node.id.as_str()) {
+                        "active".into()
+                    } else {
+                        "inactive".into()
+                    },
+                    id: edge.node.id,
+                    version: metadata
+                        .as_ref()
+                        .and_then(|value| value.version_tag.clone()),
+                    message: metadata
+                        .as_ref()
+                        .and_then(|value| value.message.clone())
+                        .unwrap_or_default(),
+                    created_at: edge.node.created_at,
+                    created_by: edge.node.created_by.unwrap_or_default(),
+                }
+            })
+            .collect();
+        Ok(AppVersionsReport {
+            versions,
+            total: app.versions_count,
         })
     }
 }
@@ -521,6 +639,7 @@ uri = "/webhooks"
             for body in [
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
                 r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true},"specification":{"externalIdentifier":"app_home"}}]}}}}}"#,
+                r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
             ] {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut request = vec![0_u8; 8192];
@@ -545,6 +664,10 @@ uri = "/webhooks"
         let app = client.app_by_client_id("client-1").await.unwrap();
         assert_eq!(app.application_url.as_deref(), Some("https://example.test"));
         assert_eq!(app.scopes, ["read_products"]);
+        let versions = client.list_versions("app-1").await.unwrap();
+        assert_eq!(versions.total, 2);
+        assert_eq!(versions.versions[0].status, "active");
+        assert_eq!(versions.versions[1].status, "inactive");
         server.await.unwrap();
     }
 }

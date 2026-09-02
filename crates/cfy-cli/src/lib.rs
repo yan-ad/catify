@@ -2678,11 +2678,7 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 args.len()
             ),
         )),
-        AppCommand::VersionsList => Err(backend_unavailable(
-            "app versions list",
-            40,
-            "the app management GraphQL backend requires a verified Shopify endpoint and schema",
-        )),
+        AppCommand::Versions { command } => app_versions_command(command, output).await,
         AppCommand::Logs { args } => Err(backend_unavailable(
             "app logs",
             40,
@@ -2842,6 +2838,59 @@ fn app_env_command(command: AppEnvCommand, output: &Output) -> Result<u8> {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum AppVersionsCommand {
+    /// List deployed versions of the selected app.
+    List {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
+}
+
+async fn app_versions_command(command: AppVersionsCommand, output: &Output) -> Result<u8> {
+    let AppVersionsCommand::List {
+        config,
+        auth_alias,
+        client_id,
+        path,
+        reset,
+    } = command;
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    let client_id = selected
+        .document
+        .get("client_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?;
+    let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+    let store = Arc::new(NativeCredentialStore::default());
+    let identity_client = Arc::new(IdentityClient::new(
+        HttpIdentityTransport::new()?,
+        IdentityConfig::from_env(|key| env::var(key).ok())?,
+    ));
+    let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+    let session = sessions.session(&identity).await?.ok_or_else(|| {
+        Error::new(
+            ErrorKind::Api,
+            format!("no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"),
+        )
+    })?;
+    let backend = AppManagementClient::from_session(&session).await?;
+    let app = backend.app_by_client_id(client_id).await?;
+    let report = backend.list_versions(&app.id).await?;
+    output
+        .success("App versions", &report)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
+#[derive(Debug, Subcommand)]
 pub enum AppCommand {
     /// Display the currently selected app.
     #[command(alias = "show")]
@@ -2866,8 +2915,11 @@ pub enum AppCommand {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// List app versions.
-    VersionsList,
+    /// Manage deployed app versions.
+    Versions {
+        #[command(subcommand)]
+        command: AppVersionsCommand,
+    },
     /// Show application logs.
     Logs {
         #[arg(trailing_var_arg = true)]

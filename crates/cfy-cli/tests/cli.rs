@@ -8,6 +8,12 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_versions_uses_shopify_compatible_nested_command_name() {
+    assert!(cfy(&["app", "versions", "list", "--help"]).status.success());
+    assert!(!cfy(&["app", "versions-list"]).status.success());
+}
+
+#[test]
 fn app_env_uses_shopify_compatible_nested_command_names() {
     assert!(cfy(&["app", "env", "show", "--help"]).status.success());
     assert!(cfy(&["app", "env", "pull", "--help"]).status.success());
@@ -351,10 +357,10 @@ fn runtime_command_error_uses_core_exit_code() {
 
 #[test]
 fn unavailable_backends_have_command_specific_diagnostics() {
-    let app = cfy(&["app", "versions-list"]);
+    let app = cfy(&["app", "release"]);
     assert_eq!(app.status.code(), Some(1));
     let app_stderr = String::from_utf8_lossy(&app.stderr);
-    assert!(app_stderr.contains("app versions list is not available"));
+    assert!(app_stderr.contains("app release is not available"));
     assert!(app_stderr.contains("issues/40"));
     assert!(!app_stderr.contains("reserved but not implemented yet"));
 

@@ -30,7 +30,7 @@
     "app logs": {"status":"blocked-live","owner":40,"json":true,"non_interactive":false},
     "app logs sources": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
     "app release": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
-    "app versions list": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
+    "app versions list": {"status":"native","owner":40,"json":true,"non_interactive":true},
     "app webhook trigger": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true}
   }
 }
