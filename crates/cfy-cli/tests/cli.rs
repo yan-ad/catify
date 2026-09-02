@@ -8,6 +8,60 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_config_validate_reports_selected_config_diagnostics() {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    let root = std::env::temp_dir().join(format!(
+        "cfy-config-validate-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("shopify.app.toml"), "client_id = \"valid\"\n").unwrap();
+    fs::write(root.join("shopify.app.broken.toml"), "client_id = [\n").unwrap();
+
+    let valid = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args([
+            "app",
+            "config",
+            "validate",
+            "--config",
+            "shopify.app.toml",
+            "--path",
+        ])
+        .arg(&root)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(valid.status.success());
+    let valid: serde_json::Value = serde_json::from_slice(&valid.stdout).unwrap();
+    assert_eq!(valid["valid"], true);
+
+    let broken = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "config", "validate", "--config", "broken", "--path"])
+        .arg(&root)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(broken.status.code(), Some(1));
+    let broken: serde_json::Value = serde_json::from_slice(&broken.stdout).unwrap();
+    assert_eq!(broken["valid"], false);
+    assert_eq!(broken["errors"], 1);
+    assert!(
+        broken["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("malformed TOML")
+    );
+}
+
+#[test]
 fn app_config_use_persists_selection_and_reset_restores_default() {
     use std::{
         fs,

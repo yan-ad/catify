@@ -69,6 +69,171 @@ impl Drop for AbortOnDrop {
     }
 }
 
+fn select_app_config_path(
+    project: &cfy_config::project::Project,
+    requested: Option<&str>,
+) -> Result<PathBuf> {
+    if let Some(requested) = requested {
+        let normalized = normalized_app_config_name(requested);
+        return project
+            .config_files()
+            .iter()
+            .find(|path| {
+                path.file_name()
+                    .is_some_and(|name| name == normalized.as_str())
+            })
+            .cloned()
+            .ok_or_else(|| {
+                Error::invalid_input(format!("could not find configuration file {normalized}"))
+            });
+    }
+    if let Some(default) = project.config_files().iter().find(|path| {
+        path.file_name()
+            .is_some_and(|name| name == "shopify.app.toml")
+    }) {
+        return Ok(default.clone());
+    }
+    match project.config_files() {
+        [only] => Ok(only.clone()),
+        choices => Err(Error::invalid_input(format!(
+            "multiple app configurations are available; pass --config ({})",
+            choices
+                .iter()
+                .filter_map(|path| path.file_name())
+                .map(|name| name.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+fn app_config_name(path: &Path) -> String {
+    let file = path.file_name().unwrap_or_default().to_string_lossy();
+    if file == "shopify.app.toml" {
+        "default".to_owned()
+    } else {
+        file.strip_prefix("shopify.app.")
+            .and_then(|value| value.strip_suffix(".toml"))
+            .unwrap_or(&file)
+            .to_owned()
+    }
+}
+
+fn app_config_validate(
+    config: Option<String>,
+    client_id: Option<String>,
+    path: Option<PathBuf>,
+    reset: bool,
+    output: &Output,
+) -> Result<u8> {
+    let start = path.unwrap_or(env::current_dir().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not determine app directory",
+            error,
+        )
+    })?);
+    let project = discover(&start, Some(ProjectKind::App))?;
+    let state_path = app_state_path();
+    let mut state = ActiveConfigState::load(&state_path)?;
+    if reset {
+        state.clear(project.root());
+        state.write(&state_path)?;
+    }
+    let requested = if let Some(config) = config {
+        Some(config)
+    } else if let Some(client_id) = client_id {
+        let choices = load_local_app_configs(&project)?;
+        Some(
+            choices
+                .iter()
+                .find(|choice| choice.client_id == client_id)
+                .ok_or_else(|| {
+                    Error::invalid_input(
+                        "the specified client ID could not be found in any app TOML file",
+                    )
+                })?
+                .file_name
+                .clone(),
+        )
+    } else if !reset {
+        state.selected(project.root()).map(ToOwned::to_owned)
+    } else {
+        None
+    };
+    let selected_path = select_app_config_path(&project, requested.as_deref())?;
+    let selected_name = app_config_name(&selected_path);
+    let graph = cfy_config::AppConfigGraph::load_selected(&project, &selected_path)?;
+    let errors = graph
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == cfy_config::DiagnosticSeverity::Error)
+        .count();
+    let warnings = graph.diagnostics.len() - errors;
+    let diagnostics = graph
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            serde_json::json!({
+                "severity": match diagnostic.severity {
+                    cfy_config::DiagnosticSeverity::Warning => "warning",
+                    cfy_config::DiagnosticSeverity::Error => "error",
+                },
+                "message": diagnostic.message,
+                "file": diagnostic.location.file,
+                "line": diagnostic.location.line,
+                "column": diagnostic.location.column,
+            })
+        })
+        .collect::<Vec<_>>();
+    let report = serde_json::json!({
+        "valid": errors == 0,
+        "config": selected_name,
+        "config_path": selected_path,
+        "extensions": graph.apps[0].extensions.len(),
+        "webs": graph.apps[0].webs.len(),
+        "errors": errors,
+        "warnings": warnings,
+        "diagnostics": diagnostics,
+    });
+    let mut human = if errors == 0 {
+        format!(
+            "App configuration is valid ({} extension(s), {} web component(s), {} warning(s))",
+            graph.apps[0].extensions.len(),
+            graph.apps[0].webs.len(),
+            warnings
+        )
+    } else {
+        format!(
+            "App configuration validation failed with {errors} error(s) and {warnings} warning(s)"
+        )
+    };
+    for diagnostic in &graph.diagnostics {
+        human.push_str(&format!(
+            "\n{}:{}:{} [{}] {}",
+            diagnostic.location.file.display(),
+            diagnostic.location.line,
+            diagnostic.location.column,
+            match diagnostic.severity {
+                cfy_config::DiagnosticSeverity::Warning => "warning",
+                cfy_config::DiagnosticSeverity::Error => "error",
+            },
+            diagnostic.message
+        ));
+    }
+    if errors == 0 {
+        output
+            .success(&human, &report)
+            .map_err(|error| Error::process(error.to_string()))?;
+        Ok(0)
+    } else {
+        output
+            .success(&human, &report)
+            .map_err(|error| Error::process(error.to_string()))?;
+        Ok(1)
+    }
+}
+
 fn app_state_path() -> PathBuf {
     env::var_os("CFY_APP_STATE_FILE")
         .map(PathBuf::from)
@@ -452,7 +617,18 @@ pub enum AppConfigCommand {
         reset: bool,
     },
     /// Validate app configuration and extensions.
-    Validate,
+    Validate {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
 }
 
 async fn app_config_command(
@@ -561,11 +737,13 @@ async fn app_config_command(
             path,
             reset,
         } => app_config_use(config, client_id, path, reset, non_interactive, output),
-        AppConfigCommand::Validate => Err(backend_unavailable(
-            "app config validate",
-            24,
-            "the project graph parser is available, but validation reporting is not wired yet",
-        )),
+        AppConfigCommand::Validate {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+        } => app_config_validate(config, client_id, path, reset, output),
     }
 }
 
@@ -2739,16 +2917,16 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             drop(watcher.take());
         }
         Some(Command::App { command }) => {
-            app_command(command, cli.global.non_interactive, output).await?;
+            return app_command(command, cli.global.non_interactive, output).await;
         }
         Some(Command::Auth { command }) => {
-            auth_command(command, cli.global.non_interactive, output).await?;
+            return auth_command(command, cli.global.non_interactive, output).await;
         }
         Some(Command::Organization { command }) => {
-            organization_command(command, output).await?;
+            return organization_command(command, output).await;
         }
         Some(Command::Store { command }) => {
-            store_command(command, cli.global.non_interactive, output).await?;
+            return store_command(command, cli.global.non_interactive, output).await;
         }
         Some(Command::Doc { command }) => {
             tokio::task::block_in_place(|| docs_command(command, output))?;

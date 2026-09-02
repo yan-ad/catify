@@ -128,6 +128,31 @@ impl AppConfigGraph {
             diagnostics,
         })
     }
+
+    pub fn load_selected(project: &Project, selected: &Path) -> Result<Self> {
+        if !project.config_files().iter().any(|path| path == selected) {
+            return Err(Error::invalid_input(format!(
+                "selected configuration {} does not belong to project {}",
+                selected.display(),
+                project.root().display()
+            )));
+        }
+        let mut diagnostics = Vec::new();
+        let (table, source) = parse_table(selected, &mut diagnostics)?;
+        let config = parse_app(selected, table, &source, &mut diagnostics);
+        let extensions = discover_extensions(project.root(), &config, &mut diagnostics)?;
+        let webs = discover_webs(project.root(), &config, &mut diagnostics)?;
+        diagnose_duplicate_handles(&extensions, &mut diagnostics);
+        Ok(Self {
+            root: project.root().to_path_buf(),
+            apps: vec![AppNode {
+                config,
+                extensions,
+                webs,
+            }],
+            diagnostics,
+        })
+    }
 }
 
 fn parse_table(path: &Path, diagnostics: &mut Vec<ConfigDiagnostic>) -> Result<(Table, String)> {
