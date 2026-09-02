@@ -53,7 +53,7 @@ const APP_VERSIONS_QUERY: &str = r#"query AppVersions($appId: ID!) {
 }"#;
 const APP_QUERY: &str = r#"query ActiveAppReleaseFromApiKey($apiKey: String!) {
   app: appByKey(key: $apiKey) {
-    id key organizationId
+    id key handle organizationId
     activeRoot { grantedShopifyApprovalScopes }
     activeRelease { version { name appModules { config specification { externalIdentifier } } } }
   }
@@ -77,6 +77,7 @@ pub struct RemoteApp {
     pub id: String,
     pub client_id: String,
     pub name: String,
+    pub handle: Option<String>,
     pub organization_id: String,
     pub application_url: Option<String>,
     pub embedded: Option<bool>,
@@ -379,6 +380,7 @@ impl AppManagementClient {
         struct App {
             id: String,
             key: String,
+            handle: Option<String>,
             #[serde(rename = "organizationId")]
             organization_id: String,
             #[serde(rename = "activeRoot")]
@@ -439,12 +441,13 @@ impl AppManagementClient {
             };
             let transformed =
                 transform_remote_module(&module.specification.external_identifier, config)?;
-            deep_merge_table(&mut remote_configuration, transformed);
+            merge_remote_configuration(&mut remote_configuration, transformed)?;
         }
         Ok(RemoteApp {
             id: app.id,
             client_id: app.key,
             name: app.release.version.name,
+            handle: app.handle,
             organization_id: app.organization_id,
             application_url: home
                 .and_then(|value| value.get("app_url"))
@@ -806,7 +809,15 @@ fn transform_remote_module(identifier: &str, config: &serde_json::Value) -> Resu
             }
         }
         "app_proxy" => {
-            let value = json_to_toml(config)?;
+            let mut config = config.clone();
+            if let Some(url) = config
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .map(|url| url.trim_end_matches('/').to_owned())
+            {
+                config["url"] = serde_json::Value::String(url);
+            }
+            let value = json_to_toml(&config)?;
             if let toml::Value::Table(table) = value {
                 output.insert("app_proxy".into(), toml::Value::Table(table));
             }
@@ -816,7 +827,7 @@ fn transform_remote_module(identifier: &str, config: &serde_json::Value) -> Resu
                 insert_nested_json(&mut output, &["pos", "embedded"], value)?;
             }
         }
-        "webhooks" | "privacy_compliance_webhooks" => {
+        "webhooks" => {
             let value = json_to_toml(config)?;
             if let toml::Value::Table(table) = value {
                 let webhooks = output
@@ -827,9 +838,94 @@ fn transform_remote_module(identifier: &str, config: &serde_json::Value) -> Resu
                 }
             }
         }
+        "webhook_subscription" => {
+            let mut subscription = toml::Table::new();
+            for key in [
+                "uri",
+                "actions",
+                "include_fields",
+                "filter",
+                "payload_query",
+                "name",
+            ] {
+                if let Some(value) = config.get(key).filter(|value| !value.is_null()) {
+                    subscription.insert(key.into(), json_to_toml(value)?);
+                }
+            }
+            if let Some(topic) = config.get("topic").filter(|value| !value.is_null()) {
+                subscription.insert(
+                    "topics".into(),
+                    toml::Value::Array(vec![json_to_toml(topic)?]),
+                );
+            }
+            append_webhook_subscription(&mut output, subscription)?;
+        }
+        "privacy_compliance_webhooks" => {
+            for (key, topic) in [
+                ("customers_data_request_url", "customers/data_request"),
+                ("customers_redact_url", "customers/redact"),
+                ("shop_redact_url", "shop/redact"),
+            ] {
+                let Some(uri) = config.get(key).and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                append_or_merge_compliance_subscription(&mut output, uri, topic)?;
+            }
+            if let Some(version) = config.get("api_version").filter(|value| !value.is_null()) {
+                insert_nested_json(&mut output, &["webhooks", "api_version"], version)?;
+            }
+        }
         _ => {}
     }
     Ok(output)
+}
+
+fn webhook_subscriptions_mut(output: &mut toml::Table) -> Result<&mut Vec<toml::Value>> {
+    let webhooks = output
+        .entry("webhooks")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| Error::new(ErrorKind::Config, "webhooks configuration must be a table"))?;
+    webhooks
+        .entry("subscriptions")
+        .or_insert_with(|| toml::Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| Error::new(ErrorKind::Config, "webhook subscriptions must be an array"))
+}
+
+fn append_webhook_subscription(output: &mut toml::Table, subscription: toml::Table) -> Result<()> {
+    if !subscription.is_empty() {
+        webhook_subscriptions_mut(output)?.push(toml::Value::Table(subscription));
+    }
+    Ok(())
+}
+
+fn append_or_merge_compliance_subscription(
+    output: &mut toml::Table,
+    uri: &str,
+    topic: &str,
+) -> Result<()> {
+    let subscriptions = webhook_subscriptions_mut(output)?;
+    if let Some(existing) = subscriptions.iter_mut().find_map(|value| {
+        let table = value.as_table_mut()?;
+        (table.get("uri").and_then(toml::Value::as_str) == Some(uri)).then_some(table)
+    }) {
+        let topics = existing
+            .entry("compliance_topics")
+            .or_insert_with(|| toml::Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| Error::new(ErrorKind::Config, "compliance_topics must be an array"))?;
+        topics.push(toml::Value::String(topic.into()));
+    } else {
+        let mut subscription = toml::Table::new();
+        subscription.insert("uri".into(), toml::Value::String(uri.into()));
+        subscription.insert(
+            "compliance_topics".into(),
+            toml::Value::Array(vec![toml::Value::String(topic.into())]),
+        );
+        subscriptions.push(toml::Value::Table(subscription));
+    }
+    Ok(())
 }
 
 fn copy_json_field(
@@ -917,6 +1013,19 @@ fn deep_merge_table(target: &mut toml::Table, source: toml::Table) {
     }
 }
 
+fn merge_remote_configuration(target: &mut toml::Table, mut source: toml::Table) -> Result<()> {
+    let subscriptions = source
+        .get_mut("webhooks")
+        .and_then(toml::Value::as_table_mut)
+        .and_then(|webhooks| webhooks.remove("subscriptions"))
+        .and_then(|value| value.as_array().cloned());
+    deep_merge_table(target, source);
+    if let Some(subscriptions) = subscriptions {
+        webhook_subscriptions_mut(target)?.extend(subscriptions);
+    }
+    Ok(())
+}
+
 pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<LinkReport> {
     let name = options
         .file_name
@@ -952,6 +1061,9 @@ pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<Lin
         toml::Value::String(app.client_id.clone()),
     );
     document.insert("name".into(), toml::Value::String(app.name.clone()));
+    if let Some(handle) = &app.handle {
+        document.insert("handle".into(), toml::Value::String(handle.clone()));
+    }
     if let Some(url) = &app.application_url {
         document.insert("application_url".into(), toml::Value::String(url.clone()));
     }
@@ -1035,6 +1147,14 @@ embedded = true
 
 [webhooks]
 api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+topics = ["orders/create"]
+uri = "pubsub://project:topic"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/webhooks"
 "#,
         )
         .unwrap();
@@ -1049,6 +1169,7 @@ api_version = "2026-07"
                 id: "gid://shopify/App/1".into(),
                 client_id: "client-key".into(),
                 name: "Native app".into(),
+                handle: Some("native-app".into()),
                 organization_id: "1".into(),
                 application_url: Some("https://example.test".into()),
                 embedded: Some(true),
@@ -1059,6 +1180,7 @@ api_version = "2026-07"
         .unwrap();
         let source = std::fs::read_to_string(report.path).unwrap();
         assert!(source.contains("client_id = \"client-key\""));
+        assert!(source.contains("handle = \"native-app\""));
         assert!(source.contains("application_url = \"https://example.test\""));
         assert!(source.contains("scopes = \"read_products,write_products\""));
         assert!(source.contains("redirect_urls = [\"https://example.test/auth/callback\"]"));
@@ -1067,6 +1189,16 @@ api_version = "2026-07"
         assert!(source.contains("[app_proxy]"));
         assert!(source.contains("[pos]"));
         assert!(source.contains("[webhooks]"));
+        assert!(source.contains("[[webhooks.subscriptions]]"));
+        assert!(source.contains("topics = [\"orders/create\"]"));
+        let linked: toml::Value = toml::from_str(&source).unwrap();
+        assert_eq!(
+            linked["webhooks"]["subscriptions"][1]["compliance_topics"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1097,6 +1229,7 @@ uri = "/webhooks"
                 id: "1".into(),
                 client_id: "new".into(),
                 name: "Updated app".into(),
+                handle: None,
                 organization_id: "1".into(),
                 application_url: Some("https://updated.example".into()),
                 embedded: Some(true),
@@ -1127,6 +1260,7 @@ uri = "/webhooks"
                 id: "1".into(),
                 client_id: "new".into(),
                 name: "App".into(),
+                handle: None,
                 organization_id: "1".into(),
                 application_url: None,
                 embedded: None,
@@ -1146,7 +1280,7 @@ uri = "/webhooks"
         let server = tokio::spawn(async move {
             for (index, body) in [
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
-                r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":true},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"api_version":"2026-07","privacy_compliance":{"shop_deletion_url":"/webhooks/shop-redact"}},"specification":{"externalIdentifier":"webhooks"}}]}}}}}"#,
+                r#"{"data":{"app":{"id":"app-1","key":"client-1","handle":"example-app","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"scopes":"read_products,write_orders","optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy/","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":false},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"topic":"orders/create","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"topic":"orders/updated","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"api_version":"2025-07","customers_data_request_url":"/webhooks","customers_redact_url":"/webhooks","shop_redact_url":"/webhooks"},"specification":{"externalIdentifier":"privacy_compliance_webhooks"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
             ]
             .into_iter()
@@ -1178,6 +1312,7 @@ uri = "/webhooks"
         assert_eq!(apps[0].name, "Example");
         let app = client.app_by_client_id("client-1").await.unwrap();
         assert_eq!(app.application_url.as_deref(), Some("https://example.test"));
+        assert_eq!(app.handle.as_deref(), Some("example-app"));
         assert_eq!(app.scopes, ["read_products"]);
         assert_eq!(
             app.remote_configuration["auth"]["redirect_urls"][0].as_str(),
@@ -1193,11 +1328,30 @@ uri = "/webhooks"
         );
         assert_eq!(
             app.remote_configuration["pos"]["embedded"].as_bool(),
-            Some(true)
+            Some(false)
         );
         assert_eq!(
             app.remote_configuration["webhooks"]["api_version"].as_str(),
-            Some("2026-07")
+            Some("2025-07")
+        );
+        let subscriptions = app.remote_configuration["webhooks"]["subscriptions"]
+            .as_array()
+            .unwrap();
+        assert_eq!(subscriptions.len(), 3);
+        assert_eq!(
+            subscriptions[0]["topics"][0].as_str(),
+            Some("orders/create")
+        );
+        assert_eq!(
+            subscriptions[1]["topics"][0].as_str(),
+            Some("orders/updated")
+        );
+        assert_eq!(
+            subscriptions[2]["compliance_topics"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
         );
         let versions = client.list_versions("app-1").await.unwrap();
         assert_eq!(versions.total, 2);

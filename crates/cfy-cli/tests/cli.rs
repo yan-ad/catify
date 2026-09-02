@@ -7,6 +7,25 @@ fn cfy(args: &[&str]) -> Output {
         .expect("cfy should execute")
 }
 
+fn cfy_outside_project(args: &[&str]) -> Output {
+    let directory = std::env::temp_dir().join(format!(
+        "cfy-no-project-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(args)
+        .current_dir(&directory)
+        .output()
+        .expect("cfy should execute");
+    std::fs::remove_dir_all(directory).unwrap();
+    output
+}
+
 #[test]
 fn app_release_requires_explicit_non_interactive_policy() {
     let output = cfy(&["app", "release", "--version", "1", "--non-interactive"]);
@@ -312,7 +331,7 @@ fn theme_check_missing_dependency_is_actionable() {
 
 #[test]
 fn json_runtime_errors_leave_stdout_empty() {
-    let output = cfy(&["app", "info", "--json"]);
+    let output = cfy_outside_project(&["app", "info", "--json"]);
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
 
@@ -355,7 +374,7 @@ fn invalid_command_has_stable_usage_exit_code_and_suggestion() {
 
 #[test]
 fn runtime_command_error_uses_core_exit_code() {
-    let output = cfy(&["a", "show"]);
+    let output = cfy_outside_project(&["a", "show"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("app info requires a Shopify app project"));
