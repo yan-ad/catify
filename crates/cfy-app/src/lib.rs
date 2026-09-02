@@ -26,6 +26,29 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+
+/// App client credentials used only for short-lived store Admin token exchange.
+#[derive(Clone)]
+pub struct AppClientCredentials {
+    pub client_id: String,
+    pub client_secret: cfy_auth::Secret,
+}
+
+impl std::fmt::Debug for AppClientCredentials {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppClientCredentials")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .finish()
+    }
+}
+const APP_CREDENTIALS_QUERY: &str = r#"query AppClientCredentials($apiKey: String!) {
+  app: appByKey(key: $apiKey) {
+    key
+    activeRoot { clientCredentials { secrets { key } } }
+  }
+}"#;
 const ORGANIZATIONS_QUERY: &str = r#"query ListOrganizations {
   currentUserAccount {
     organizationsWithAccessToDestination(destination: APPS_CLI) {
@@ -240,6 +263,57 @@ pub struct AppManagementClient {
 }
 
 impl AppManagementClient {
+    pub async fn app_client_credentials(&self, client_id: &str) -> Result<AppClientCredentials> {
+        #[derive(Deserialize)]
+        struct Data {
+            app: Option<App>,
+        }
+        #[derive(Deserialize)]
+        struct App {
+            key: String,
+            #[serde(rename = "activeRoot")]
+            root: Root,
+        }
+        #[derive(Deserialize)]
+        struct Root {
+            #[serde(rename = "clientCredentials")]
+            credentials: Credentials,
+        }
+        #[derive(Deserialize)]
+        struct Credentials {
+            #[serde(default)]
+            secrets: Vec<ClientSecret>,
+        }
+        #[derive(Deserialize)]
+        struct ClientSecret {
+            key: String,
+        }
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                APP_CREDENTIALS_QUERY,
+                serde_json::json!({"apiKey": client_id}),
+            ))
+            .await
+            .map_err(|error| Error::api(format!("could not fetch app credentials: {error}")))?;
+        let app = response.data.app.ok_or_else(|| {
+            Error::api(format!("no Shopify app found for client ID `{client_id}`"))
+        })?;
+        let secret = app
+            .root
+            .credentials
+            .secrets
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                Error::api("Shopify app has no client secret available for Admin authentication")
+            })?;
+        Ok(AppClientCredentials {
+            client_id: app.key,
+            client_secret: cfy_auth::Secret::new(secret.key),
+        })
+    }
+
     pub async fn from_session(session: &Session) -> Result<Self> {
         let token = exchange_app_management_token(session).await?;
         Self::new(
@@ -1285,6 +1359,7 @@ uri = "/webhooks"
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
                 r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"scopes":"read_products,write_orders","optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy/","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":false},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"topic":"orders/create","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"topic":"orders/updated","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"api_version":"2025-07","customers_data_request_url":"/webhooks","customers_redact_url":"/webhooks","shop_redact_url":"/webhooks"},"specification":{"externalIdentifier":"privacy_compliance_webhooks"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
+                r#"{"data":{"app":{"key":"client-1","activeRoot":{"clientCredentials":{"secrets":[{"key":"super-secret"}]}}}}}"#,
             ]
             .into_iter()
             .enumerate()
@@ -1360,6 +1435,10 @@ uri = "/webhooks"
         assert_eq!(versions.total, 2);
         assert_eq!(versions.versions[0].status, "active");
         assert_eq!(versions.versions[1].status, "inactive");
+        let credentials = client.app_client_credentials("client-1").await.unwrap();
+        assert_eq!(credentials.client_id, "client-1");
+        assert_eq!(credentials.client_secret.expose(), "super-secret");
+        assert!(!format!("{credentials:?}").contains("super-secret"));
         server.await.unwrap();
     }
 

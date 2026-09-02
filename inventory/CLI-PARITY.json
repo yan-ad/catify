@@ -5,21 +5,21 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 76,
-    "tested": 88,
+    "implemented": 79,
+    "tested": 91,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
-      "library-only": 6,
-      "native": 49,
+      "library-only": 3,
+      "native": 52,
       "partial": 10
     },
     "by_domain": {
       "app": {
         "blocked": 12,
-        "library-only": 6,
-        "native": 10,
+        "library-only": 3,
+        "native": 13,
         "partial": 3
       },
       "auth": {
@@ -86,33 +86,45 @@
     {
       "command": "app bulk cancel",
       "domain": "app",
-      "status": "library-only",
+      "status": "native",
       "owner": 40,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app bulk execute",
       "domain": "app",
-      "status": "library-only",
+      "status": "native",
       "owner": 40,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app bulk status",
       "domain": "app",
-      "status": "library-only",
+      "status": "native",
       "owner": 40,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

@@ -5,16 +5,16 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **76**
-- Commands with automated evidence: **88**
+- Implemented (`native` + `adapter`): **79**
+- Commands with automated evidence: **91**
 - Live-verified commands: **7**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
-| `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
-| `native` | 49 | Implemented in Rust and exposed at the upstream command path. |
+| `library-only` | 3 | Core/backend exists, but the public command is not fully wired. |
+| `native` | 52 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 10 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -22,9 +22,9 @@
 | Command | Status | Tested | Live | Owner | Implementation / gap |
 |---|---|:---:|:---:|---:|---|
 | `app build` | `native` | yes | yes | [#26](https://github.com/yan-ad/catify/issues/26) | Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol. Evidence: crates/cfy-build/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `app bulk cancel` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
-| `app bulk execute` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
-| `app bulk status` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
+| `app bulk cancel` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
+| `app bulk execute` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
+| `app bulk status` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app config link` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config use` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |

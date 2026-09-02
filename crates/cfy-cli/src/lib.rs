@@ -13,6 +13,10 @@ use cfy_auth::{
     identity::{HttpIdentityTransport, IdentityClient, IdentityConfig},
 };
 use cfy_build::{BuildInput, BuildMode, BuildOptions, BuildPipeline};
+use cfy_bulk::{
+    AppCredentials as BulkAppCredentials, BulkClient, BulkOperationId, BulkOperationStatus,
+    StoreDomain as BulkStoreDomain, exchange_client_credentials, resolve_api_version,
+};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
@@ -86,6 +90,68 @@ impl Drop for AbortOnDrop {
     }
 }
 
+#[derive(Debug, Args)]
+pub struct AppBulkContext {
+    #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+    config: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+    auth_alias: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+    client_id: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+    path: Option<PathBuf>,
+    #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+    reset: bool,
+    #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+    store: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppBulkCommand {
+    /// Execute a bulk operation.
+    #[command(disable_version_flag = true)]
+    Execute {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(
+            short = 'q',
+            long,
+            env = "SHOPIFY_FLAG_QUERY",
+            conflicts_with = "query_file"
+        )]
+        query: Option<String>,
+        #[arg(
+            long,
+            env = "SHOPIFY_FLAG_QUERY_FILE",
+            required_unless_present = "query"
+        )]
+        query_file: Option<PathBuf>,
+        #[arg(short = 'v', long, env = "SHOPIFY_FLAG_VARIABLES", action = ArgAction::Append, conflicts_with = "variable_file")]
+        variables: Vec<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_VARIABLE_FILE")]
+        variable_file: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_OUTPUT_FILE", requires = "watch")]
+        output_file: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_WATCH")]
+        watch: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
+    },
+    /// Check bulk operation status.
+    Status {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(long, env = "SHOPIFY_FLAG_ID")]
+        id: Option<String>,
+    },
+    /// Cancel a bulk operation.
+    Cancel {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(long, env = "SHOPIFY_FLAG_ID", required = true)]
+        id: String,
+    },
+}
 fn select_theme_for_open<'a>(
     themes: &'a [Theme],
     requested: Option<&str>,
@@ -3870,6 +3936,200 @@ fn app_info(
     Ok(0)
 }
 
+async fn app_bulk_client(
+    context: AppBulkContext,
+    requested_version: Option<&str>,
+) -> Result<BulkClient> {
+    let selected = selected_app_environment(
+        context.path,
+        context.config,
+        context.client_id,
+        context.reset,
+    )?;
+    let client_id = selected
+        .document
+        .get("client_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?;
+    let store_domain = context
+        .store
+        .or(selected.store)
+        .ok_or_else(|| Error::invalid_input("a development store is required; pass --store"))?;
+    let store_domain = BulkStoreDomain::parse(&store_domain)
+        .map_err(|error| Error::invalid_input(error.to_string()))?;
+    let identity = context.auth_alias.unwrap_or_else(|| "default".to_owned());
+    let store = Arc::new(NativeCredentialStore::default());
+    let identity_client = Arc::new(IdentityClient::new(
+        HttpIdentityTransport::new()?,
+        IdentityConfig::from_env(|key| env::var(key).ok())?,
+    ));
+    let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+    let session = sessions.session(&identity).await?.ok_or_else(|| {
+        Error::api(format!(
+            "no authenticated session for `{identity}`; run `cfy auth login` first"
+        ))
+    })?;
+    let app_management = AppManagementClient::from_session(&session).await?;
+    let credentials = app_management.app_client_credentials(client_id).await?;
+    let credentials = BulkAppCredentials::new(
+        credentials.client_id,
+        credentials.client_secret.expose().to_owned(),
+    );
+    let token = exchange_client_credentials(&store_domain, &credentials)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
+    let version = resolve_api_version(&store_domain, requested_version)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
+    BulkClient::new(&store_domain, &version, token.secret())
+        .map_err(|error| Error::api(error.to_string()))
+}
+
+async fn app_bulk_command(command: AppBulkCommand, output: &Output) -> Result<u8> {
+    match command {
+        AppBulkCommand::Execute {
+            context,
+            query,
+            query_file,
+            variables,
+            variable_file,
+            output_file,
+            watch,
+            version,
+        } => {
+            let document = match (query, query_file) {
+                (Some(query), None) => query,
+                (None, Some(path)) => std::fs::read_to_string(&path).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        format!("could not read bulk query {}", path.display()),
+                        error,
+                    )
+                })?,
+                _ => {
+                    return Err(Error::invalid_input(
+                        "provide exactly one of --query or --query-file",
+                    ));
+                }
+            };
+            let client = app_bulk_client(context, version.as_deref()).await?;
+            let operation = match cfy_bulk::operation_kind(&document)
+                .map_err(|error| Error::invalid_input(error.to_string()))?
+            {
+                cfy_bulk::OperationKind::Query => {
+                    if !variables.is_empty() || variable_file.is_some() {
+                        return Err(Error::invalid_input(
+                            "--variables and --variable-file can only be used with mutations",
+                        ));
+                    }
+                    client.execute_query(&document).await
+                }
+                cfy_bulk::OperationKind::Mutation => {
+                    let jsonl = if let Some(path) = variable_file {
+                        std::fs::read(&path).map_err(|error| {
+                            Error::with_source(
+                                ErrorKind::Config,
+                                format!("could not read bulk variables {}", path.display()),
+                                error,
+                            )
+                        })?
+                    } else {
+                        variables.join("\n").into_bytes()
+                    };
+                    client.execute_mutation(&document, &jsonl).await
+                }
+            }
+            .map_err(|error| Error::api(error.to_string()))?;
+            let operation = if watch {
+                let cancellation = Cancellation::default();
+                client
+                    .poll(
+                        &BulkOperationId::parse(&operation.id)
+                            .map_err(|error| Error::api(error.to_string()))?,
+                        cfy_bulk::PollMode::default(),
+                        &cancellation,
+                    )
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?
+            } else {
+                operation
+            };
+            if watch
+                && operation.status == BulkOperationStatus::Completed
+                && operation.url.is_some()
+            {
+                let results = client
+                    .download_jsonl(&operation)
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                if let Some(path) = output_file {
+                    write_atomic(&path, results.as_bytes()).map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Config,
+                            format!("could not write bulk results {}", path.display()),
+                            error,
+                        )
+                    })?;
+                    output
+                        .success(
+                            "Bulk results written",
+                            &serde_json::json!({"operation": operation, "output_file": path}),
+                        )
+                        .map_err(|error| Error::process(error.to_string()))?;
+                } else {
+                    output
+                        .success(
+                            std::str::from_utf8(results.as_bytes()).unwrap_or_default(),
+                            &operation,
+                        )
+                        .map_err(|error| Error::process(error.to_string()))?;
+                }
+            } else {
+                output
+                    .success("Bulk operation", &operation)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            Ok(0)
+        }
+        AppBulkCommand::Status { context, id } => {
+            let client = app_bulk_client(context, None).await?;
+            if let Some(id) = id {
+                let id = BulkOperationId::parse(&id)
+                    .map_err(|error| Error::invalid_input(error.to_string()))?;
+                let operation = client
+                    .status(&id)
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                output
+                    .success("Bulk operation status", &operation)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            } else {
+                let operations = client
+                    .list_last_seven_days()
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                output
+                    .success("Bulk operations", &operations)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            Ok(0)
+        }
+        AppBulkCommand::Cancel { context, id } => {
+            let client = app_bulk_client(context, Some("2026-01")).await?;
+            let id = BulkOperationId::parse(&id)
+                .map_err(|error| Error::invalid_input(error.to_string()))?;
+            let operation = client
+                .cancel(&id)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            output
+                .success("Bulk operation cancellation requested", &operation)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+    }
+}
+
 async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     match command {
         AppCommand::Build {
@@ -4028,6 +4288,7 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 args.len()
             ),
         )),
+        AppCommand::Bulk { command } => app_bulk_command(command, output).await,
         AppCommand::Versions { command } => app_versions_command(command, output).await,
         AppCommand::Logs { args } => Err(backend_unavailable(
             "app logs",
@@ -4346,6 +4607,11 @@ pub enum AppCommand {
     Function {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
+    },
+    /// Execute and manage Admin API bulk operations.
+    Bulk {
+        #[command(subcommand)]
+        command: AppBulkCommand,
     },
     /// Manage deployed app versions.
     Versions {

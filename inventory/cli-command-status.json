@@ -11,25 +11,37 @@
       "status": "native"
     },
     "app bulk cancel": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
       "live_verified": false,
       "owner": 40,
-      "status": "library-only"
+      "status": "native"
     },
     "app bulk execute": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
       "live_verified": false,
       "owner": 40,
-      "status": "library-only"
+      "status": "native"
     },
     "app bulk status": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust app-context authentication, app client-credential exchange, Admin API version resolution, typed bulk GraphQL operations, polling, cancellation, staged JSONL multipart upload, and result handling are exposed at the exact Shopify command path.",
       "live_verified": false,
       "owner": 40,
-      "status": "library-only"
+      "status": "native"
     },
     "app config link": {
       "evidence": [

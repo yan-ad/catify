@@ -32,10 +32,8 @@ pub enum BulkError {
     InvalidOperationId(String),
     #[error("bulk query input must contain exactly one GraphQL query operation")]
     QueryRequired,
-    #[error(
-        "bulk mutation staging is not implemented; stage JSONL and multipart upload before invoking bulkOperationRunMutation"
-    )]
-    MutationStagingUnsupported,
+    #[error("bulk mutations require JSONL variables")]
+    MutationVariablesRequired,
     #[error("request transport failed: {0}")]
     Transport(#[source] reqwest::Error),
     #[error("Shopify returned HTTP {status} (request ID: {request_id:?})")]
@@ -65,6 +63,58 @@ pub enum BulkError {
     #[error("result is not valid UTF-8 JSONL")]
     InvalidJsonlEncoding,
 }
+#[derive(Deserialize)]
+struct ShopPlanData {
+    shop: ShopPlanShop,
+}
+#[derive(Deserialize)]
+struct ShopPlanShop {
+    plan: ShopPlan,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShopPlan {
+    partner_development: bool,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunMutationData {
+    bulk_operation_run_mutation: OperationPayload,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListData {
+    bulk_operations: BulkConnection,
+}
+#[derive(Deserialize)]
+struct BulkConnection {
+    nodes: Vec<BulkOperation>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StagedUploadData {
+    staged_uploads_create: StagedUploadPayload,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StagedUploadPayload {
+    staged_targets: Vec<StagedTarget>,
+    #[serde(default)]
+    user_errors: Vec<UserError>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StagedTarget {
+    url: String,
+    #[allow(dead_code)]
+    resource_url: Option<String>,
+    parameters: Vec<StagedParameter>,
+}
+#[derive(Deserialize)]
+struct StagedParameter {
+    name: String,
+    value: String,
+}
 
 pub type Result<T> = std::result::Result<T, BulkError>;
 
@@ -84,6 +134,7 @@ impl StoreDomain {
             {
                 return Err(BulkError::InvalidStore(input.into()));
             }
+
             url.host_str()
                 .ok_or_else(|| BulkError::InvalidStore(input.into()))?
                 .to_owned()
@@ -189,8 +240,25 @@ impl Secret {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
-    fn expose(&self) -> &str {
+    pub fn expose(&self) -> &str {
         &self.0
+    }
+}
+
+impl AppCredentials {
+    #[must_use]
+    pub fn new(client_id: impl Into<String>, client_secret: impl Into<String>) -> Self {
+        Self {
+            client_id: client_id.into(),
+            client_secret: Secret::new(client_secret),
+        }
+    }
+}
+
+impl AccessToken {
+    #[must_use]
+    pub fn secret(&self) -> &Secret {
+        &self.token
     }
 }
 impl fmt::Debug for Secret {
@@ -347,6 +415,9 @@ impl BulkClient {
     }
 
     fn new_at(base: Url, version: &ApiVersion, token: &Secret) -> Result<Self> {
+        TLS_PROVIDER.get_or_init(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
         let mut headers = reqwest::header::HeaderMap::new();
         let mut value = HeaderValue::from_str(token.expose()).map_err(|_| {
             BulkError::InvalidStore("access token contains invalid header bytes".into())
@@ -364,13 +435,11 @@ impl BulkClient {
         Ok(Self { http, graphql_url })
     }
 
-    /// Start a bulk query. Mutation documents are rejected locally because a
-    /// mutation requires staged JSONL multipart upload, which is intentionally
-    /// not faked by this crate.
+    /// Start a bulk query.
     pub async fn execute_query(&self, document: &str) -> Result<BulkOperation> {
         match operation_kind(document)? {
             OperationKind::Query => {}
-            OperationKind::Mutation => return Err(BulkError::MutationStagingUnsupported),
+            OperationKind::Mutation => return Err(BulkError::QueryRequired),
         }
         let data: RunQueryData = self
             .graphql(RUN_QUERY, serde_json::json!({ "query": document }))
@@ -380,6 +449,108 @@ impl BulkClient {
             .bulk_operation
             .ok_or(BulkError::MissingField(
                 "bulkOperationRunQuery.bulkOperation",
+            ))
+    }
+
+    pub async fn list_recent(&self, since: &str) -> Result<Vec<BulkOperation>> {
+        let data: ListData = self
+            .graphql(
+                LIST_QUERY,
+                serde_json::json!({
+                    "query": format!("created_at:>={since}"),
+                    "first": 100,
+                    "sortKey": "CREATED_AT"
+                }),
+            )
+            .await?;
+        Ok(data.bulk_operations.nodes)
+    }
+
+    pub async fn list_last_seven_days(&self) -> Result<Vec<BulkOperation>> {
+        let since = time::OffsetDateTime::now_utc() - time::Duration::days(7);
+        let format = time::format_description::parse_borrowed::<2>("[year]-[month]-[day]")
+            .expect("bulk date format is static and valid");
+        let date = since
+            .format(&format)
+            .map_err(|_| BulkError::InvalidApiVersion("could not format bulk date".into()))?;
+        self.list_recent(&date).await
+    }
+
+    /// Stage JSONL variables and start a bulk mutation.
+    pub async fn execute_mutation(
+        &self,
+        document: &str,
+        variables_jsonl: &[u8],
+    ) -> Result<BulkOperation> {
+        if operation_kind(document)? != OperationKind::Mutation {
+            return Err(BulkError::QueryRequired);
+        }
+        if variables_jsonl.is_empty() {
+            return Err(BulkError::MutationVariablesRequired);
+        }
+        let shop: ShopPlanData = self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
+        if !shop.shop.plan.partner_development {
+            return Err(BulkError::InvalidStore(
+                "bulk mutations are only allowed on partner development stores".into(),
+            ));
+        }
+        let staged: StagedUploadData = self
+            .graphql(
+                STAGED_UPLOADS_CREATE,
+                serde_json::json!({"input": [{
+                    "filename": "bulk-variables.jsonl",
+                    "fileSize": variables_jsonl.len().to_string(),
+                    "httpMethod": "POST",
+                    "mimeType": "text/jsonl",
+                    "resource": "BULK_MUTATION_VARIABLES"
+                }]}),
+            )
+            .await?;
+        reject_user_errors(staged.staged_uploads_create.user_errors)?;
+        let target = staged
+            .staged_uploads_create
+            .staged_targets
+            .into_iter()
+            .next()
+            .ok_or(BulkError::MissingField(
+                "stagedUploadsCreate.stagedTargets[0]",
+            ))?;
+        let key = target
+            .parameters
+            .iter()
+            .find(|parameter| parameter.name == "key")
+            .map(|parameter| parameter.value.clone())
+            .ok_or(BulkError::MissingField("staged upload key"))?;
+        let mut form = reqwest::multipart::Form::new();
+        for parameter in target.parameters {
+            form = form.text(parameter.name, parameter.value);
+        }
+        form = form.part(
+            "file",
+            reqwest::multipart::Part::bytes(variables_jsonl.to_vec())
+                .file_name("bulk-variables.jsonl")
+                .mime_str("text/jsonl")
+                .map_err(BulkError::Transport)?,
+        );
+        let response = send(reqwest_client()?.post(target.url).multipart(form)).await?;
+        let request_id = request_id(response.headers());
+        if !response.status().is_success() {
+            return Err(BulkError::Http {
+                status: response.status(),
+                request_id,
+            });
+        }
+        let data: RunMutationData = self
+            .graphql(
+                RUN_MUTATION,
+                serde_json::json!({"mutation": document, "stagedUploadPath": key}),
+            )
+            .await?;
+        reject_user_errors(data.bulk_operation_run_mutation.user_errors)?;
+        data.bulk_operation_run_mutation
+            .bulk_operation
+            .ok_or(BulkError::MissingField(
+                "bulkOperationRunMutation.bulkOperation",
             ))
     }
 
@@ -607,16 +778,20 @@ struct OperationPayload {
 #[cfg(test)]
 const FIELDS: &str = "id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt";
 const RUN_QUERY: &str = "mutation BulkOperationRunQuery($query: String!) { bulkOperationRunQuery(query: $query) { bulkOperation { id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt } userErrors { field message } } }";
+const RUN_MUTATION: &str = "mutation BulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) { bulkOperationRunMutation(mutation: $mutation, stagedUploadPath: $stagedUploadPath) { bulkOperation { id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt } userErrors { field message } } }";
+const STAGED_UPLOADS_CREATE: &str = "mutation StagedUploadsCreate($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }";
+const SHOP_PLAN_QUERY: &str = "query BulkMutationShopPlan { shop { plan { partnerDevelopment } } }";
 const STATUS_QUERY: &str = "query BulkOperationStatus($id: ID!) { node(id: $id) { ... on BulkOperation { id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt } } }";
+const LIST_QUERY: &str = "query ListBulkOperations($query: String, $first: Int!, $sortKey: BulkOperationsSortKeys!) { bulkOperations(first: $first, query: $query, sortKey: $sortKey) { nodes { id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt } } }";
 const CANCEL_MUTATION: &str = "mutation BulkOperationCancel($id: ID!) { bulkOperationCancel(id: $id) { bulkOperation { id status errorCode objectCount rootObjectCount fileSize url partialDataUrl createdAt completedAt } userErrors { field message } } }";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OperationKind {
+pub enum OperationKind {
     Query,
     Mutation,
 }
 
-fn operation_kind(document: &str) -> Result<OperationKind> {
+pub fn operation_kind(document: &str) -> Result<OperationKind> {
     // Skip whitespace, commas, comments, and an optional leading BOM. This is
     // intentionally a conservative validator, not a GraphQL parser: shorthand
     // selection sets are queries; subscriptions and multiple operations fail.
@@ -1014,7 +1189,7 @@ mod unit_tests {
         ));
         assert!(matches!(
             client.execute_query("mutation M { x }").await,
-            Err(BulkError::MutationStagingUnsupported)
+            Err(BulkError::QueryRequired)
         ));
         assert_eq!(server.count().await, 2);
     }

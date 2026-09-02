@@ -15,6 +15,7 @@ cfy-api.workspace = true
 cfy-app.workspace = true
 cfy-auth.workspace = true
 cfy-build.workspace = true
+cfy-bulk.workspace = true
 cfy-config.workspace = true
 cfy-docs.workspace = true
 cfy-dev.workspace = true

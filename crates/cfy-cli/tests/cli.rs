@@ -8,6 +8,60 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_bulk_commands_match_shopify_nested_paths_and_flag_constraints() {
+    for command in ["execute", "status", "cancel"] {
+        let help = cfy(&["app", "bulk", command, "--help"]);
+        assert!(help.status.success(), "app bulk {command} help failed");
+        let help = String::from_utf8_lossy(&help.stdout);
+        for flag in [
+            "--auth-alias",
+            "--client-id",
+            "--config",
+            "--path",
+            "--reset",
+            "--store",
+        ] {
+            assert!(help.contains(flag), "app bulk {command} missing {flag}");
+        }
+    }
+    let execute = cfy(&["app", "bulk", "execute", "--help"]);
+    let execute = String::from_utf8_lossy(&execute.stdout);
+    for flag in [
+        "--query",
+        "--query-file",
+        "--variables",
+        "--variable-file",
+        "--output-file",
+        "--watch",
+        "--version",
+    ] {
+        assert!(execute.contains(flag), "app bulk execute missing {flag}");
+    }
+    assert_eq!(
+        cfy(&["app", "bulk", "cancel", "--store", "demo"])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        cfy(&[
+            "app",
+            "bulk",
+            "execute",
+            "--query",
+            "query { shop { name } }",
+            "--query-file",
+            "query.graphql",
+            "--store",
+            "demo"
+        ])
+        .status
+        .code(),
+        Some(2)
+    );
+}
+
+#[test]
 fn theme_init_and_upgrade_match_shopify_public_command_shapes() {
     let theme_help = cfy(&["theme", "init", "--help"]);
     assert!(theme_help.status.success());
