@@ -9,7 +9,7 @@ use cfy_auth::{Secret, Session};
 use cfy_core::{Error, ErrorKind, Result};
 use reqwest::header::{HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf, sync::OnceLock};
+use std::{path::PathBuf, sync::OnceLock};
 use url::Url;
 
 const APP_MANAGEMENT_AUDIENCE: &str =
@@ -81,6 +81,8 @@ pub struct RemoteApp {
     pub application_url: Option<String>,
     pub embedded: Option<bool>,
     pub scopes: Vec<String>,
+    /// Top-level Shopify app configuration reconstructed from remote app modules.
+    pub remote_configuration: toml::Table,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -425,13 +427,20 @@ impl AppManagementClient {
                 format!("no Shopify app found for client ID `{client_id}`"),
             )
         })?;
-        let home = app
-            .release
-            .version
-            .modules
+        let modules = app.release.version.modules;
+        let home = modules
             .iter()
             .find(|module| module.specification.external_identifier == "app_home")
             .and_then(|module| module.config.as_ref());
+        let mut remote_configuration = toml::Table::new();
+        for module in &modules {
+            let Some(config) = module.config.as_ref() else {
+                continue;
+            };
+            let transformed =
+                transform_remote_module(&module.specification.external_identifier, config)?;
+            deep_merge_table(&mut remote_configuration, transformed);
+        }
         Ok(RemoteApp {
             id: app.id,
             client_id: app.key,
@@ -445,6 +454,7 @@ impl AppManagementClient {
                 .and_then(|value| value.get("embedded"))
                 .and_then(serde_json::Value::as_bool),
             scopes: app.root.scopes,
+            remote_configuration,
         })
     }
 
@@ -763,6 +773,150 @@ fn decode_organization_id(encoded: &str) -> Result<String> {
         })
 }
 
+fn transform_remote_module(identifier: &str, config: &serde_json::Value) -> Result<toml::Table> {
+    let mut output = toml::Table::new();
+    match identifier {
+        "app_home" => {
+            copy_json_field(config, "app_url", &mut output, "application_url")?;
+            copy_json_field(config, "embedded", &mut output, "embedded")?;
+            if let Some(value) = config
+                .get("preferences_url")
+                .filter(|value| !value.is_null())
+            {
+                insert_nested_json(&mut output, &["app_preferences", "url"], value)?;
+            }
+        }
+        "app_access" => {
+            copy_json_object_field(config, "access", &mut output, "access")?;
+            for (remote, local) in [
+                ("scopes", "scopes"),
+                ("required_scopes", "required_scopes"),
+                ("optional_scopes", "optional_scopes"),
+                ("use_legacy_install_flow", "use_legacy_install_flow"),
+            ] {
+                if let Some(value) = config.get(remote).filter(|value| !value.is_null()) {
+                    insert_nested_json(&mut output, &["access_scopes", local], value)?;
+                }
+            }
+            if let Some(value) = config
+                .get("redirect_url_allowlist")
+                .filter(|value| !value.is_null())
+            {
+                insert_nested_json(&mut output, &["auth", "redirect_urls"], value)?;
+            }
+        }
+        "app_proxy" => {
+            let value = json_to_toml(config)?;
+            if let toml::Value::Table(table) = value {
+                output.insert("app_proxy".into(), toml::Value::Table(table));
+            }
+        }
+        "point_of_sale" => {
+            if let Some(value) = config.get("embedded").filter(|value| !value.is_null()) {
+                insert_nested_json(&mut output, &["pos", "embedded"], value)?;
+            }
+        }
+        "webhooks" | "privacy_compliance_webhooks" => {
+            let value = json_to_toml(config)?;
+            if let toml::Value::Table(table) = value {
+                let webhooks = output
+                    .entry("webhooks")
+                    .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+                if let toml::Value::Table(target) = webhooks {
+                    deep_merge_table(target, table);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(output)
+}
+
+fn copy_json_field(
+    source: &serde_json::Value,
+    source_key: &str,
+    target: &mut toml::Table,
+    target_key: &str,
+) -> Result<()> {
+    if let Some(value) = source.get(source_key).filter(|value| !value.is_null()) {
+        target.insert(target_key.into(), json_to_toml(value)?);
+    }
+    Ok(())
+}
+
+fn copy_json_object_field(
+    source: &serde_json::Value,
+    source_key: &str,
+    target: &mut toml::Table,
+    target_key: &str,
+) -> Result<()> {
+    copy_json_field(source, source_key, target, target_key)
+}
+
+fn insert_nested_json(
+    target: &mut toml::Table,
+    path: &[&str],
+    value: &serde_json::Value,
+) -> Result<()> {
+    let (last, parents) = path
+        .split_last()
+        .ok_or_else(|| Error::invalid_input("configuration path cannot be empty"))?;
+    let mut table = target;
+    for key in parents {
+        let entry = table
+            .entry((*key).to_owned())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        table = entry.as_table_mut().ok_or_else(|| {
+            Error::new(
+                ErrorKind::Config,
+                format!("remote configuration `{key}` is not a table"),
+            )
+        })?;
+    }
+    table.insert((*last).to_owned(), json_to_toml(value)?);
+    Ok(())
+}
+
+fn json_to_toml(value: &serde_json::Value) -> Result<toml::Value> {
+    match value {
+        serde_json::Value::Null => Err(Error::new(
+            ErrorKind::Config,
+            "remote configuration contains an unsupported null value",
+        )),
+        serde_json::Value::Bool(value) => Ok(toml::Value::Boolean(*value)),
+        serde_json::Value::Number(value) => value
+            .as_i64()
+            .map(toml::Value::Integer)
+            .or_else(|| value.as_f64().map(toml::Value::Float))
+            .ok_or_else(|| Error::new(ErrorKind::Config, "invalid remote numeric value")),
+        serde_json::Value::String(value) => Ok(toml::Value::String(value.clone())),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .map(json_to_toml)
+            .collect::<Result<Vec<_>>>()
+            .map(toml::Value::Array),
+        serde_json::Value::Object(values) => values
+            .iter()
+            .filter(|(_, value)| !value.is_null())
+            .map(|(key, value)| Ok((key.clone(), json_to_toml(value)?)))
+            .collect::<Result<toml::Table>>()
+            .map(toml::Value::Table),
+    }
+}
+
+fn deep_merge_table(target: &mut toml::Table, source: toml::Table) {
+    for (key, value) in source {
+        match (target.get_mut(&key), value) {
+            (Some(toml::Value::Table(target)), toml::Value::Table(source)) => {
+                deep_merge_table(target, source);
+            }
+            (_, value) => {
+                target.insert(key, value);
+            }
+        }
+    }
+}
+
 pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<LinkReport> {
     let name = options
         .file_name
@@ -792,6 +946,7 @@ pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<Lin
     } else {
         toml::Table::new()
     };
+    deep_merge_table(&mut document, app.remote_configuration.clone());
     document.insert(
         "client_id".into(),
         toml::Value::String(app.client_id.clone()),
@@ -804,15 +959,19 @@ pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<Lin
         document.insert("embedded".into(), toml::Value::Boolean(embedded));
     }
     if !app.scopes.is_empty() {
-        let mut scopes = BTreeMap::new();
-        scopes.insert(
-            "scopes".to_owned(),
-            toml::Value::String(app.scopes.join(",")),
-        );
-        document.insert(
-            "access_scopes".into(),
-            toml::Value::Table(scopes.into_iter().collect()),
-        );
+        let access_scopes = document
+            .entry("access_scopes")
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Config,
+                    "linked configuration access_scopes must be a table",
+                )
+            })?;
+        access_scopes
+            .entry("scopes")
+            .or_insert_with(|| toml::Value::String(app.scopes.join(",")));
     }
     let content = toml::to_string_pretty(&document).map_err(|error| {
         Error::new(
@@ -856,6 +1015,29 @@ mod tests {
     #[test]
     fn writes_native_linked_configuration_atomically() {
         let directory = temp();
+        let remote_configuration: toml::Table = toml::from_str(
+            r#"[auth]
+redirect_urls = ["https://example.test/auth/callback"]
+
+[access_scopes]
+optional_scopes = ["write_products"]
+
+[app_preferences]
+url = "https://example.test/settings"
+
+[app_proxy]
+url = "https://example.test/apps/proxy"
+subpath = "proxy"
+prefix = "apps"
+
+[pos]
+embedded = true
+
+[webhooks]
+api_version = "2026-07"
+"#,
+        )
+        .unwrap();
         let report = write_linked_config(
             &LinkOptions {
                 directory: directory.clone(),
@@ -871,6 +1053,7 @@ mod tests {
                 application_url: Some("https://example.test".into()),
                 embedded: Some(true),
                 scopes: vec!["read_products".into(), "write_products".into()],
+                remote_configuration,
             },
         )
         .unwrap();
@@ -878,6 +1061,12 @@ mod tests {
         assert!(source.contains("client_id = \"client-key\""));
         assert!(source.contains("application_url = \"https://example.test\""));
         assert!(source.contains("scopes = \"read_products,write_products\""));
+        assert!(source.contains("redirect_urls = [\"https://example.test/auth/callback\"]"));
+        assert!(source.contains("optional_scopes = [\"write_products\"]"));
+        assert!(source.contains("[app_preferences]"));
+        assert!(source.contains("[app_proxy]"));
+        assert!(source.contains("[pos]"));
+        assert!(source.contains("[webhooks]"));
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -912,6 +1101,7 @@ uri = "/webhooks"
                 application_url: Some("https://updated.example".into()),
                 embedded: Some(true),
                 scopes: vec!["read_products".into()],
+                remote_configuration: toml::Table::new(),
             },
         )
         .unwrap();
@@ -941,6 +1131,7 @@ uri = "/webhooks"
                 application_url: None,
                 embedded: None,
                 scopes: vec![],
+                remote_configuration: toml::Table::new(),
             },
         )
         .unwrap_err();
@@ -955,7 +1146,7 @@ uri = "/webhooks"
         let server = tokio::spawn(async move {
             for (index, body) in [
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
-                r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true},"specification":{"externalIdentifier":"app_home"}}]}}}}}"#,
+                r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":true},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"api_version":"2026-07","privacy_compliance":{"shop_deletion_url":"/webhooks/shop-redact"}},"specification":{"externalIdentifier":"webhooks"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
             ]
             .into_iter()
@@ -988,6 +1179,26 @@ uri = "/webhooks"
         let app = client.app_by_client_id("client-1").await.unwrap();
         assert_eq!(app.application_url.as_deref(), Some("https://example.test"));
         assert_eq!(app.scopes, ["read_products"]);
+        assert_eq!(
+            app.remote_configuration["auth"]["redirect_urls"][0].as_str(),
+            Some("https://example.test/auth/callback")
+        );
+        assert_eq!(
+            app.remote_configuration["app_preferences"]["url"].as_str(),
+            Some("https://example.test/settings")
+        );
+        assert_eq!(
+            app.remote_configuration["app_proxy"]["subpath"].as_str(),
+            Some("proxy")
+        );
+        assert_eq!(
+            app.remote_configuration["pos"]["embedded"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            app.remote_configuration["webhooks"]["api_version"].as_str(),
+            Some("2026-07")
+        );
         let versions = client.list_versions("app-1").await.unwrap();
         assert_eq!(versions.total, 2);
         assert_eq!(versions.versions[0].status, "active");
