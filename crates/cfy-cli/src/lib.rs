@@ -82,6 +82,47 @@ impl Drop for AbortOnDrop {
     }
 }
 
+fn select_theme_for_open<'a>(
+    themes: &'a [Theme],
+    requested: Option<&str>,
+    development: bool,
+    live: bool,
+    non_interactive: bool,
+) -> Result<&'a Theme> {
+    if development {
+        return themes
+            .iter()
+            .find(|theme| theme.role == "development")
+            .ok_or_else(|| Error::invalid_input("no development theme was found"));
+    }
+
+    if live {
+        return themes
+            .iter()
+            .find(|theme| theme.role == "main")
+            .ok_or_else(|| Error::invalid_input("no live theme was found"));
+    }
+    if let Some(requested) = requested {
+        return themes
+            .iter()
+            .find(|theme| theme.id.to_string() == requested || theme.name == requested)
+            .ok_or_else(|| Error::invalid_input(format!("theme `{requested}` was not found")));
+    }
+    if non_interactive {
+        return Err(Error::invalid_input(
+            "theme open requires --development, --live, or --theme in non-interactive mode",
+        ));
+    }
+    let choices = themes
+        .iter()
+        .map(|theme| format!("{} ({}, {})", theme.name, theme.id, theme.role))
+        .collect::<Vec<_>>();
+    let index = select_text_choice("Which theme would you like to open?", &choices)?;
+    themes
+        .get(index)
+        .ok_or_else(|| Error::process("theme selection returned an invalid index"))
+}
+
 #[derive(Debug, Subcommand)]
 pub enum PluginsCommand {
     /// Add one or more plugins.
@@ -1944,7 +1985,7 @@ fn command_column_value(command: &CommandRecord, column: CommandColumn) -> Strin
 
 async fn theme_parity_command(
     command: ThemeCommand,
-    _non_interactive: bool,
+    non_interactive: bool,
     output: &Output,
 ) -> Result<u8> {
     match command {
@@ -2013,7 +2054,54 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        ThemeCommand::Open { theme, store } | ThemeCommand::Share { theme, store } => {
+        ThemeCommand::Open {
+            auth_alias: _,
+            development,
+            editor,
+            environment: _,
+            live,
+            path: _,
+            password,
+            store,
+            theme,
+        } => {
+            if usize::from(development) + usize::from(live) + usize::from(theme.is_some()) > 1 {
+                return Err(Error::invalid_input(
+                    "theme open accepts only one of --development, --live, or --theme",
+                ));
+            }
+            let store = resolve_store(store.as_deref())?;
+            let token = password
+                .or_else(|| env::var("SHOPIFY_CLI_THEME_TOKEN").ok())
+                .ok_or_else(|| Error::new(ErrorKind::Api, "theme authentication is required; pass --password, set SHOPIFY_CLI_THEME_TOKEN, or complete cfy auth login"))?;
+            let client =
+                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+            let themes = client.list().await.map_err(Error::from)?;
+            let selected = select_theme_for_open(
+                &themes,
+                theme.as_deref(),
+                development,
+                live,
+                non_interactive,
+            )?;
+            let preview_url = client.preview_url(selected.id);
+            let editor_url = format!("https://{store}/admin/themes/{}/editor", selected.id);
+            let requested_url = if editor { &editor_url } else { &preview_url };
+            let opened = !non_interactive && open_browser(requested_url);
+            output
+                .success(
+                    &format!("Preview: {preview_url}\nEditor: {editor_url}"),
+                    &serde_json::json!({
+                        "theme": selected,
+                        "preview_url": preview_url,
+                        "editor_url": editor_url,
+                        "opened": opened,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        ThemeCommand::Share { theme, store } => {
             let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
             let client =
                 ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
@@ -4217,11 +4305,26 @@ pub enum ThemeCommand {
         force: bool,
     },
     /// Open the theme in Shopify admin.
+    #[command(disable_version_flag = true)]
     Open {
-        #[arg(long)]
-        theme: u64,
-        #[arg(long)]
-        store: String,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(short = 'd', long, env = "SHOPIFY_FLAG_DEVELOPMENT")]
+        development: bool,
+        #[arg(short = 'E', long, env = "SHOPIFY_FLAG_EDITOR")]
+        editor: bool,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT")]
+        environment: Vec<String>,
+        #[arg(short = 'l', long, env = "SHOPIFY_FLAG_LIVE")]
+        live: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
+        #[arg(short = 't', long, env = "SHOPIFY_FLAG_THEME_ID")]
+        theme: Option<String>,
     },
     /// Show theme metadata.
     Info {
@@ -4514,8 +4617,8 @@ fn backend_unavailable(command: &str, issue: u32, detail: impl AsRef<str>) -> Er
 mod tests {
     use super::{
         Cli, Command, ThemeCommand, corrected_command_args, filesystem_event, format_themes,
-        live_push_requires_confirmation, reusable_session, select_store, update_auth_selection,
-        update_list_selection,
+        live_push_requires_confirmation, reusable_session, select_store, select_theme_for_open,
+        update_auth_selection, update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -4744,6 +4847,55 @@ mod tests {
             "10\tmain\tDawn\n20\tdevelopment\tDevelopment"
         );
         assert_eq!(format_themes(&[]), "No themes found.");
+    }
+
+    #[test]
+    fn theme_open_resolves_id_name_live_and_development_without_prompting() {
+        let themes = vec![
+            Theme {
+                id: 1,
+                name: "Live".into(),
+                role: "main".into(),
+                created_at: None,
+                updated_at: None,
+                previewable: Some(true),
+                processing: Some(false),
+            },
+            Theme {
+                id: 2,
+                name: "Development".into(),
+                role: "development".into(),
+                created_at: None,
+                updated_at: None,
+                previewable: Some(true),
+                processing: Some(false),
+            },
+        ];
+        assert_eq!(
+            select_theme_for_open(&themes, Some("1"), false, false, true)
+                .unwrap()
+                .id,
+            1
+        );
+        assert_eq!(
+            select_theme_for_open(&themes, Some("Development"), false, false, true)
+                .unwrap()
+                .id,
+            2
+        );
+        assert_eq!(
+            select_theme_for_open(&themes, None, false, true, true)
+                .unwrap()
+                .id,
+            1
+        );
+        assert_eq!(
+            select_theme_for_open(&themes, None, true, false, true)
+                .unwrap()
+                .id,
+            2
+        );
+        assert!(select_theme_for_open(&themes, None, false, false, true).is_err());
     }
 
     #[test]

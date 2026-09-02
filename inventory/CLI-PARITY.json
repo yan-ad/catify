@@ -5,15 +5,15 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 72,
+    "implemented": 73,
     "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "native": 45,
-      "partial": 14
+      "native": 46,
+      "partial": 13
     },
     "by_domain": {
       "app": {
@@ -57,8 +57,8 @@
       "theme": {
         "adapter": 2,
         "blocked": 4,
-        "native": 10,
-        "partial": 3
+        "native": 11,
+        "partial": 2
       },
       "upgrade": {
         "partial": 1
@@ -1394,16 +1394,18 @@
     {
       "command": "theme open",
       "domain": "theme",
-      "status": "partial",
+      "status": "native",
       "owner": 39,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust Theme API selection resolves theme ID/name, live, development, or interactive choice; generates preview/editor URLs and opens the browser without Shopify CLI.",
       "tested": true,
       "evidence": [
-        "crates/cfy-api/src/theme.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/src/lib.rs::select_theme_for_open",
+        "crates/cfy-cli/src/lib.rs tests::theme_open_resolves_id_name_live_and_development_without_prompting",
+        "crates/cfy-cli/tests/cli.rs::theme_open_matches_shopify_flags_and_selection_guard",
+        "crates/cfy-api/src/theme.rs tests"
       ],
       "live_verified": false,
-      "notes": "Returns a preview URL but does not yet reproduce all browser/environment behavior."
+      "notes": "Supports the complete Shopify 4.6.1 flag surface and prints both preview and editor URLs in non-interactive mode."
     },
     {
       "command": "theme package",

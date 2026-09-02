@@ -8,6 +8,42 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn theme_open_matches_shopify_flags_and_selection_guard() {
+    let help = cfy(&["theme", "open", "--help"]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in [
+        "--auth-alias",
+        "--development",
+        "--editor",
+        "--environment",
+        "--live",
+        "--password",
+        "--path",
+        "--store",
+        "--theme",
+    ] {
+        assert!(help.contains(flag), "missing theme open flag {flag}");
+    }
+    assert!(!help.contains("--version"));
+    assert_eq!(
+        cfy(&[
+            "theme",
+            "open",
+            "--development",
+            "--live",
+            "--store",
+            "demo",
+            "--password",
+            "secret",
+        ])
+        .status
+        .code(),
+        Some(2)
+    );
+}
+
+#[test]
 fn auth_logout_matches_shopify_local_session_command_contract() {
     let help = cfy(&["auth", "logout", "--help"]);
     assert!(help.status.success());
