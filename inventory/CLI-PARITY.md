@@ -6,16 +6,15 @@
 
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **58**
-- Commands with automated evidence: **75**
+- Commands with automated evidence: **76**
 - Live-verified commands: **4**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 18 | Command path exists but required backend behavior is incomplete. |
+| `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
 | `missing` | 12 | No compatible command implementation yet. |
-| `name-mismatch` | 1 | Behavior exists under a non-compatible command path. |
 | `native` | 31 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 16 | Exact command path exists, but behavior is not yet fully compatible. |
 
@@ -122,7 +121,7 @@
 | `theme init` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. Creates a minimal directory instead of cloning/selecting an upstream theme template. |
 | `theme language-server` | `adapter` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-cli/src/theme_check.rs tests. |
 | `theme list` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `theme metafields pull` | `name-mismatch` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Related behavior exists under a flat or otherwise incompatible command path. Rename/nesting must be corrected before this counts as parity. |
+| `theme metafields pull` | `blocked` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet. Evidence: crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path. Execution remains blocked on the Admin API metafield-definition contract. |
 | `theme open` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. Returns a preview URL but does not yet reproduce all browser/environment behavior. |
 | `theme package` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme preview` | `blocked` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Command path exists, but execution still returns an actionable backend-unavailable error. |

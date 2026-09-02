@@ -6,14 +6,13 @@
   "summary": {
     "total": 111,
     "implemented": 58,
-    "tested": 75,
+    "tested": 76,
     "live_verified": 4,
     "by_status": {
       "adapter": 27,
-      "blocked": 18,
+      "blocked": 19,
       "library-only": 6,
       "missing": 12,
-      "name-mismatch": 1,
       "native": 31,
       "partial": 16
     },
@@ -60,8 +59,7 @@
       },
       "theme": {
         "adapter": 2,
-        "blocked": 3,
-        "name-mismatch": 1,
+        "blocked": 4,
         "native": 10,
         "partial": 3
       },
@@ -1337,13 +1335,15 @@
     {
       "command": "theme metafields pull",
       "domain": "theme",
-      "status": "name-mismatch",
+      "status": "blocked",
       "owner": 39,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"
+      ],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Execution remains blocked on the Admin API metafield-definition contract."
     },
     {
       "command": "theme open",

@@ -864,12 +864,12 @@
       "live_verified": false
     },
     "theme metafields pull": {
-      "status": "name-mismatch",
+      "status": "blocked",
       "owner": 39,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet.",
+      "evidence": ["crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Execution remains blocked on the Admin API metafield-definition contract."
     },
     "theme open": {
       "status": "partial",

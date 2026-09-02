@@ -8,6 +8,29 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn theme_metafields_uses_shopify_compatible_nested_path() {
+    assert!(
+        cfy(&[
+            "theme",
+            "metafields",
+            "pull",
+            "--store",
+            "shop.myshopify.com",
+            "--environment",
+            "development",
+            "--help",
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        !cfy(&["theme", "metafields-pull", "--help"])
+            .status
+            .success()
+    );
+}
+
+#[test]
 fn store_nested_commands_match_shopify_paths_and_flags() {
     for args in [
         vec!["store", "auth", "list", "--help"],

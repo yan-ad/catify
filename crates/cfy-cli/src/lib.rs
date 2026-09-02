@@ -78,6 +78,23 @@ impl Drop for AbortOnDrop {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum ThemeMetafieldsCommand {
+    /// Download metafield definitions into the theme project.
+    Pull {
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
+        environment: Vec<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum StoreAuthCommand {
     /// List stores authenticated directly with store auth.
     List,
@@ -1651,11 +1668,21 @@ async fn theme_parity_command(
         | ThemeCommand::Push { .. } => Err(Error::process(
             "internal command dispatch error: specialized theme command reached parity fallback",
         )),
-        ThemeCommand::MetafieldsPull { theme, store } => Err(backend_unavailable(
+        ThemeCommand::Metafields {
+            command:
+                ThemeMetafieldsCommand::Pull {
+                    auth_alias: _,
+                    path: _,
+                    password: _,
+                    store,
+                    environment: _,
+                },
+        } => Err(backend_unavailable(
             "theme metafields pull",
             39,
             format!(
-                "the metafields API adapter is pending for theme {theme} on {store}; use Shopify CLI for this command for now"
+                "the metafields definition transport is pending for {}; use Shopify CLI for this command for now",
+                store.as_deref().unwrap_or("the selected environment")
             ),
         )),
         ThemeCommand::Profile { args } => Err(backend_unavailable(
@@ -3730,12 +3757,10 @@ pub enum ThemeCommand {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// Pull theme metafields.
-    MetafieldsPull {
-        #[arg(long)]
-        theme: u64,
-        #[arg(long)]
-        store: String,
+    /// Manage theme metafields.
+    Metafields {
+        #[command(subcommand)]
+        command: ThemeMetafieldsCommand,
     },
     /// Profile theme operations.
     Profile {
