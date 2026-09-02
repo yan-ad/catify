@@ -9,7 +9,7 @@
         "crates/cfy-build/src/lib.rs tests",
         "crates/cfy-cli/tests/cli.rs"
       ],
-      "live_verified": false
+      "live_verified": true
     },
     "app bulk cancel": {
       "status": "library-only",
@@ -40,7 +40,7 @@
         "crates/cfy-cli/tests/cli.rs",
         "crates/cfy-app/src/lib.rs tests"
       ],
-      "live_verified": true
+      "live_verified": false
     },
     "app config pull": {
       "status": "native",
@@ -596,11 +596,15 @@
       "live_verified": false
     },
     "organization list": {
-      "status": "blocked",
+      "status": "native",
       "owner": 37,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "evidence": [],
-      "live_verified": false
+      "implementation": "Native Business Platform token exchange and organization listing are exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-app/src/lib.rs::BusinessPlatformClient",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags"
+      ],
+      "live_verified": true
     },
     "plugins add": {
       "status": "missing",

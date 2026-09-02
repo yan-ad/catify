@@ -8,6 +8,22 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn organization_list_uses_shopify_compatible_command_and_flags() {
+    assert!(
+        cfy(&[
+            "organization",
+            "list",
+            "--auth-alias",
+            "work",
+            "--json",
+            "--help",
+        ])
+        .status
+        .success()
+    );
+}
+
+#[test]
 fn app_dev_runs_declared_web_command_natively_and_cleans_state() {
     let fixture = std::env::temp_dir().join(format!(
         "cfy-dev-fixture-{}-{}",

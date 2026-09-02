@@ -2122,11 +2122,33 @@ async fn auth_command(command: AuthCommand, non_interactive: bool, output: &Outp
 
 async fn organization_command(command: OrganizationCommand, output: &Output) -> Result<u8> {
     match command {
-        OrganizationCommand::List => {
-            let _ = output.lifecycle("Organization provider is not configured in this build");
-            Err(Error::invalid_input(
-                "organization API provider is not configured; authenticate first and configure the organization backend",
-            ))
+        OrganizationCommand::List { auth_alias } => {
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+            let session = sessions.session(&identity).await?.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!(
+                        "no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"
+                    ),
+                )
+            })?;
+            let organizations = BusinessPlatformClient::from_session(&session)
+                .await?
+                .list_organizations()
+                .await?;
+            output
+                .success(
+                    &format!("{} organization(s)", organizations.len()),
+                    &organizations,
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
         }
     }
 }
@@ -2153,7 +2175,10 @@ pub enum AuthCommand {
 #[derive(Debug, Subcommand)]
 pub enum OrganizationCommand {
     /// List organizations available to the current identity.
-    List,
+    List {
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+    },
 }
 
 #[derive(serde::Serialize)]

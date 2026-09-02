@@ -5,29 +5,29 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **57**
-- Commands with automated evidence: **69**
-- Live-verified commands: **3**
+- Implemented (`native` + `adapter`): **58**
+- Commands with automated evidence: **70**
+- Live-verified commands: **4**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 18 | Command path exists but required backend behavior is incomplete. |
+| `blocked` | 17 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
 | `missing` | 12 | No compatible command implementation yet. |
 | `name-mismatch` | 6 | Behavior exists under a non-compatible command path. |
-| `native` | 30 | Implemented in Rust and exposed at the upstream command path. |
+| `native` | 31 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
 | Command | Status | Tested | Live | Owner | Implementation / gap |
 |---|---|:---:|:---:|---:|---|
-| `app build` | `native` | yes | no | [#26](https://github.com/yan-ad/catify/issues/26) | Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol. Evidence: crates/cfy-build/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
+| `app build` | `native` | yes | yes | [#26](https://github.com/yan-ad/catify/issues/26) | Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol. Evidence: crates/cfy-build/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app bulk cancel` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
 | `app bulk execute` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
 | `app bulk status` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
-| `app config link` | `native` | yes | yes | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
+| `app config link` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config use` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config validate` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
@@ -91,7 +91,7 @@
 | `hydrogen shortcut` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen unlink` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen upgrade` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `organization list` | `blocked` | no | no | [#37](https://github.com/yan-ad/catify/issues/37) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `organization list` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Native Business Platform token exchange and organization listing are exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs::BusinessPlatformClient; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags. |
 | `plugins add` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
 | `plugins inspect` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
 | `plugins install` | `missing` | no | no | [#45](https://github.com/yan-ad/catify/issues/45) | No compatible Catify command implementation exists yet. |
