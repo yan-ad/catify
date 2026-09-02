@@ -8,6 +8,66 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn store_nested_commands_match_shopify_paths_and_flags() {
+    for args in [
+        vec!["store", "auth", "list", "--help"],
+        vec![
+            "store",
+            "bulk",
+            "execute",
+            "--store",
+            "shop.myshopify.com",
+            "--query",
+            "query { shop { id } }",
+            "--version",
+            "2026-07",
+            "--help",
+        ],
+        vec![
+            "store",
+            "bulk",
+            "status",
+            "--store",
+            "shop.myshopify.com",
+            "--id",
+            "123",
+            "--help",
+        ],
+        vec![
+            "store",
+            "bulk",
+            "cancel",
+            "--store",
+            "shop.myshopify.com",
+            "--id",
+            "123",
+            "--help",
+        ],
+        vec![
+            "store",
+            "create",
+            "preview",
+            "--name",
+            "Preview",
+            "--country",
+            "US",
+            "--help",
+        ],
+    ] {
+        assert!(cfy(&args).status.success(), "failed command: {args:?}");
+    }
+    for old in [
+        "auth-list",
+        "bulk-execute",
+        "bulk-status",
+        "bulk-cancel",
+        "create-preview",
+    ] {
+        assert!(!cfy(&["store", old, "--help"]).status.success());
+    }
+}
+
+#[test]
 fn organization_list_uses_shopify_compatible_command_and_flags() {
     assert!(
         cfy(&[

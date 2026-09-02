@@ -687,44 +687,44 @@
       "live_verified": false
     },
     "store auth list": {
-      "status": "name-mismatch",
+      "status": "blocked",
       "owner": 38,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path and flags are exposed, but the local store-auth credential registry backend is not implemented yet.",
+      "evidence": ["crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Execution remains blocked until store-auth sessions can be enumerated safely."
     },
     "store bulk cancel": {
-      "status": "name-mismatch",
+      "status": "partial",
       "owner": 38,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path invokes the native GraphQL management boundary with explicit operation IDs.",
+      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Live Shopify schema and credential verification remain pending."
     },
     "store bulk execute": {
-      "status": "name-mismatch",
+      "status": "partial",
       "owner": 38,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path runs native Admin GraphQL bulk orchestration with query or query-file input.",
+      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Variables, output download, watch mode, and API-version override remain pending."
     },
     "store bulk status": {
-      "status": "name-mismatch",
+      "status": "partial",
       "owner": 38,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path invokes the native GraphQL management boundary with optional operation ID.",
+      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "Seven-day listing and live Shopify schema verification remain pending."
     },
     "store create preview": {
-      "status": "name-mismatch",
+      "status": "partial",
       "owner": 38,
-      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
-      "evidence": [],
+      "implementation": "The exact nested command path and name/country flags invoke the native store management boundary.",
+      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
       "live_verified": false,
-      "notes": "Rename/nesting must be corrected before this counts as parity."
+      "notes": "The preview-store endpoint and country payload require live contract verification."
     },
     "store execute": {
       "status": "native",

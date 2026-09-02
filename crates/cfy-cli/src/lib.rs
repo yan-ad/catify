@@ -77,6 +77,68 @@ impl Drop for AbortOnDrop {
     }
 }
 
+#[derive(Debug, Subcommand)]
+pub enum StoreAuthCommand {
+    /// List stores authenticated directly with store auth.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum StoreCreateCommand {
+    /// Create a preview Shopify store.
+    Preview {
+        #[arg(long, env = "SHOPIFY_FLAG_PREVIEW_STORE_NAME")]
+        name: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_STORE_COUNTRY")]
+        country: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum StoreBulkCommand {
+    /// Execute a bulk operation.
+    #[command(disable_version_flag = true)]
+    Execute {
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: String,
+        #[arg(
+            short = 'q',
+            long,
+            env = "SHOPIFY_FLAG_QUERY",
+            conflicts_with = "query_file"
+        )]
+        query: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_QUERY_FILE")]
+        query_file: Option<PathBuf>,
+        #[arg(short = 'v', long, env = "SHOPIFY_FLAG_VARIABLES", action = ArgAction::Append, conflicts_with = "variable_file")]
+        variables: Vec<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_VARIABLE_FILE")]
+        variable_file: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_OUTPUT_FILE")]
+        output_file: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_WATCH")]
+        watch: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_MUTATIONS")]
+        allow_mutations: bool,
+    },
+    /// Show bulk operation status.
+    Status {
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: String,
+        #[arg(long, env = "SHOPIFY_FLAG_ID")]
+        id: Option<String>,
+    },
+    /// Cancel a bulk operation.
+    Cancel {
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: String,
+        #[arg(long, env = "SHOPIFY_FLAG_ID")]
+        id: String,
+    },
+}
+
 async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
     let AppDevArgs {
         config,
@@ -1767,11 +1829,23 @@ pub enum DocCommand {
 pub enum StoreCliCommand {
     /// Authenticate against a store.
     Auth {
-        #[arg(long)]
+        #[command(subcommand)]
+        command: Option<StoreAuthCommand>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
         store: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_SCOPES")]
+        scopes: Option<String>,
     },
-    /// List stores available to the current account.
-    AuthList,
+    /// Run, check, and cancel bulk Admin API operations.
+    Bulk {
+        #[command(subcommand)]
+        command: StoreBulkCommand,
+    },
+    /// Create Shopify stores.
+    Create {
+        #[command(subcommand)]
+        command: StoreCreateCommand,
+    },
     /// Show store information.
     Info {
         #[arg(long)]
@@ -1793,36 +1867,8 @@ pub enum StoreCliCommand {
         store: String,
         query: String,
     },
-    /// Create a development store.
-    CreateDev {
-        #[arg(long)]
-        store: String,
-    },
-    /// Create a preview store.
-    CreatePreview {
-        #[arg(long)]
-        store: String,
-    },
     /// Delete a store. Requires --confirm.
     Delete {
-        #[arg(long)]
-        store: String,
-        #[arg(long)]
-        confirm: bool,
-    },
-    /// Execute a bulk operation.
-    BulkExecute {
-        #[arg(long)]
-        store: String,
-        query: String,
-    },
-    /// Show bulk operation status.
-    BulkStatus {
-        #[arg(long)]
-        store: String,
-    },
-    /// Cancel a bulk operation. Requires --confirm.
-    BulkCancel {
         #[arg(long)]
         store: String,
         #[arg(long)]
@@ -1841,7 +1887,9 @@ async fn store_command(
     output: &Output,
 ) -> Result<u8> {
     match command {
-        StoreCliCommand::CreateDev { store } | StoreCliCommand::CreatePreview { store } => {
+        StoreCliCommand::Create {
+            command: StoreCreateCommand::Preview { name, country: _ },
+        } => {
             let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
                 Error::new(
                     ErrorKind::Api,
@@ -1850,12 +1898,8 @@ async fn store_command(
             })?;
             let token = store_token()?;
             let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let value = if store.contains("preview") {
-                backend.create_preview(&store).await
-            } else {
-                backend.create_development(&store).await
-            }
-            .map_err(Error::from)?;
+            let store = name.unwrap_or_else(|| "Catify preview store".to_owned());
+            let value = backend.create_preview(&store).await.map_err(Error::from)?;
             output
                 .success("Store created", &value)
                 .map_err(|error| Error::process(error.to_string()))?;
@@ -1879,7 +1923,9 @@ async fn store_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             return Ok(0);
         }
-        StoreCliCommand::BulkStatus { store } => {
+        StoreCliCommand::Bulk {
+            command: StoreBulkCommand::Status { store, id },
+        } => {
             let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
                 Error::new(
                     ErrorKind::Api,
@@ -1888,16 +1934,18 @@ async fn store_command(
             })?;
             let token = store_token()?;
             let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let value = backend.bulk_status(&store).await.map_err(Error::from)?;
+            let value = backend
+                .bulk_status(id.as_deref().unwrap_or(&store))
+                .await
+                .map_err(Error::from)?;
             output
                 .success("Bulk operation status", &value)
                 .map_err(|error| Error::process(error.to_string()))?;
             return Ok(0);
         }
-        StoreCliCommand::BulkCancel { store, confirm } => {
-            if !confirm {
-                return Err(Error::invalid_input("bulk cancellation requires --confirm"));
-            }
+        StoreCliCommand::Bulk {
+            command: StoreBulkCommand::Cancel { store: _, id },
+        } => {
             let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
                 Error::new(
                     ErrorKind::Api,
@@ -1906,7 +1954,7 @@ async fn store_command(
             })?;
             let token = store_token()?;
             let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let value = backend.bulk_cancel(&store).await.map_err(Error::from)?;
+            let value = backend.bulk_cancel(&id).await.map_err(Error::from)?;
             output
                 .success("Bulk operation cancelled", &value)
                 .map_err(|error| Error::process(error.to_string()))?;
@@ -1935,7 +1983,35 @@ async fn store_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             return Ok(0);
         }
-        StoreCliCommand::BulkExecute { store, query } => {
+        StoreCliCommand::Bulk {
+            command:
+                StoreBulkCommand::Execute {
+                    store,
+                    query,
+                    query_file,
+                    variables: _,
+                    variable_file: _,
+                    output_file: _,
+                    watch: _,
+                    version: _,
+                    allow_mutations: _,
+                },
+        } => {
+            let query = match (query, query_file) {
+                (Some(query), None) => query,
+                (None, Some(path)) => std::fs::read_to_string(&path).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        format!("could not read {}", path.display()),
+                        error,
+                    )
+                })?,
+                _ => {
+                    return Err(Error::invalid_input(
+                        "store bulk execute requires exactly one of --query or --query-file",
+                    ));
+                }
+            };
             let target = StoreTarget::parse(&store)?;
             let token = store_token()?;
             let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
@@ -1972,26 +2048,39 @@ async fn store_command(
         StoreCliCommand::Delete { store, confirm } => {
             (StoreOperation::Delete, store, true, confirm)
         }
-        StoreCliCommand::BulkCancel { store, confirm } => {
-            (StoreOperation::BulkCancel, store, true, confirm)
-        }
-        StoreCliCommand::Auth { store } => (
+        StoreCliCommand::Auth {
+            command: None,
+            store,
+            scopes: _,
+        } => (
             StoreOperation::Auth,
             store.unwrap_or_else(|| "current".to_owned()),
             false,
             false,
         ),
-        StoreCliCommand::AuthList => (StoreOperation::AuthList, "current".to_owned(), false, false),
+        StoreCliCommand::Auth {
+            command: Some(StoreAuthCommand::List),
+            ..
+        } => (StoreOperation::AuthList, "current".to_owned(), false, false),
         StoreCliCommand::Info { store } => (StoreOperation::Info, store, false, false),
         StoreCliCommand::Execute { store, .. } => (StoreOperation::Execute, store, false, false),
-        StoreCliCommand::CreateDev { store } => (StoreOperation::CreateDev, store, true, false),
-        StoreCliCommand::CreatePreview { store } => {
-            (StoreOperation::CreatePreview, store, true, false)
-        }
-        StoreCliCommand::BulkExecute { store, .. } => {
-            (StoreOperation::BulkExecute, store, false, false)
-        }
-        StoreCliCommand::BulkStatus { store } => (StoreOperation::BulkStatus, store, false, false),
+        StoreCliCommand::Create {
+            command: StoreCreateCommand::Preview { name, .. },
+        } => (
+            StoreOperation::CreatePreview,
+            name.unwrap_or_else(|| "preview".into()),
+            true,
+            false,
+        ),
+        StoreCliCommand::Bulk {
+            command: StoreBulkCommand::Execute { store, .. },
+        } => (StoreOperation::BulkExecute, store, false, false),
+        StoreCliCommand::Bulk {
+            command: StoreBulkCommand::Status { store, .. },
+        } => (StoreOperation::BulkStatus, store, false, false),
+        StoreCliCommand::Bulk {
+            command: StoreBulkCommand::Cancel { store, .. },
+        } => (StoreOperation::BulkCancel, store, true, true),
         StoreCliCommand::StripeAuth { store } => (StoreOperation::StripeAuth, store, false, false),
     };
 
@@ -2772,7 +2861,7 @@ fn format_themes(themes: &[Theme]) -> String {
 #[derive(Debug, Default, Args)]
 pub struct GlobalOptions {
     /// Increase diagnostic output; repeat for more detail.
-    #[arg(short, long, global = true, action = ArgAction::Count)]
+    #[arg(long, global = true, action = ArgAction::Count)]
     pub verbose: u8,
 
     /// Disable ANSI color output.
