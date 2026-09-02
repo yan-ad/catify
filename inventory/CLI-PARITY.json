@@ -5,15 +5,15 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 70,
+    "implemented": 71,
     "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "native": 43,
-      "partial": 16
+      "native": 44,
+      "partial": 15
     },
     "by_domain": {
       "app": {
@@ -27,7 +27,7 @@
         "partial": 1
       },
       "commands": {
-        "partial": 1
+        "native": 1
       },
       "config": {
         "native": 6
@@ -479,16 +479,17 @@
     {
       "command": "commands",
       "domain": "commands",
-      "status": "partial",
+      "status": "native",
       "owner": 36,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust listing embeds the pinned 111-command Shopify runtime inventory and supports JSON, columns, sorting, tree, hidden, deprecated, and extended output without invoking Shopify CLI.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory",
+        "crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree",
+        "inventory/runtime-shopify-cli.json"
       ],
       "live_verified": false,
-      "notes": "Listing exists but does not yet mirror the full 111-command upstream table and columns."
+      "notes": "Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow."
     },
     {
       "command": "config autocorrect off",

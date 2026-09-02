@@ -8,6 +8,56 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn commands_lists_the_complete_embedded_runtime_inventory() {
+    let output = cfy(&["--json", "commands"]);
+    assert!(output.status.success());
+    let commands: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let commands = commands.as_array().unwrap();
+    assert_eq!(commands.len(), 111);
+    let build = commands
+        .iter()
+        .find(|command| command["name"] == "app build")
+        .unwrap();
+    assert_eq!(build["plugin_name"], "@shopify/cli");
+    assert!(
+        build["flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|flag| flag["name"] == "config")
+    );
+}
+
+#[test]
+fn commands_supports_shopify_compatible_columns_sort_and_tree() {
+    let help = cfy(&["commands", "--help"]);
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in [
+        "--columns",
+        "--extended",
+        "--deprecated",
+        "--hidden",
+        "--no-truncate",
+        "--sort",
+        "--tree",
+    ] {
+        assert!(help.contains(flag), "missing commands flag {flag}");
+    }
+
+    let columns = cfy(&["commands", "--columns", "id,type", "--sort", "type"]);
+    assert!(columns.status.success());
+    let columns = String::from_utf8_lossy(&columns.stdout);
+    assert!(columns.starts_with("Id\tType\n"));
+    assert!(columns.contains("app build\tcore"));
+
+    let tree = cfy(&["commands", "--tree"]);
+    assert!(tree.status.success());
+    let tree = String::from_utf8_lossy(&tree.stdout);
+    assert!(tree.contains("  build\tBuild the app, including extensions."));
+    assert!(tree.contains("    link\tFetch your app configuration"));
+}
+
+#[test]
 fn plugins_use_exact_public_paths_and_shopify_compatible_flags() {
     for command in [
         "add",

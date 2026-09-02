@@ -279,14 +279,15 @@
     },
     "commands": {
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory",
+        "crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree",
+        "inventory/runtime-shopify-cli.json"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust listing embeds the pinned 111-command Shopify runtime inventory and supports JSON, columns, sorting, tree, hidden, deprecated, and extended output without invoking Shopify CLI.",
       "live_verified": false,
-      "notes": "Listing exists but does not yet mirror the full 111-command upstream table and columns.",
+      "notes": "Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow.",
       "owner": 36,
-      "status": "partial"
+      "status": "native"
     },
     "config autocorrect off": {
       "evidence": [

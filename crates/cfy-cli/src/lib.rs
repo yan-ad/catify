@@ -42,7 +42,7 @@ use cfy_store::{
     StoreTarget, browser_url,
 };
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
-use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
+use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use crossterm::{
     cursor,
@@ -1924,6 +1924,24 @@ fn store_token() -> Result<String> {
         })
 }
 
+fn command_column_title(column: &CommandColumn) -> &'static str {
+    match column {
+        CommandColumn::Id => "Id",
+        CommandColumn::Plugin => "Plugin",
+        CommandColumn::Summary => "Summary",
+        CommandColumn::Type => "Type",
+    }
+}
+
+fn command_column_value(command: &CommandRecord, column: CommandColumn) -> String {
+    match column {
+        CommandColumn::Id => command.name.clone(),
+        CommandColumn::Plugin => command.plugin_name.clone().unwrap_or_default(),
+        CommandColumn::Summary => command.summary.clone(),
+        CommandColumn::Type => command.plugin_type.clone().unwrap_or_default(),
+    }
+}
+
 async fn theme_parity_command(
     command: ThemeCommand,
     _non_interactive: bool,
@@ -2765,85 +2783,49 @@ pub enum OrganizationCommand {
     },
 }
 
-#[derive(serde::Serialize)]
-struct CommandListing {
-    name: &'static str,
-    summary: &'static str,
-    status: &'static str,
+const COMMAND_INVENTORY: &str = include_str!("../../../inventory/runtime-shopify-cli.json");
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum CommandColumn {
+    Id,
+    Plugin,
+    Summary,
+    Type,
 }
 
-const COMMAND_LISTING: &[CommandListing] = &[
-    CommandListing {
-        name: "app",
-        summary: "Build Shopify apps.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "auth",
-        summary: "Auth operations.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "commands",
-        summary: "List all Catify commands.",
-        status: "implemented",
-    },
-    CommandListing {
-        name: "completion",
-        summary: "Generate shell completions.",
-        status: "implemented",
-    },
-    CommandListing {
-        name: "config",
-        summary: "CLI configuration options.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "doc",
-        summary: "Search and fetch documentation.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "help",
-        summary: "Display help for Catify.",
-        status: "implemented",
-    },
-    CommandListing {
-        name: "hydrogen",
-        summary: "Build Hydrogen storefronts.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "organization",
-        summary: "List Shopify organizations.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "search",
-        summary: "Search Shopify developer documentation.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "store",
-        summary: "Work directly with Shopify stores.",
-        status: "scaffolded",
-    },
-    CommandListing {
-        name: "theme",
-        summary: "Build Liquid themes.",
-        status: "implemented",
-    },
-    CommandListing {
-        name: "upgrade",
-        summary: "Upgrade Catify.",
-        status: "implemented",
-    },
-    CommandListing {
-        name: "version",
-        summary: "Show the current version.",
-        status: "implemented",
-    },
-];
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum CommandSort {
+    #[default]
+    Id,
+    Plugin,
+    Summary,
+    Type,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+struct CommandRecord {
+    name: String,
+    id: String,
+    #[serde(default)]
+    aliases: Vec<String>,
+    #[serde(default)]
+    flags: Vec<serde_json::Value>,
+    #[serde(default)]
+    environment_variables: Vec<String>,
+    #[serde(default)]
+    summary: String,
+    plugin_name: Option<String>,
+    plugin_type: Option<String>,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    deprecated: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct CommandInventory {
+    commands: Vec<CommandRecord>,
+}
 
 fn print_help(topic: Option<&str>) {
     let mut command = Cli::command();
@@ -2858,16 +2840,87 @@ fn print_help(topic: Option<&str>) {
     println!();
 }
 
-fn print_commands(output: &Output) -> Result<()> {
-    output
-        .success("Available commands:", &COMMAND_LISTING)
+fn print_commands(
+    columns: Vec<CommandColumn>,
+    extended: bool,
+    hidden: bool,
+    deprecated: bool,
+    sort: CommandSort,
+    tree: bool,
+    output: &Output,
+) -> Result<()> {
+    let mut commands = serde_json::from_str::<CommandInventory>(COMMAND_INVENTORY)
         .map_err(|error| {
             Error::with_source(
-                cfy_core::ErrorKind::Process,
-                "could not write command listing",
+                ErrorKind::Config,
+                "embedded command inventory is invalid",
                 error,
             )
-        })
+        })?
+        .commands;
+    commands.retain(|command| (hidden || !command.hidden) && (deprecated || !command.deprecated));
+    commands.sort_by(|left, right| {
+        let ordering = match sort {
+            CommandSort::Id => left.name.cmp(&right.name),
+            CommandSort::Plugin => left.plugin_name.cmp(&right.plugin_name),
+            CommandSort::Summary => left.summary.cmp(&right.summary),
+            CommandSort::Type => left.plugin_type.cmp(&right.plugin_type),
+        };
+        ordering.then_with(|| left.name.cmp(&right.name))
+    });
+
+    let columns = if columns.is_empty() {
+        if extended {
+            vec![
+                CommandColumn::Id,
+                CommandColumn::Plugin,
+                CommandColumn::Summary,
+                CommandColumn::Type,
+            ]
+        } else {
+            vec![CommandColumn::Id, CommandColumn::Summary]
+        }
+    } else {
+        columns
+    };
+    let human = if tree {
+        commands
+            .iter()
+            .map(|command| {
+                let depth = command.name.split_whitespace().count().saturating_sub(1);
+                let leaf = command
+                    .name
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or(&command.name);
+                format!("{}{}\t{}", "  ".repeat(depth), leaf, command.summary)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        let mut rows = vec![
+            columns
+                .iter()
+                .map(command_column_title)
+                .collect::<Vec<_>>()
+                .join("\t"),
+        ];
+        rows.extend(commands.iter().map(|command| {
+            columns
+                .iter()
+                .map(|column| command_column_value(command, *column))
+                .collect::<Vec<_>>()
+                .join("\t")
+        }));
+        rows.join("\n")
+    };
+    output.success(&human, &commands).map_err(|error| {
+        Error::with_source(
+            cfy_core::ErrorKind::Process,
+            "could not write command listing",
+            error,
+        )
+    })
 }
 
 fn upgrade(dry_run: bool, output: &Output) -> Result<()> {
@@ -3380,7 +3433,29 @@ pub enum Command {
         topic: Option<String>,
     },
     /// List all public Catify commands.
-    Commands,
+    Commands {
+        /// Only show provided columns.
+        #[arg(short = 'c', long, value_delimiter = ',')]
+        columns: Vec<CommandColumn>,
+        /// Show extra columns.
+        #[arg(short = 'x', long)]
+        extended: bool,
+        /// Include deprecated commands.
+        #[arg(long)]
+        deprecated: bool,
+        /// Include hidden commands.
+        #[arg(long)]
+        hidden: bool,
+        /// Do not truncate output. Catify output is never truncated.
+        #[arg(long)]
+        no_truncate: bool,
+        /// Sort the command listing by a field.
+        #[arg(long, default_value = "id")]
+        sort: CommandSort,
+        /// Render commands as a tree.
+        #[arg(long)]
+        tree: bool,
+    },
     /// Manage Shopify apps.
     #[command(alias = "a")]
     App {
@@ -4258,7 +4333,15 @@ pub enum InternalCommand {
 pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
     match cli.command {
         Some(Command::Help { topic }) => print_help(topic.as_deref()),
-        Some(Command::Commands) => print_commands(output)?,
+        Some(Command::Commands {
+            columns,
+            extended,
+            deprecated,
+            hidden,
+            no_truncate: _,
+            sort,
+            tree,
+        }) => print_commands(columns, extended, hidden, deprecated, sort, tree, output)?,
         Some(Command::Version) => print_version(output)?,
         Some(Command::Upgrade { dry_run }) => upgrade(dry_run, output)?,
         Some(Command::Completion { shell }) => print_completion(shell),
