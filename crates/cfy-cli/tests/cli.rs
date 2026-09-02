@@ -171,6 +171,20 @@ fn app_config_uses_shopify_compatible_nested_command_names() {
     assert!(nested.status.success());
     let nested_help = String::from_utf8_lossy(&nested.stdout);
     assert!(nested_help.contains("Usage: cfy app config link"));
+
+    let pull = cfy(&["app", "config", "pull", "--help"]);
+    assert!(pull.status.success());
+    let pull_help = String::from_utf8_lossy(&pull.stdout);
+    assert!(pull_help.contains("Usage: cfy app config pull"));
+    for flag in [
+        "--config",
+        "--auth-alias",
+        "--client-id",
+        "--path",
+        "--reset",
+    ] {
+        assert!(pull_help.contains(flag), "missing {flag}");
+    }
     assert!(nested_help.contains("--client-id"));
     assert!(nested_help.contains("--file-name"));
 
@@ -330,10 +344,10 @@ fn runtime_command_error_uses_core_exit_code() {
 
 #[test]
 fn unavailable_backends_have_command_specific_diagnostics() {
-    let app = cfy(&["app", "config", "pull"]);
+    let app = cfy(&["app", "versions-list"]);
     assert_eq!(app.status.code(), Some(1));
     let app_stderr = String::from_utf8_lossy(&app.stderr);
-    assert!(app_stderr.contains("app config pull is not available"));
+    assert!(app_stderr.contains("app versions list is not available"));
     assert!(app_stderr.contains("issues/40"));
     assert!(!app_stderr.contains("reserved but not implemented yet"));
 

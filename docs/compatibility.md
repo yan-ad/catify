@@ -1,6 +1,6 @@
 # Compatibility and upstream reference policy
 
-Crabpify is an independent project. Compatibility means matching documented observable behavior, not reproducing Shopify CLI internals.
+Catify is an independent project. Compatibility means matching documented observable behavior, not reproducing Shopify CLI internals.
 
 ## Compatibility levels
 
@@ -10,7 +10,7 @@ Each inventory command has one implementation classification and may report thes
 |---|---|---|---|
 | Exact | Same public invocation and required/optional semantics | Same documented/observed code | Normalized text or JSON snapshot matches |
 | Functional | Same user outcome; a documented flag may be deferred | Same success/failure class | Semantically equivalent, wording may differ |
-| Partial | Only listed paths are supported | Stable Crabpify mapping | Crabpify-specific diagnostic identifies gap |
+| Partial | Only listed paths are supported | Stable Catify mapping | Catify-specific diagnostic identifies gap |
 | None | Command is rejected | `2` for unsupported usage | Clear unsupported message |
 
 Implementation classifications are `native`, `adapter-backed`, `deferred`, and `unsupported`. `deferred` is the default for inventoried commands until an issue accepts another status.
@@ -44,4 +44,4 @@ The command inventory records the exact upstream commit. Dependency licenses are
 
 ## Naming and trademarks
 
-`Crabpify` and `cfy` are the project and executable names. Do not name releases or packages “Shopify CLI,” use Shopify logos, or imply endorsement. “Shopify” may be used descriptively to explain interoperability. User-facing documentation must retain the independent-project disclaimer.
+`Catify` and `cfy` are the project and executable names. Do not name releases or packages “Shopify CLI,” use Shopify logos, or imply endorsement. “Shopify” may be used descriptively to explain interoperability. User-facing documentation must retain the independent-project disclaimer.

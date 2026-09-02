@@ -9,7 +9,7 @@ This document describes observed behavior, not a promise from Shopify. Publicly 
 
 ## Executive decision
 
-Crabpify should treat Shopify authentication as two separate stacks:
+Catify should treat Shopify authentication as two separate stacks:
 
 1. **Developer identity authentication** for app, theme, organization, and Partner/Dev Dashboard workflows. This uses OAuth 2.0 Device Authorization against Shopify Identity, followed by token exchange for service-specific audiences.
 2. **Direct store authentication** for `store auth` commands. This uses authorization code + PKCE against a selected store, a loopback callback, and online Admin API access and refresh tokens.
@@ -110,7 +110,7 @@ Observed source:
 - [`packages/cli-kit/src/private/node/session/validate.ts`](https://github.com/Shopify/cli/blob/87a3ae19c8ddc6bdb379d9d69068ad986995aa59/packages/cli-kit/src/private/node/session/validate.ts)
 - [`packages/cli-kit/src/private/node/session.ts`](https://github.com/Shopify/cli/blob/87a3ae19c8ddc6bdb379d9d69068ad986995aa59/packages/cli-kit/src/private/node/session.ts)
 
-Upstream considers a token expired four minutes before its stated expiry. Recommended Crabpify behavior:
+Upstream considers a token expired four minutes before its stated expiry. Recommended Catify behavior:
 
 1. Resolve credentials from approved environment overrides before disk.
 2. Validate identity scopes and expiry with the same four-minute safety margin.
@@ -121,7 +121,7 @@ Upstream considers a token expired four minutes before its stated expiry. Recomm
 
 ### Logout and revocation
 
-`shopify auth logout` removes local Identity sessions. No remote revocation request was found in the pinned implementation. Therefore Crabpify must not claim that logout revokes tokens server-side.
+`shopify auth logout` removes local Identity sessions. No remote revocation request was found in the pinned implementation. Therefore Catify must not claim that logout revokes tokens server-side.
 
 Proposed user wording: **“Removed local Shopify credentials. Tokens might remain valid until expiration or server-side revocation.”**
 
@@ -178,7 +178,7 @@ The Identity device flow aborts when CI is detected. It does not wait forever fo
 
 App Automation Tokens are publicly documented for CI deployments: [Manage App Automation Tokens](https://shopify.dev/docs/apps/build/dev-dashboard/app-automation-tokens).
 
-Upstream exchanges the automation token into service-specific tokens and ignores requested interactive scopes. Crabpify should:
+Upstream exchanges the automation token into service-specific tokens and ignores requested interactive scopes. Catify should:
 
 - Never write automation tokens to disk.
 - Mark the environment source as non-refreshable.
@@ -197,9 +197,9 @@ Direct `store auth` currently requires a loopback callback. Before implementing 
 
 ## 4. Credential storage requirements
 
-The pinned Shopify CLI stores sessions through a `conf`-backed JSON configuration store. No OS keychain/keyring integration or application-level encryption was found in the reviewed session store. That behavior is compatible but not a security target for Crabpify.
+The pinned Shopify CLI stores sessions through a `conf`-backed JSON configuration store. No OS keychain/keyring integration or application-level encryption was found in the reviewed session store. That behavior is compatible but not a security target for Catify.
 
-Crabpify requirements:
+Catify requirements:
 
 1. Define a `CredentialStore` trait independent from config storage.
 2. Prefer native secure storage:
@@ -212,7 +212,7 @@ Crabpify requirements:
 6. Never persist environment-provided automation or theme tokens.
 7. Redact access tokens, refresh tokens, device codes, authorization codes, PKCE verifiers, and OAuth query parameters.
 
-A migration importer from Shopify CLI storage is optional and must be opt-in. It should copy credentials into Crabpify storage rather than continuing to share a mutable file.
+A migration importer from Shopify CLI storage is optional and must be opt-in. It should copy credentials into Catify storage rather than continuing to share a mutable file.
 
 ## 5. Organization and store selection
 
@@ -232,7 +232,7 @@ Representative internal queries:
 - `organization.accessibleShops(...)` for active organization-owned stores.
 - `currentUserAccount`/organization package calls for organization listing and access metadata.
 
-Selection contract for Crabpify:
+Selection contract for Catify:
 
 - Normalize explicit organization and store identifiers before network access.
 - In interactive mode, prompt when multiple valid choices exist.
@@ -255,24 +255,24 @@ Selection contract for Crabpify:
 | Business Platform endpoints and GraphQL schema | Internal Shopify service | Critical | No stable-API claim; isolate, telemetry-free by default, and gate production use on live compatibility tests. |
 | App Management endpoint/schema | Internal Shopify service | Critical | Version adapter and preserve official CLI fallback instructions. |
 | `@shopify/organizations` behavior | Published package but Shopify-controlled CLI contract | High | Capture observed request fixtures; avoid binding domain models directly to package schema. |
-| Local Shopify CLI session JSON format | Implementation detail | High | Optional one-way importer only; never use it as Crabpify's canonical store. |
+| Local Shopify CLI session JSON format | Implementation detail | High | Optional one-way importer only; never use it as Catify's canonical store. |
 
 ## 7. Unknowns and executable investigation plan
 
 These questions require live Shopify credentials, Shopify approval, or legal/product confirmation and are intentionally not guessed.
 
-### A. Can Crabpify legally and operationally use Shopify CLI's OAuth client IDs?
+### A. Can Catify legally and operationally use Shopify CLI's OAuth client IDs?
 
 1. Ask Shopify Developer Relations/security for explicit third-party native CLI usage terms.
 2. Search repository license notices and Shopify developer terms for OAuth client restrictions.
 3. Do not ship interactive auth publicly until answered.
-4. Preferred resolution: Shopify registers Crabpify as an approved public native client with least-privilege scopes.
+4. Preferred resolution: Shopify registers Catify as an approved public native client with least-privilege scopes.
 
 ### B. Are internal exchange audiences available to a separately registered client?
 
 With a disposable partner account and development app:
 
-1. Request Identity device authorization using the approved Crabpify client.
+1. Request Identity device authorization using the approved Catify client.
 2. Exchange for each audience independently.
 3. Record only status, response shape, granted scopes, and request ID; never record tokens.
 4. Classify unsupported audiences and map commands to official Shopify CLI fallback.

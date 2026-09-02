@@ -4,7 +4,7 @@
 
 ## Modes
 
-- `BuildMode::Incremental` reads `.crabpify/build-cache.json` and skips an extension only when its config fingerprint and output directory are unchanged.
+- `BuildMode::Incremental` reads `.catify/build-cache.json` and skips an extension only when its config fingerprint and output directory are unchanged.
 - `BuildMode::Clean` removes each declared extension output directory before scheduling jobs and never reuses the cache for that run.
 
 The cache is written through a temporary file and contains no credentials or adapter output.

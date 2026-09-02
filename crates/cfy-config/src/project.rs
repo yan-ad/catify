@@ -294,7 +294,7 @@ fn is_app_config(name: &str) -> bool {
 ///
 /// Precedence is command flags, then environment variables, then values in the
 /// selected TOML document. Supported environment names are `SHOPIFY_FLAG_*`
-/// for compatibility and `CFY_*` for Crabpify-native automation.
+/// for compatibility and `CFY_*` for Catify-native automation.
 pub fn resolve_environment(
     project: Project,
     overrides: &ProjectOverrides,

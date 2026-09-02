@@ -117,7 +117,7 @@ impl HttpIdentityTransport {
         .clone()
         .map_err(|error| Error::new(ErrorKind::Config, error))?;
         let client = reqwest::Client::builder()
-            .user_agent(concat!("crabpify/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| {
                 Error::with_source(

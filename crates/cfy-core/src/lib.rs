@@ -1,4 +1,4 @@
-//! Stable domain primitives shared by Crabpify crates.
+//! Stable domain primitives shared by Catify crates.
 
 use std::{
     error::Error as StdError,

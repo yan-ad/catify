@@ -1,6 +1,6 @@
 # Public-readiness checklist
 
-Crabpify remains **private** until the following are complete and reviewed:
+Catify remains **private** until the following are complete and reviewed:
 
 - [x] Rust 1.94 toolchain pin and reproducible local gates.
 - [x] Runtime inventory of Shopify CLI 4.6.1 and command ownership report.

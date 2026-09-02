@@ -1,6 +1,6 @@
-# Crabpify beta documentation
+# Catify beta documentation
 
-Crabpify (`cfy`) is a Rust-based, memory-conscious Shopify CLI alternative. The repository is private during beta and is not yet a drop-in replacement for every authenticated Shopify workflow.
+Catify (`cfy`) is a Rust-based, memory-conscious Shopify CLI alternative. The repository is private during beta and is not yet a drop-in replacement for every authenticated Shopify workflow.
 
 ## Install from a release artifact
 
@@ -76,7 +76,7 @@ These are intentionally visible gaps, not silently reported as complete.
 
 ## Security and bug reports
 
-Never put Shopify tokens, OAuth client secrets, cookies, or private store data in issues or logs. Crabpify redacts sensitive headers, token fields, and error causes, but reports should still be minimized.
+Never put Shopify tokens, OAuth client secrets, cookies, or private store data in issues or logs. Catify redacts sensitive headers, token fields, and error causes, but reports should still be minimized.
 
 For a bug report, include:
 

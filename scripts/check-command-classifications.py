@@ -25,7 +25,7 @@ def main() -> int:
             continue
         if entry is None:
             entry = {"kind": "public", "status": "missing-implementation", "owner": None,
-                     "rationale": "Public runtime command has no complete Crabpify implementation yet."}
+                     "rationale": "Public runtime command has no complete Catify implementation yet."}
         rows.append({"name": name, "public": not is_hidden, **entry,
                      "intentional_exclusion": entry["status"] == "intentional-exclusion"})
     report = {"schema_version": 1, "commands": rows, "invalid": invalid,

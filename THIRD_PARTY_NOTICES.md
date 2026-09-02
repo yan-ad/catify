@@ -1,6 +1,6 @@
 # Third-party notices
 
-Crabpify is an independent implementation. Its command inventory and compatibility research reference:
+Catify is an independent implementation. Its command inventory and compatibility research reference:
 
 - Shopify CLI, copyright Shopify Inc., licensed under the MIT License: https://github.com/Shopify/cli
 

@@ -1,6 +1,6 @@
 # Credential storage and session lifecycle
 
-Issue: [#15](https://github.com/yan-ad/crabpify/issues/15)
+Issue: [#15](https://github.com/yan-ad/catify/issues/15)
 
 ## Backend policy
 

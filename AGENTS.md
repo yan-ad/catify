@@ -1,8 +1,8 @@
-# Crabpify Engineering Policy
+# Catify Engineering Policy
 
 ## Native-first requirement
 
-Crabpify is a Rust-native Shopify CLI implementation. The shipped command surface must be **majority native** and must not become a thin wrapper around the official Shopify CLI.
+Catify is a Rust-native Shopify CLI implementation. The shipped command surface must be **majority native** and must not become a thin wrapper around the official Shopify CLI.
 
 ### Command implementation priority
 

@@ -1,4 +1,4 @@
-# Crabpify compatibility suite
+# Catify compatibility suite
 
 Run from repository root:
 

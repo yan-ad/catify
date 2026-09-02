@@ -240,7 +240,7 @@ impl HttpClient {
         let base_url = Url::parse(base_url)
             .map_err(|error| ApiError::Configuration(format!("invalid base URL: {error}")))?;
         let client = reqwest::Client::builder()
-            .user_agent(concat!("crabpify/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|source| ApiError::Transport { source })?;
         Ok(Self {

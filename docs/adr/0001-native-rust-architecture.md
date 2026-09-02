@@ -2,11 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-08-13
-- Owners: Crabpify maintainers
+- Owners: Catify maintainers
 
 ## Context
 
-Shopify CLI provides a broad command surface but its Node.js process and dependency graph can impose noticeable startup and idle-memory costs. Crabpify needs a small native core while retaining a path to behavioral compatibility with workflows that inherently invoke JavaScript tools.
+Shopify CLI provides a broad command surface but its Node.js process and dependency graph can impose noticeable startup and idle-memory costs. Catify needs a small native core while retaining a path to behavioral compatibility with workflows that inherently invoke JavaScript tools.
 
 ## Decision
 

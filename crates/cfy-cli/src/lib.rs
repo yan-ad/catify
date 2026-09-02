@@ -239,13 +239,13 @@ fn app_state_path() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| {
             env::var_os("XDG_CONFIG_HOME")
-                .map(|path| PathBuf::from(path).join("crabpify/app-state.json"))
+                .map(|path| PathBuf::from(path).join("catify/app-state.json"))
         })
         .or_else(|| {
             env::var_os("HOME")
-                .map(|path| PathBuf::from(path).join(".config/crabpify/app-state.json"))
+                .map(|path| PathBuf::from(path).join(".config/catify/app-state.json"))
         })
-        .unwrap_or_else(|| PathBuf::from(".crabpify/app-state.json"))
+        .unwrap_or_else(|| PathBuf::from(".catify/app-state.json"))
 }
 
 fn app_config_use(
@@ -602,7 +602,18 @@ pub enum AppConfigCommand {
         delegate: bool,
     },
     /// Refresh an already-linked app configuration.
-    Pull,
+    Pull {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
     /// Activate an app configuration.
     Use {
         /// Configuration name or filename to activate.
@@ -725,11 +736,109 @@ async fn app_config_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppConfigCommand::Pull => Err(backend_unavailable(
-            "app config pull",
-            40,
-            "the linked app configuration download backend is pending",
-        )),
+        AppConfigCommand::Pull {
+            config,
+            auth_alias,
+            client_id,
+            path,
+            reset,
+        } => {
+            let start = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not determine app directory",
+                    error,
+                )
+            })?);
+            let project = discover(&start, Some(ProjectKind::App))?;
+            let state_path = app_state_path();
+            let mut state = ActiveConfigState::load(&state_path)?;
+            if reset {
+                state.clear(project.root());
+                state.write(&state_path)?;
+            }
+            let choices = load_local_app_configs(&project)?;
+            let selected = if let Some(config) = config {
+                find_local_app_config(&choices, &config).ok_or_else(|| {
+                    Error::invalid_input(format!(
+                        "could not find configuration file {}",
+                        normalized_app_config_name(&config)
+                    ))
+                })?
+            } else if let Some(client_id) = client_id {
+                choices
+                    .iter()
+                    .find(|choice| choice.client_id == client_id)
+                    .ok_or_else(|| {
+                        Error::invalid_input(
+                            "the specified client ID could not be found in any app TOML file",
+                        )
+                    })?
+            } else if !reset {
+                state
+                    .selected(project.root())
+                    .and_then(|name| find_local_app_config(&choices, name))
+                    .or_else(|| {
+                        choices
+                            .iter()
+                            .find(|choice| choice.file_name == "shopify.app.toml")
+                    })
+                    .or_else(|| (choices.len() == 1).then(|| &choices[0]))
+                    .ok_or_else(|| {
+                        Error::invalid_input(
+                            "multiple app configurations are available; pass --config",
+                        )
+                    })?
+            } else {
+                choices
+                    .iter()
+                    .find(|choice| choice.file_name == "shopify.app.toml")
+                    .or_else(|| (choices.len() == 1).then(|| &choices[0]))
+                    .ok_or_else(|| {
+                        Error::invalid_input(
+                            "multiple app configurations are available; pass --config",
+                        )
+                    })?
+            };
+
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(Arc::clone(&store), identity_client);
+            let session = sessions.session(&identity).await?.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!(
+                        "no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"
+                    ),
+                )
+            })?;
+            let backend = AppManagementClient::from_session(&session).await?;
+            let app = backend.app_by_client_id(&selected.client_id).await?;
+            let report = write_linked_config(
+                &LinkOptions {
+                    directory: selected
+                        .path
+                        .parent()
+                        .unwrap_or(project.root())
+                        .to_path_buf(),
+                    client_id: Some(selected.client_id.clone()),
+                    file_name: Some(selected.file_name.clone()),
+                    force: true,
+                },
+                &app,
+            )?;
+            output
+                .success(
+                    &format!("Pulled configuration into {}", report.path.display()),
+                    &report,
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         AppConfigCommand::Use {
             config,
             auth_alias: _,
@@ -1184,12 +1293,12 @@ fn config_path() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| {
             env::var_os("XDG_CONFIG_HOME")
-                .map(|path| PathBuf::from(path).join("crabpify/config.toml"))
+                .map(|path| PathBuf::from(path).join("catify/config.toml"))
         })
         .or_else(|| {
-            env::var_os("HOME").map(|path| PathBuf::from(path).join(".config/crabpify/config.toml"))
+            env::var_os("HOME").map(|path| PathBuf::from(path).join(".config/catify/config.toml"))
         })
-        .unwrap_or_else(|| PathBuf::from(".crabpify/config.toml"))
+        .unwrap_or_else(|| PathBuf::from(".catify/config.toml"))
 }
 
 fn config_command(command: ConfigCommand, output: &Output) -> Result<u8> {
@@ -1236,12 +1345,10 @@ fn docs_cache_root() -> PathBuf {
     env::var_os("CFY_CACHE_DIR")
         .map(PathBuf::from)
         .or_else(|| {
-            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("crabpify/docs"))
+            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("catify/docs"))
         })
-        .or_else(|| {
-            env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/crabpify/docs"))
-        })
-        .unwrap_or_else(|| PathBuf::from(".crabpify-cache/docs"))
+        .or_else(|| env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/catify/docs")))
+        .unwrap_or_else(|| PathBuf::from(".catify-cache/docs"))
 }
 
 fn notification_command(command: NotificationCommand, output: &Output) -> Result<u8> {
@@ -1256,7 +1363,7 @@ fn notification_command(command: NotificationCommand, output: &Output) -> Result
 
 #[derive(Debug, Subcommand)]
 pub enum CacheCommand {
-    /// Remove Crabpify caches and report reclaimed bytes.
+    /// Remove Catify caches and report reclaimed bytes.
     Clear,
 }
 
@@ -1285,12 +1392,10 @@ fn docs_cache() -> DocsCache {
     let root = env::var_os("CFY_CACHE_DIR")
         .map(PathBuf::from)
         .or_else(|| {
-            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("crabpify/docs"))
+            env::var_os("XDG_CACHE_HOME").map(|path| PathBuf::from(path).join("catify/docs"))
         })
-        .or_else(|| {
-            env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/crabpify/docs"))
-        })
-        .unwrap_or_else(|| PathBuf::from(".crabpify-cache/docs"));
+        .or_else(|| env::var_os("HOME").map(|path| PathBuf::from(path).join(".cache/catify/docs")))
+        .unwrap_or_else(|| PathBuf::from(".catify-cache/docs"));
     DocsCache::new(root)
 }
 
@@ -1752,7 +1857,7 @@ const COMMAND_LISTING: &[CommandListing] = &[
     },
     CommandListing {
         name: "commands",
-        summary: "List all Crabpify commands.",
+        summary: "List all Catify commands.",
         status: "implemented",
     },
     CommandListing {
@@ -1772,7 +1877,7 @@ const COMMAND_LISTING: &[CommandListing] = &[
     },
     CommandListing {
         name: "help",
-        summary: "Display help for Crabpify.",
+        summary: "Display help for Catify.",
         status: "implemented",
     },
     CommandListing {
@@ -1802,7 +1907,7 @@ const COMMAND_LISTING: &[CommandListing] = &[
     },
     CommandListing {
         name: "upgrade",
-        summary: "Upgrade Crabpify.",
+        summary: "Upgrade Catify.",
         status: "implemented",
     },
     CommandListing {
@@ -1895,7 +2000,7 @@ async fn theme_dev(
     let store = resolve_store(explicit_store)?;
     let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(
         cfy_core::ErrorKind::Api,
-        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Catify login flow",
     ))?;
     let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
     let cancellation = Cancellation::default();
@@ -1911,7 +2016,7 @@ async fn theme_dev(
                     e,
                 )
             })?;
-        let name = format!("Crabpify development {}", std::process::id());
+        let name = format!("Catify development {}", std::process::id());
         (
             client
                 .create_development_theme(&name, &cancellation)
@@ -2066,7 +2171,7 @@ async fn push_theme(
     let store = resolve_store(explicit_store)?;
     let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(
         cfy_core::ErrorKind::Api,
-        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+        "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Catify login flow",
     ))?;
     let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
     let themes = client.list().await.map_err(Error::from)?;
@@ -2156,7 +2261,7 @@ async fn push_theme(
         })
 }
 
-/// Crabpify's top-level command-line interface.
+/// Catify's top-level command-line interface.
 #[derive(Debug, Parser)]
 #[command(
     name = "cfy",
@@ -2186,7 +2291,7 @@ async fn pull_theme(
     let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| {
         Error::new(
             cfy_core::ErrorKind::Api,
-            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Catify login flow",
         )
     })?;
     let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
@@ -2238,7 +2343,7 @@ async fn list_themes(explicit_store: Option<&str>, output: &Output) -> Result<()
     let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| {
         Error::new(
             cfy_core::ErrorKind::Api,
-            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Crabpify login flow",
+            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Catify login flow",
         )
     })?;
     let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
@@ -2319,7 +2424,7 @@ fn format_themes(themes: &[Theme]) -> String {
         .join("\n")
 }
 
-/// Options shared by every Crabpify command.
+/// Options shared by every Catify command.
 #[derive(Debug, Default, Args)]
 pub struct GlobalOptions {
     /// Increase diagnostic output; repeat for more detail.
@@ -2341,12 +2446,12 @@ pub struct GlobalOptions {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Display help for Crabpify.
+    /// Display help for Catify.
     Help {
         /// Optional topic or command to describe.
         topic: Option<String>,
     },
-    /// List all public Crabpify commands.
+    /// List all public Catify commands.
     Commands,
     /// Manage Shopify apps.
     #[command(alias = "a")]
@@ -2372,7 +2477,7 @@ pub enum Command {
     #[command(alias = "v")]
     Version,
 
-    /// Upgrade Crabpify through a supported installation channel.
+    /// Upgrade Catify through a supported installation channel.
     Upgrade {
         /// Validate the selected channel without changing the installation.
         #[arg(long)]
@@ -2384,12 +2489,12 @@ pub enum Command {
         #[command(subcommand)]
         command: AuthCommand,
     },
-    /// Crabpify configuration options.
+    /// Catify configuration options.
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
     },
-    /// Show or clear Crabpify notification state.
+    /// Show or clear Catify notification state.
     Notification {
         #[command(subcommand)]
         command: NotificationCommand,
@@ -2399,7 +2504,7 @@ pub enum Command {
         #[command(subcommand)]
         command: CacheCommand,
     },
-    /// Diagnose the local Crabpify environment and project.
+    /// Diagnose the local Catify environment and project.
     Doctor {
         #[command(subcommand)]
         command: DoctorCommand,
@@ -2465,7 +2570,7 @@ fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
         }
     };
     output
-        .success("Crabpify diagnostics", &value)
+        .success("Catify diagnostics", &value)
         .map_err(|error| Error::process(error.to_string()))?;
     Ok(0)
 }
@@ -2504,7 +2609,7 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
             let marker = destination.join("shopify.app.toml");
             if !marker.exists() {
-                std::fs::write(&marker, "# Crabpify app configuration\nname = \"my-app\"\n")
+                std::fs::write(&marker, "# Catify app configuration\nname = \"my-app\"\n")
                     .map_err(|error| {
                         Error::api(format!("could not write {}: {error}", marker.display()))
                     })?;

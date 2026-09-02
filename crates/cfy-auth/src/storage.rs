@@ -13,7 +13,7 @@ use std::{
 use tokio::sync::Mutex;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-const SERVICE_NAME: &str = "dev.crabpify.cfy";
+const SERVICE_NAME: &str = "dev.catify.cfy";
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Secret text that is zeroized on drop and never exposed through `Debug`.

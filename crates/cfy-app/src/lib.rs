@@ -447,6 +447,47 @@ mod tests {
     }
 
     #[test]
+    fn refreshing_linked_config_preserves_local_sections() {
+        let directory = temp();
+        let path = directory.join("shopify.app.staging.toml");
+        std::fs::write(
+            &path,
+            r#"client_id = "old"
+[build]
+automatically_update_urls_on_dev = true
+
+[[webhooks.subscriptions]]
+topics = ["products/create"]
+uri = "/webhooks"
+"#,
+        )
+        .unwrap();
+        write_linked_config(
+            &LinkOptions {
+                directory: directory.clone(),
+                client_id: Some("new".into()),
+                file_name: Some("shopify.app.staging.toml".into()),
+                force: true,
+            },
+            &RemoteApp {
+                id: "1".into(),
+                client_id: "new".into(),
+                name: "Updated app".into(),
+                organization_id: "1".into(),
+                application_url: Some("https://updated.example".into()),
+                embedded: Some(true),
+                scopes: vec!["read_products".into()],
+            },
+        )
+        .unwrap();
+        let source = std::fs::read_to_string(path).unwrap();
+        assert!(source.contains("client_id = \"new\""));
+        assert!(source.contains("automatically_update_urls_on_dev = true"));
+        assert!(source.contains("topics = [\"products/create\"]"));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn refuses_to_replace_without_force() {
         let directory = temp();
         std::fs::write(directory.join("shopify.app.toml"), "client_id='old'").unwrap();

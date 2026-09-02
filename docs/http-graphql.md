@@ -1,6 +1,6 @@
 # HTTP and GraphQL client contract
 
-`cfy-api` owns the reusable asynchronous transport used by Crabpify commands.
+`cfy-api` owns the reusable asynchronous transport used by Catify commands.
 It uses `reqwest` with Rustls and the Ring crypto provider, so the CLI does not
 depend on a system OpenSSL installation or the heavier AWS-LC build toolchain.
 

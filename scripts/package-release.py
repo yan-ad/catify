@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create deterministic Crabpify release artifacts using only the stdlib."""
+"""Create deterministic Catify release artifacts using only the stdlib."""
 import argparse, gzip, hashlib, json, os, pathlib, shutil, subprocess, tarfile, zipfile
 
 
@@ -33,7 +33,7 @@ def main():
     shutil.copy2(ns.binary, stage/binary_name)
     os.chmod(stage/binary_name, 0o755)
     (stage/'VERSION').write_text(ns.version+'\n')
-    (stage/'README.txt').write_text(f'Crabpify {ns.version} ({ns.target})\nBinary: {binary_name}\n')
+    (stage/'README.txt').write_text(f'Catify {ns.version} ({ns.target})\nBinary: {binary_name}\n')
     ns.output.mkdir(parents=True, exist_ok=True)
     archive=ns.output/(name + ('.zip' if 'windows' in ns.target else '.tar.gz'))
     if archive.exists(): archive.unlink()
@@ -61,7 +61,7 @@ def main():
     entries[archive.name] = digest
     sums.write_text(''.join(f'{entries[key]}  {key}\n' for key in sorted(entries)))
     notes=ns.output/'RELEASE_NOTES.md'
-    notes.write_text(f'# Crabpify {ns.version}\n\nTarget: `{ns.target}`\nWindows status: `{ns.windows_status}`\n\n## Changes\n{git_log()}\n')
+    notes.write_text(f'# Catify {ns.version}\n\nTarget: `{ns.target}`\nWindows status: `{ns.windows_status}`\n\n## Changes\n{git_log()}\n')
     print(json.dumps({'archive':str(archive),'sha256':digest,'target':ns.target,'windows_status':ns.windows_status}))
 
 if __name__=='__main__': main()

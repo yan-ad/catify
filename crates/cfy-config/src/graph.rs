@@ -1,7 +1,7 @@
 //! Shopify application configuration graph loading.
 //!
 //! The graph deliberately keeps the complete TOML tables alongside the fields
-//! understood by crabpify. Shopify adds configuration fields frequently, so a
+//! understood by catify. Shopify adds configuration fields frequently, so a
 //! newer field is a warning rather than a parse failure.
 
 use crate::project::Project;

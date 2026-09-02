@@ -252,7 +252,7 @@ impl HttpDocsTransport {
         install_tls_provider()?;
         let client = reqwest::blocking::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .user_agent(concat!("crabpify/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| DocsError::Network(error.to_string()))?;
         Ok(Self { client })

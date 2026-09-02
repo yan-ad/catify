@@ -3,18 +3,18 @@ A fast, memory-efficient Shopify CLI alternative
 Usage: cfy [OPTIONS] [COMMAND]
 
 Commands:
-  help          Display help for Crabpify
-  commands      List all public Crabpify commands
+  help          Display help for Catify
+  commands      List all public Catify commands
   app           Manage Shopify apps
   theme         Manage Shopify themes
   completion    Generate a shell completion script on standard output
   version       Print build and runtime version information
-  upgrade       Upgrade Crabpify through a supported installation channel
+  upgrade       Upgrade Catify through a supported installation channel
   auth          Authentication operations
-  config        Crabpify configuration options
-  notification  Show or clear Crabpify notification state
+  config        Catify configuration options
+  notification  Show or clear Catify notification state
   cache         Manage local caches
-  doctor        Diagnose the local Crabpify environment and project
+  doctor        Diagnose the local Catify environment and project
   doc           Search and fetch Shopify documentation
   hydrogen      Build Hydrogen storefronts
   organization  List Shopify organizations

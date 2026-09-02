@@ -11,7 +11,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-const CACHE_FILE: &str = ".crabpify/build-cache.json";
+const CACHE_FILE: &str = ".catify/build-cache.json";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BuildMode {

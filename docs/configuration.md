@@ -1,6 +1,6 @@
 # Configuration
 
-Crabpify resolves configuration in this order, with each later source
+Catify resolves configuration in this order, with each later source
 overriding values from earlier sources:
 
 1. Built-in defaults.
