@@ -31,6 +31,10 @@ use cfy_config::{
     clear_cache_root, write_atomic,
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
+use cfy_deploy::{
+    AppManagementBackend as DeployBackend, DeployOptions, DeploySelection, VersionMetadata,
+    deploy as deploy_app,
+};
 use cfy_dev::{ComponentSpec, DevOptions, DevSession};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
@@ -88,6 +92,152 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn build_app_graph(
+    graph: &cfy_config::graph::AppConfigGraph,
+) -> Result<cfy_build::BuildReport> {
+    if graph
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == cfy_config::graph::DiagnosticSeverity::Error)
+    {
+        return Err(Error::config(
+            "app configuration contains errors; run `cfy app config validate` for details",
+        ));
+    }
+    let inputs = graph
+        .apps
+        .first()
+        .map(|app| {
+            app.extensions
+                .iter()
+                .map(|extension| BuildInput {
+                    output_dir: graph.root.join(".catify/build").join(
+                        extension
+                            .handle
+                            .as_deref()
+                            .or(extension.name.as_deref())
+                            .unwrap_or("extension"),
+                    ),
+                    memory_mb: 256,
+                    configuration: serde_json::to_value(&extension.raw)
+                        .unwrap_or(serde_json::Value::Null),
+                    extension: extension.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let supervisor = Supervisor::default();
+    let adapter = if inputs.is_empty() {
+        None
+    } else {
+        let command = env::var_os("CFY_EXTENSION_ADAPTER").ok_or_else(|| {
+            Error::config(
+                "this app contains extensions; set CFY_EXTENSION_ADAPTER to a compatible build adapter executable",
+            )
+        })?;
+        Some(
+            Adapter::discover(
+                &supervisor,
+                AdapterCommand::new(PathBuf::from(command)),
+                None,
+            )
+            .await?,
+        )
+    };
+    BuildPipeline::new(adapter.as_ref(), &supervisor)
+        .run(
+            graph,
+            inputs,
+            BuildOptions {
+                mode: BuildMode::Incremental,
+                parallelism: Parallelism {
+                    max_jobs: std::thread::available_parallelism()
+                        .map(usize::from)
+                        .unwrap_or(1),
+                    max_memory_mb: 1024,
+                },
+            },
+        )
+        .await
+}
+
+fn create_deploy_bundle(
+    graph: &cfy_config::graph::AppConfigGraph,
+    build: &cfy_build::BuildReport,
+) -> Result<cfy_build::BuildReport> {
+    let directory = graph.root.join(".catify");
+    std::fs::create_dir_all(&directory).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not create deploy directory",
+            error,
+        )
+    })?;
+    let path = directory.join("deploy-bundle.tar.br");
+    let file = std::fs::File::create(&path).map_err(|error| {
+        Error::with_source(ErrorKind::Config, "could not create deploy bundle", error)
+    })?;
+    let encoder = brotli::CompressorWriter::new(file, 4096, 6, 22);
+    let mut archive = tar::Builder::new(encoder);
+    let app = graph
+        .apps
+        .first()
+        .ok_or_else(|| Error::config("selected app graph has no app node"))?;
+    let manifest = serde_json::json!({
+        "name": app.config.name,
+        "handle": app.config.raw.get("handle").and_then(toml::Value::as_str),
+        "modules": app.extensions.iter().map(|extension| serde_json::json!({
+            "type": extension.extension_type,
+            "handle": extension.handle,
+            "uid": extension.uid,
+            "config": extension.raw,
+        })).collect::<Vec<_>>(),
+    });
+    let manifest = serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| Error::config(format!("could not encode deploy manifest: {error}")))?;
+    let mut header = tar::Header::new_gnu();
+    header.set_size(manifest.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    archive
+        .append_data(&mut header, "manifest.json", manifest.as_slice())
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::Config,
+                "could not archive deploy manifest",
+                error,
+            )
+        })?;
+    for artifact in &build.artifacts {
+        let file_name = artifact.path.file_name().ok_or_else(|| {
+            Error::config(format!(
+                "invalid build artifact path {}",
+                artifact.path.display()
+            ))
+        })?;
+        let archive_path = PathBuf::from("artifacts")
+            .join(&artifact.extension)
+            .join(file_name);
+        archive
+            .append_path_with_name(&artifact.path, archive_path)
+            .map_err(|error| {
+                Error::with_source(ErrorKind::Config, "could not archive build artifact", error)
+            })?;
+    }
+    archive.finish().map_err(|error| {
+        Error::with_source(ErrorKind::Config, "could not finish deploy bundle", error)
+    })?;
+    Ok(cfy_build::BuildReport {
+        mode: build.mode.clone(),
+        skipped: build.skipped.clone(),
+        artifacts: vec![cfy_build::Artifact {
+            extension: "complete-source".into(),
+            path,
+        }],
+        diagnostics: build.diagnostics.clone(),
+    })
 }
 
 #[derive(Debug, Args)]
@@ -4150,71 +4300,105 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 &selected.project,
                 &selected.config_path,
             )?;
-            if graph.diagnostics.iter().any(|diagnostic| {
-                diagnostic.severity == cfy_config::graph::DiagnosticSeverity::Error
-            }) {
-                return Err(Error::config(
-                    "app configuration contains errors; run `cfy app config validate` for details",
-                ));
-            }
-            let inputs = graph
-                .apps
-                .first()
-                .map(|app| {
-                    app.extensions
-                        .iter()
-                        .map(|extension| BuildInput {
-                            output_dir: graph.root.join(".catify/build").join(
-                                extension
-                                    .handle
-                                    .as_deref()
-                                    .or(extension.name.as_deref())
-                                    .unwrap_or("extension"),
-                            ),
-                            memory_mb: 256,
-                            configuration: serde_json::to_value(&extension.raw)
-                                .unwrap_or(serde_json::Value::Null),
-                            extension: extension.clone(),
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let supervisor = cfy_process::Supervisor::default();
-            let adapter = if inputs.is_empty() {
-                None
-            } else {
-                let command = env::var_os("CFY_EXTENSION_ADAPTER").ok_or_else(|| {
-                    Error::config(
-                        "this app contains extensions; set CFY_EXTENSION_ADAPTER to a compatible build adapter executable",
-                    )
-                })?;
-                Some(
-                    Adapter::discover(
-                        &supervisor,
-                        AdapterCommand::new(PathBuf::from(command)),
-                        None,
-                    )
-                    .await?,
-                )
-            };
-            let pipeline = BuildPipeline::new(adapter.as_ref(), &supervisor);
-            let report = pipeline
-                .run(
-                    &graph,
-                    inputs,
-                    BuildOptions {
-                        mode: BuildMode::Incremental,
-                        parallelism: Parallelism {
-                            max_jobs: std::thread::available_parallelism()
-                                .map(usize::from)
-                                .unwrap_or(1),
-                            max_memory_mb: 1024,
-                        },
-                    },
-                )
-                .await?;
+            let report = build_app_graph(&graph).await?;
             output
                 .success("App build completed", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        AppCommand::Deploy {
+            config,
+            auth_alias,
+            client_id,
+            path,
+            reset,
+            no_release,
+            allow_updates,
+            allow_deletes,
+            no_build,
+            message,
+            version,
+            source_control_url,
+        } => {
+            if non_interactive && !no_release && !allow_updates && !allow_deletes {
+                return Err(Error::invalid_input(
+                    "non-interactive deploy requires --allow-updates, --allow-deletes, or --no-release",
+                ));
+            }
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let client_id = selected
+                .document
+                .get("client_id")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Error::invalid_input("selected app configuration has no client_id")
+                })?;
+            let graph = cfy_config::graph::AppConfigGraph::load_selected(
+                &selected.project,
+                &selected.config_path,
+            )?;
+            let build = if no_build {
+                let path = graph.root.join(".catify/deploy-bundle.tar.br");
+                if !path.is_file() {
+                    return Err(Error::config(
+                        "--no-build requires an existing .catify/deploy-bundle.tar.br",
+                    ));
+                }
+                cfy_build::BuildReport {
+                    mode: "cached".into(),
+                    skipped: Vec::new(),
+                    artifacts: vec![cfy_build::Artifact {
+                        extension: "complete-source".into(),
+                        path,
+                    }],
+                    diagnostics: Vec::new(),
+                }
+            } else {
+                let built = build_app_graph(&graph).await?;
+                create_deploy_bundle(&graph, &built)?
+            };
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let credential_store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(credential_store, identity_client);
+            let session = sessions.session(&identity).await?.ok_or_else(|| {
+                Error::api(format!(
+                    "no authenticated session for `{identity}`; run `cfy auth login` first"
+                ))
+            })?;
+            let app_management = AppManagementClient::from_session(&session).await?;
+            let app = app_management.app_by_client_id(client_id).await?;
+            let token = cfy_app::exchange_app_management_token(&session).await?;
+            let endpoint = env::var("CFY_APP_MANAGEMENT_URL").unwrap_or_else(|_| {
+                "https://app.shopify.com/app_management/unstable/graphql.json".into()
+            });
+            let backend = DeployBackend::new(&endpoint, token.expose())?;
+            let report = deploy_app(
+                &backend,
+                &DeployOptions {
+                    selection: Some(DeploySelection {
+                        app: app.id,
+                        environment: app.organization_id,
+                    }),
+                    non_interactive,
+                    dry_run: false,
+                    release: !no_release,
+                    metadata: VersionMetadata {
+                        version_tag: version,
+                        message,
+                        source_control_url,
+                    },
+                    upload_policy: Default::default(),
+                },
+                &build,
+                &Cancellation::default(),
+            )
+            .await?;
+            output
+                .success("App deployed", &report)
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
@@ -4564,6 +4748,34 @@ pub enum AppCommand {
         reset: bool,
         #[arg(long, env = "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION")]
         skip_dependencies_installation: bool,
+    },
+    /// Build, upload, create, and optionally release an app version.
+    #[command(disable_version_flag = true)]
+    Deploy {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_NO_RELEASE", conflicts_with_all = ["allow_updates", "allow_deletes"])]
+        no_release: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_UPDATES")]
+        allow_updates: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_DELETES")]
+        allow_deletes: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_NO_BUILD")]
+        no_build: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_MESSAGE")]
+        message: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_SOURCE_CONTROL_URL")]
+        source_control_url: Option<String>,
     },
     /// Run the app locally and watch its declared web processes.
     Dev {

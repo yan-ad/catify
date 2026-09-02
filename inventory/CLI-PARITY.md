@@ -6,16 +6,16 @@
 
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **79**
-- Commands with automated evidence: **91**
+- Commands with automated evidence: **92**
 - Live-verified commands: **7**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
-| `library-only` | 3 | Core/backend exists, but the public command is not fully wired. |
+| `library-only` | 2 | Core/backend exists, but the public command is not fully wired. |
 | `native` | 52 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 10 | Exact command path exists, but behavior is not yet fully compatible. |
+| `partial` | 11 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
@@ -29,7 +29,7 @@
 | `app config pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config use` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
 | `app config validate` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-app/src/lib.rs tests. |
-| `app deploy` | `library-only` | no | no | [#27](https://github.com/yan-ad/catify/issues/27) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
+| `app deploy` | `partial` | yes | no | [#27](https://github.com/yan-ad/catify/issues/27) | Rust builds a complete Brotli source bundle, requests a signed App Management upload URL, performs bounded PUT upload, creates an app version, and optionally releases it at the exact upstream command path. Evidence: crates/cfy-deploy/src/lib.rs tests; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. Remote active-version module reconciliation and allow-updates/allow-deletes diff policy are not yet at full Shopify CLI parity. |
 | `app dev` | `partial` | yes | no | [#29](https://github.com/yan-ad/catify/issues/29) | Native orchestration runs shopify.web.toml commands with supervised lifecycle, Ctrl-C cleanup, custom HTTPS tunnel URLs, and cloudflared discovery/readiness/cleanup. Dev-store preview registration, notify, and theme-extension preview flags remain pending. Evidence: crates/cfy-dev/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state; crates/cfy-cli/tests/cli.rs::app_dev_starts_and_cleans_up_cloudflared_tunnel. |
 | `app dev clean` | `partial` | yes | no | [#29](https://github.com/yan-ad/catify/issues/29) | Native local dev-state cleanup is exposed at the exact command path. Restoring remote dev-store preview state remains pending. Evidence: crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state. |
 | `app env pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-config/src/app_env.rs tests. |

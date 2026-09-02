@@ -8,6 +8,78 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_deploy_matches_shopify_flags_and_noninteractive_safety() {
+    let help = cfy(&["app", "deploy", "--help"]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in [
+        "--allow-deletes",
+        "--allow-updates",
+        "--auth-alias",
+        "--client-id",
+        "--config",
+        "--message",
+        "--no-build",
+        "--no-release",
+        "--path",
+        "--reset",
+        "--source-control-url",
+        "--version",
+    ] {
+        assert!(help.contains(flag), "missing app deploy flag {flag}");
+    }
+    let root = std::env::temp_dir().join(format!("cfy-deploy-flags-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("shopify.app.toml"),
+        "client_id = \"fixture\"\nname = \"Fixture\"\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["--non-interactive", "app", "deploy", "--path"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--allow-updates"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn app_deploy_builds_one_complete_brotli_source_before_authentication() {
+    let root = std::env::temp_dir().join(format!(
+        "cfy-deploy-bundle-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("shopify.app.toml"),
+        "client_id = \"fixture\"\nname = \"Fixture\"\nhandle = \"fixture\"\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args([
+            "app",
+            "deploy",
+            "--no-release",
+            "--auth-alias",
+            "missing-fixture",
+            "--path",
+        ])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(root.join(".catify/deploy-bundle.tar.br").is_file());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn app_bulk_commands_match_shopify_nested_paths_and_flag_constraints() {
     for command in ["execute", "status", "cancel"] {
         let help = cfy(&["app", "bulk", command, "--help"]);

@@ -84,11 +84,16 @@
       "status": "native"
     },
     "app deploy": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-deploy/src/lib.rs tests",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust builds a complete Brotli source bundle, requests a signed App Management upload URL, performs bounded PUT upload, creates an app version, and optionally releases it at the exact upstream command path.",
       "live_verified": false,
+      "notes": "Remote active-version module reconciliation and allow-updates/allow-deletes diff policy are not yet at full Shopify CLI parity.",
       "owner": 27,
-      "status": "library-only"
+      "status": "partial"
     },
     "app dev": {
       "evidence": [

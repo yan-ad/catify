@@ -33,6 +33,7 @@ repository = "https://github.com/yan-ad/catify"
 
 [workspace.dependencies]
 base64 = "0.22"
+brotli = "8.0.2"
 async-trait = "0.1.89"
 cfy-api = { version = "0.1.0", path = "crates/cfy-api" }
 cfy-app = { version = "0.1.0", path = "crates/cfy-app" }
@@ -66,6 +67,7 @@ serde_json = "1.0.143"
 semver = "1.0.26"
 thiserror = "2.0.16"
 time = { version = "0.3.44", features = ["formatting"] }
+tar = "0.4.44"
 tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "0.9.5"
 url = { version = "2.5.7", features = ["serde"] }
