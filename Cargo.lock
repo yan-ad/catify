@@ -507,6 +507,7 @@ dependencies = [
  "cfy-organization",
  "cfy-process",
  "cfy-store",
+ "cfy-tunnel",
  "clap",
  "clap_complete",
  "crossterm",
@@ -516,6 +517,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml",
+ "url",
  "zip",
 ]
 

@@ -36,6 +36,7 @@ use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
     StoreTarget, browser_url,
 };
+use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use crossterm::{
@@ -91,17 +92,12 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         install_mkcert,
         use_localhost,
         tunnel_url,
-        localhost_port: _,
+        localhost_port,
         theme,
         theme_app_extension_port,
         store_password,
         notify,
     } = args;
-    if !use_localhost || tunnel_url.is_some() {
-        return Err(Error::api(
-            "native `app dev` currently supports localhost mode only; pass --use-localhost. Tunnel-backed preview is tracked by issue #30",
-        ));
-    }
     if subscription_product_url.is_some()
         || checkout_cart_url.is_some()
         || install_mkcert
@@ -142,6 +138,36 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
 
     let supervisor = Supervisor::default();
     let cancellation = Cancellation::default();
+    let mut tunnel = None;
+    let public_url = if use_localhost {
+        None
+    } else if let Some(url) = tunnel_url {
+        let url = url::Url::parse(&url)
+            .map_err(|error| Error::invalid_input(format!("invalid --tunnel-url: {error}")))?;
+        if url.scheme() != "https" {
+            return Err(Error::invalid_input("--tunnel-url must use HTTPS"));
+        }
+        Some(url)
+    } else {
+        let mut session = TunnelSession::new(
+            supervisor.clone(),
+            CloudflaredAdapter,
+            TunnelConfig {
+                local_host: "127.0.0.1".into(),
+                local_port: localhost_port.unwrap_or(3000),
+                public_url: None,
+                provider: TunnelProvider::Cloudflared {
+                    executable: env::var("CFY_CLOUDFLARED_BIN")
+                        .unwrap_or_else(|_| "cloudflared".into()),
+                },
+                max_reconnects: 2,
+                readiness_timeout_ms: 30_000,
+            },
+        )?;
+        let url = session.start(&cancellation).await?;
+        tunnel = Some(session);
+        Some(url)
+    };
     let signal = cancellation.clone();
     let signal_supervisor = supervisor.clone();
     let _signal_task = AbortOnDrop(tokio::spawn(async move {
@@ -153,13 +179,23 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
     let mut session = DevSession::new(supervisor, &specs, DevOptions::default())?;
     session.start(&specs, &cancellation).await?;
     output
-        .lifecycle(&format!("Running {} app component(s)", specs.len()))
+        .lifecycle(&match public_url {
+            Some(ref url) => format!(
+                "Running {} app component(s); public URL: {url}",
+                specs.len()
+            ),
+            None => format!("Running {} app component(s) on localhost", specs.len()),
+        })
         .map_err(|error| Error::process(error.to_string()))?;
-    match session.wait(&cancellation).await {
+    let result = match session.wait(&cancellation).await {
         Ok(()) => Ok(0),
         Err(cfy_dev::DevError::Cancelled) if cancellation.is_cancelled() => Ok(0),
         Err(error) => Err(error.into()),
+    };
+    if let Some(mut tunnel) = tunnel {
+        tunnel.stop().await?;
     }
+    result
 }
 
 fn web_dev_component(web: &cfy_config::graph::WebConfig) -> Option<ComponentSpec> {

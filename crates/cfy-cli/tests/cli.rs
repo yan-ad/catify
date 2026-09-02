@@ -61,9 +61,82 @@ fn app_dev_runs_declared_web_command_natively_and_cleans_state() {
 
 #[test]
 fn app_dev_requires_explicit_localhost_until_tunnel_is_wired() {
-    let output = cfy_outside_project(&["app", "dev"]);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--use-localhost"));
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-dev-url-fixture-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let web = fixture.join("web");
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::write(
+        fixture.join("shopify.app.toml"),
+        "client_id='client'\nname='app'\n[web_directories]\ndirectories=['web']\n",
+    )
+    .unwrap();
+    std::fs::write(
+        web.join("shopify.web.toml"),
+        "name='web'\nroles=['frontend']\n[commands]\ndev='exit 0'\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .args(["app", "dev", "--tunnel-url", "http://example.test"])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&fixture).unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("must use HTTPS"));
+}
+
+#[cfg(unix)]
+#[test]
+fn app_dev_starts_and_cleans_up_cloudflared_tunnel() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-dev-tunnel-fixture-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let web = fixture.join("web");
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::write(
+        fixture.join("shopify.app.toml"),
+        "client_id='client'\nname='app'\n[web_directories]\ndirectories=['web']\n",
+    )
+    .unwrap();
+    std::fs::write(
+        web.join("shopify.web.toml"),
+        "name='web'\nroles=['frontend']\n[commands]\ndev='exit 0'\n",
+    )
+    .unwrap();
+    let cloudflared = fixture.join("cloudflared");
+    std::fs::write(
+        &cloudflared,
+        "#!/bin/sh\necho 'ready https://fixture.trycloudflare.com' >&2\nsleep 30\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&cloudflared, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .env("CFY_CLOUDFLARED_BIN", &cloudflared)
+        .args(["app", "dev"])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&fixture).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("https://fixture.trycloudflare.com/"));
 }
 
 #[test]
