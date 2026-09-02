@@ -3,7 +3,10 @@ mod theme_check;
 
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
-use cfy_app::{AppManagementClient, LinkOptions, RemoteAppSummary, write_linked_config};
+use cfy_app::{
+    AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
+    write_linked_config,
+};
 use cfy_auth::{
     CredentialStore, NativeCredentialStore, Session,
     flow::{LoginMode, headless_from_env},
@@ -67,6 +70,98 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn select_text_choice(title: &str, choices: &[String]) -> Result<usize> {
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not enable selector", error)
+    })?;
+    let _guard = AuthTerminalGuard;
+    execute!(io::stderr(), cursor::Hide).map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not initialize selector", error)
+    })?;
+    let backend = CrosstermBackend::new(io::stderr());
+    let height = u16::try_from(choices.len().saturating_add(4).min(15)).unwrap_or(15);
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(height),
+        },
+    )
+    .map_err(|error| Error::with_source(ErrorKind::Process, "could not create selector", error))?;
+    let mut selected = 0usize;
+    loop {
+        terminal
+            .draw(|frame| {
+                let mut lines = vec![Line::styled(
+                    format!("? {title}"),
+                    Style::default().add_modifier(Modifier::BOLD),
+                )];
+                for (index, choice) in choices.iter().enumerate() {
+                    let active = index == selected;
+                    lines.push(Line::styled(
+                        format!("{}  {choice}", if active { ">" } else { " " }),
+                        if active {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        },
+                    ));
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    "Press ↑↓ arrows to select, enter to confirm.",
+                    Style::default().fg(Color::DarkGray),
+                ));
+                frame.render_widget(Paragraph::new(lines).block(Block::new()), frame.area());
+            })
+            .ok();
+        if let Event::Key(key) = event::read().map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not read selection", error)
+        })? && key.kind == KeyEventKind::Press
+            && let Some((next, confirmed)) =
+                update_list_selection(selected, choices.len(), key.code)?
+        {
+            selected = next;
+            if confirmed {
+                terminal.clear().ok();
+                return Ok(selected);
+            }
+        }
+    }
+}
+
+fn select_organization(organizations: &[RemoteOrganization]) -> Result<RemoteOrganization> {
+    if organizations.is_empty() {
+        return Err(Error::new(
+            ErrorKind::Api,
+            "no Shopify organization with app access is available; verify Manage apps permission or log in with a different account",
+        ));
+    }
+    if organizations.len() == 1 {
+        return Ok(organizations[0].clone());
+    }
+    let duplicate_names = {
+        let unique = organizations
+            .iter()
+            .map(|organization| organization.name.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        unique.len() != organizations.len()
+    };
+    let choices = organizations
+        .iter()
+        .map(|organization| {
+            if duplicate_names {
+                format!("{} ({})", organization.name, organization.id)
+            } else {
+                organization.name.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    let index = select_text_choice("Which organization do you want to use?", &choices)?;
+    Ok(organizations[index].clone())
 }
 
 fn select_app_config_path(
@@ -691,6 +786,20 @@ async fn app_config_command(
                 )
             })?;
             let backend = AppManagementClient::from_session(&session).await?;
+            let organizations = BusinessPlatformClient::from_session(&session)
+                .await?
+                .list_organizations()
+                .await?;
+            let organization = if organizations.len() == 1 {
+                organizations[0].clone()
+            } else {
+                if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+                    return Err(Error::invalid_input(
+                        "app config link requires an interactive terminal when multiple organizations are available",
+                    ));
+                }
+                select_organization(&organizations)?
+            };
             let selected_client_id = if let Some(client_id) = client_id {
                 client_id
             } else {
@@ -699,10 +808,12 @@ async fn app_config_command(
                         "app config link requires --client-id outside an interactive terminal",
                     ));
                 }
-                let apps = backend.list_apps().await?;
+                let apps = backend.list_apps(&organization.id).await?;
                 select_remote_app(&apps)?.client_id
             };
-            let app = backend.app_by_client_id(&selected_client_id).await?;
+            let app = backend
+                .app_by_client_id_in_organization(&organization.id, &selected_client_id)
+                .await?;
             let directory = path.unwrap_or(env::current_dir().map_err(|error| {
                 Error::with_source(
                     ErrorKind::Config,

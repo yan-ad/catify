@@ -1,5 +1,9 @@
 //! Native Shopify app-management workflows.
 
+use base64::{
+    Engine as _,
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
+};
 use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
 use cfy_auth::{Secret, Session};
 use cfy_core::{Error, ErrorKind, Result};
@@ -11,6 +15,8 @@ use url::Url;
 const APP_MANAGEMENT_AUDIENCE: &str =
     "7ee65a63608843c577db8b23c4d7316ea0a01bd2f7594f8a9c06ea668c1b775c";
 const APP_MANAGEMENT_SCOPE: &str = "https://api.shopify.com/auth/organization.apps.manage";
+const BUSINESS_PLATFORM_AUDIENCE: &str = "32ff8ee5-82b8-4d93-9f8a-c6997cefb7dc";
+const BUSINESS_PLATFORM_SCOPE: &str = "https://api.shopify.com/auth/destinations.readonly";
 const TOKEN_EXCHANGE_GRANT: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 const ACCESS_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:access_token";
 const DEFAULT_IDENTITY_CLIENT_ID: &str = "fbdb2649-e327-4907-8f67-908d24cfd7e3";
@@ -18,6 +24,13 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
   appsConnection(query: $query, first: 50) {
     edges { node { id key activeRelease { id version { name } } } }
     pageInfo { hasNextPage }
+  }
+}"#;
+const ORGANIZATIONS_QUERY: &str = r#"query ListOrganizations {
+  currentUserAccount {
+    organizationsWithAccessToDestination(destination: APPS_CLI) {
+      nodes { id name }
+    }
   }
 }"#;
 const APP_VERSION_BY_TAG_QUERY: &str = r#"query AppVersionByTag($versionTag: String!) {
@@ -50,6 +63,12 @@ const APP_QUERY: &str = r#"query ActiveAppReleaseFromApiKey($apiKey: String!) {
 pub struct RemoteAppSummary {
     pub id: String,
     pub client_id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RemoteOrganization {
+    pub id: String,
     pub name: String,
 }
 
@@ -101,6 +120,116 @@ pub struct LinkReport {
     pub path: PathBuf,
     pub app_name: String,
     pub client_id: String,
+}
+
+pub struct BusinessPlatformClient {
+    graphql: GraphQlClient,
+}
+
+impl BusinessPlatformClient {
+    pub async fn from_session(session: &Session) -> Result<Self> {
+        let token = exchange_business_platform_token(session).await?;
+        Self::new(
+            &std::env::var("CFY_BUSINESS_PLATFORM_URL").unwrap_or_else(|_| {
+                "https://destinations.shopifysvc.com/destinations/api/2020-07/graphql".into()
+            }),
+            token.expose(),
+        )
+    }
+
+    pub fn new(endpoint: &str, token: &str) -> Result<Self> {
+        let url = Url::parse(endpoint).map_err(|error| {
+            Error::new(
+                ErrorKind::Config,
+                format!("invalid business platform endpoint: {error}"),
+            )
+        })?;
+        if url.scheme() != "https"
+            && url.host_str() != Some("127.0.0.1")
+            && url.host_str() != Some("localhost")
+        {
+            return Err(Error::new(
+                ErrorKind::Config,
+                "business platform endpoint must use HTTPS",
+            ));
+        }
+        let base = format!(
+            "{}://{}{}",
+            url.scheme(),
+            url.host_str().unwrap_or_default(),
+            url.port()
+                .map(|port| format!(":{port}"))
+                .unwrap_or_default()
+        );
+        let mut auth = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
+            Error::new(
+                ErrorKind::Config,
+                format!("invalid business platform token: {error}"),
+            )
+        })?;
+        auth.set_sensitive(true);
+        let http = HttpClient::new(&base)
+            .map_err(|error| Error::new(ErrorKind::Api, error.to_string()))?
+            .with_sensitive_header(HeaderName::from_static("authorization"), auth);
+        Ok(Self {
+            graphql: GraphQlClient::new(http, url.path()),
+        })
+    }
+
+    pub async fn list_organizations(&self) -> Result<Vec<RemoteOrganization>> {
+        #[derive(Deserialize)]
+        struct Data {
+            #[serde(rename = "currentUserAccount")]
+            account: Option<Account>,
+        }
+        #[derive(Deserialize)]
+        struct Account {
+            #[serde(rename = "organizationsWithAccessToDestination")]
+            organizations: Nodes,
+        }
+        #[derive(Deserialize)]
+        struct Nodes {
+            nodes: Vec<Node>,
+        }
+        #[derive(Deserialize)]
+        struct Node {
+            id: String,
+            name: String,
+        }
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                ORGANIZATIONS_QUERY,
+                serde_json::json!({}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::new(
+                    ErrorKind::Api,
+                    format!("could not list Shopify organizations: {error}"),
+                )
+            })?;
+        let account = response.data.account.ok_or_else(|| {
+            Error::new(
+                ErrorKind::Api,
+                "Shopify account could not be resolved; run `cfy auth login` again",
+            )
+        })?;
+        let mut organizations = account
+            .organizations
+            .nodes
+            .into_iter()
+            .map(|organization| {
+                Ok(RemoteOrganization {
+                    id: decode_organization_id(&organization.id)?,
+                    name: organization.name,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        organizations
+            .sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+        Ok(organizations)
+    }
 }
 
 pub struct AppManagementClient {
@@ -157,7 +286,7 @@ impl AppManagementClient {
         })
     }
 
-    pub async fn list_apps(&self) -> Result<Vec<RemoteAppSummary>> {
+    pub async fn list_apps(&self, organization_id: &str) -> Result<Vec<RemoteAppSummary>> {
         #[derive(Deserialize)]
         struct Data {
             #[serde(rename = "appsConnection")]
@@ -190,7 +319,7 @@ impl AppManagementClient {
             .graphql
             .execute::<_, Data>(&GraphQlRequest::query(
                 APPS_QUERY,
-                serde_json::json!({"query": null}),
+                serde_json::json!({"query": null, "organizationId": organization_id}),
             ))
             .await
             .map_err(|error| {
@@ -219,6 +348,27 @@ impl AppManagementClient {
     }
 
     pub async fn app_by_client_id(&self, client_id: &str) -> Result<RemoteApp> {
+        self.app_by_client_id_with_variables(client_id, serde_json::json!({"apiKey": client_id}))
+            .await
+    }
+
+    pub async fn app_by_client_id_in_organization(
+        &self,
+        organization_id: &str,
+        client_id: &str,
+    ) -> Result<RemoteApp> {
+        self.app_by_client_id_with_variables(
+            client_id,
+            serde_json::json!({"apiKey": client_id, "organizationId": organization_id}),
+        )
+        .await
+    }
+
+    async fn app_by_client_id_with_variables(
+        &self,
+        client_id: &str,
+        variables: serde_json::Value,
+    ) -> Result<RemoteApp> {
         #[derive(Deserialize)]
         struct Data {
             app: Option<App>,
@@ -261,10 +411,7 @@ impl AppManagementClient {
         }
         let response = self
             .graphql
-            .execute::<_, Data>(&GraphQlRequest::query(
-                APP_QUERY,
-                serde_json::json!({"apiKey": client_id}),
-            ))
+            .execute::<_, Data>(&GraphQlRequest::query(APP_QUERY, variables))
             .await
             .map_err(|error| {
                 Error::new(
@@ -500,6 +647,31 @@ impl AppManagementClient {
 }
 
 pub async fn exchange_app_management_token(session: &Session) -> Result<Secret> {
+    exchange_application_token(
+        session,
+        APP_MANAGEMENT_AUDIENCE,
+        APP_MANAGEMENT_SCOPE,
+        "app-management",
+    )
+    .await
+}
+
+pub async fn exchange_business_platform_token(session: &Session) -> Result<Secret> {
+    exchange_application_token(
+        session,
+        BUSINESS_PLATFORM_AUDIENCE,
+        BUSINESS_PLATFORM_SCOPE,
+        "business-platform",
+    )
+    .await
+}
+
+async fn exchange_application_token(
+    session: &Session,
+    audience: &str,
+    scope: &str,
+    label: &str,
+) -> Result<Secret> {
     static TLS: OnceLock<std::result::Result<(), String>> = OnceLock::new();
     TLS.get_or_init(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -523,8 +695,8 @@ pub async fn exchange_app_management_token(session: &Session) -> Result<Secret> 
             ("requested_token_type", ACCESS_TOKEN_TYPE),
             ("subject_token_type", ACCESS_TOKEN_TYPE),
             ("client_id", DEFAULT_IDENTITY_CLIENT_ID),
-            ("audience", APP_MANAGEMENT_AUDIENCE),
-            ("scope", APP_MANAGEMENT_SCOPE),
+            ("audience", audience),
+            ("scope", scope),
             ("subject_token", session.access_token.expose()),
         ])
         .finish();
@@ -544,7 +716,7 @@ pub async fn exchange_app_management_token(session: &Session) -> Result<Secret> 
         .map_err(|error| {
             Error::with_source(
                 ErrorKind::Api,
-                "app-management token exchange failed",
+                format!("{label} token exchange failed"),
                 error,
             )
         })?;
@@ -552,19 +724,43 @@ pub async fn exchange_app_management_token(session: &Session) -> Result<Secret> 
     if !status.is_success() {
         return Err(Error::new(
             ErrorKind::Api,
-            format!(
-                "app-management token exchange returned HTTP {status}; run `cfy auth login` again"
-            ),
+            format!("{label} token exchange returned HTTP {status}; run `cfy auth login` again"),
         ));
     }
     let token = response.json::<Response>().await.map_err(|error| {
         Error::with_source(
             ErrorKind::Api,
-            "invalid app-management token response",
+            format!("invalid {label} token response"),
             error,
         )
     })?;
     Ok(Secret::new(token.access_token))
+}
+
+fn decode_organization_id(encoded: &str) -> Result<String> {
+    let decoded = STANDARD
+        .decode(encoded)
+        .or_else(|_| STANDARD_NO_PAD.decode(encoded))
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::Api,
+                format!("invalid Shopify organization ID `{encoded}`"),
+                error,
+            )
+        })?;
+    let gid = String::from_utf8(decoded).map_err(|error| {
+        Error::with_source(ErrorKind::Api, "invalid Shopify organization GID", error)
+    })?;
+    gid.rsplit('/')
+        .next()
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::Api,
+                format!("invalid Shopify organization GID `{gid}`"),
+            )
+        })
 }
 
 pub fn write_linked_config(options: &LinkOptions, app: &RemoteApp) -> Result<LinkReport> {
@@ -757,16 +953,23 @@ uri = "/webhooks"
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            for body in [
+            for (index, body) in [
                 r#"{"data":{"appsConnection":{"edges":[{"node":{"id":"app-1","key":"client-1","activeRelease":{"version":{"name":"Example"}}}}],"pageInfo":{"hasNextPage":false}}}}"#,
                 r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true},"specification":{"externalIdentifier":"app_home"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
-            ] {
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut request = vec![0_u8; 8192];
                 let read = stream.read(&mut request).await.unwrap();
                 let request = String::from_utf8_lossy(&request[..read]);
                 assert!(request.contains("authorization: Bearer token"));
+                if index == 0 {
+                    assert!(request.contains("organizationId"));
+                    assert!(request.contains("\"7\""));
+                }
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                     body.len(),
@@ -780,7 +983,7 @@ uri = "/webhooks"
             "token",
         )
         .unwrap();
-        let apps = client.list_apps().await.unwrap();
+        let apps = client.list_apps("7").await.unwrap();
         assert_eq!(apps[0].name, "Example");
         let app = client.app_by_client_id("client-1").await.unwrap();
         assert_eq!(app.application_url.as_deref(), Some("https://example.test"));
@@ -789,6 +992,41 @@ uri = "/webhooks"
         assert_eq!(versions.total, 2);
         assert_eq!(versions.versions[0].status, "active");
         assert_eq!(versions.versions[1].status, "inactive");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn business_platform_backend_lists_and_decodes_organizations() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = vec![0_u8; 8192];
+            let read = stream.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.contains("authorization: Bearer token"));
+            assert!(request.contains("organizationsWithAccessToDestination"));
+            let body = r#"{"data":{"currentUserAccount":{"organizationsWithAccessToDestination":{"nodes":[{"id":"Z2lkOi8vb3JnYW5pemF0aW9uL09yZ2FuaXphdGlvbi83","name":"Example Org"}]}}}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        let client = BusinessPlatformClient::new(
+            &format!("http://{address}/destinations/api/2020-07/graphql"),
+            "token",
+        )
+        .unwrap();
+        let organizations = client.list_organizations().await.unwrap();
+        assert_eq!(
+            organizations,
+            [RemoteOrganization {
+                id: "7".into(),
+                name: "Example Org".into(),
+            }]
+        );
         server.await.unwrap();
     }
 
