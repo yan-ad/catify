@@ -5,7 +5,7 @@
     "app bulk cancel": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
     "app bulk execute": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
     "app bulk status": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
-    "app config link": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
+    "app config link": {"status":"native","owner":40,"json":true,"non_interactive":true},
     "app config pull": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
     "app config use": {"status":"native","owner":24,"json":true,"non_interactive":true},
     "app config validate": {"status":"native","owner":24,"json":true,"non_interactive":true},

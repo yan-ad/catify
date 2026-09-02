@@ -7,6 +7,76 @@ fn cfy(args: &[&str]) -> Output {
         .expect("cfy should execute")
 }
 
+#[test]
+fn app_config_use_persists_selection_and_reset_restores_default() {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    let root = std::env::temp_dir().join(format!(
+        "cfy-config-use-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("shopify.app.toml"),
+        "client_id = \"default-key\"\napplication_url = \"https://default.example\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("shopify.app.staging.toml"),
+        "client_id = \"staging-key\"\napplication_url = \"https://staging.example\"\n",
+    )
+    .unwrap();
+    let state = root.join("state.json");
+
+    let selected = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "config", "use", "staging", "--path"])
+        .arg(&root)
+        .arg("--json")
+        .env("CFY_APP_STATE_FILE", &state)
+        .output()
+        .unwrap();
+    assert!(
+        selected.status.success(),
+        "{}",
+        String::from_utf8_lossy(&selected.stderr)
+    );
+
+    let active = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "env", "--show", "--json"])
+        .current_dir(&root)
+        .env("CFY_APP_STATE_FILE", &state)
+        .output()
+        .unwrap();
+    let active: serde_json::Value = serde_json::from_slice(&active.stdout).unwrap();
+    assert_eq!(active["config"], "staging");
+    assert_eq!(active["values"]["SHOPIFY_API_KEY"], "staging-key");
+
+    let reset = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "config", "use", "--reset", "--path"])
+        .arg(&root)
+        .env("CFY_APP_STATE_FILE", &state)
+        .output()
+        .unwrap();
+    assert!(reset.status.success());
+
+    let default = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "env", "--show", "--json"])
+        .current_dir(&root)
+        .env("CFY_APP_STATE_FILE", &state)
+        .output()
+        .unwrap();
+    let default: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
+    assert_eq!(default["config"], "default");
+    assert_eq!(default["values"]["SHOPIFY_API_KEY"], "default-key");
+}
+
 #[cfg(unix)]
 #[test]
 fn app_config_link_forwards_the_exact_shopify_command_path_and_flags() {

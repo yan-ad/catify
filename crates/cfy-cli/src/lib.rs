@@ -18,6 +18,7 @@ use cfy_config::theme::{
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_config::{
     AutoUpgrade, UserSettings,
+    active_config::ActiveConfigState,
     app_env::{from_project as app_environment, redacted as redact_app_environment, render_dotenv},
     clear_cache_root, write_atomic,
 };
@@ -68,6 +69,247 @@ impl Drop for AbortOnDrop {
     }
 }
 
+fn app_state_path() -> PathBuf {
+    env::var_os("CFY_APP_STATE_FILE")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CONFIG_HOME")
+                .map(|path| PathBuf::from(path).join("crabpify/app-state.json"))
+        })
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(|path| PathBuf::from(path).join(".config/crabpify/app-state.json"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".crabpify/app-state.json"))
+}
+
+fn app_config_use(
+    config: Option<String>,
+    client_id: Option<String>,
+    path: Option<PathBuf>,
+    reset: bool,
+    non_interactive: bool,
+    output: &Output,
+) -> Result<u8> {
+    let start = path.unwrap_or(env::current_dir().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not determine app directory",
+            error,
+        )
+    })?);
+    let project = discover(&start, Some(ProjectKind::App))?;
+    let state_path = app_state_path();
+    let mut state = ActiveConfigState::load(&state_path)?;
+
+    if reset {
+        state.clear(project.root());
+        state.write(&state_path)?;
+        output
+            .success(
+                "Cleared current configuration",
+                &serde_json::json!({"project": project.root(), "state_path": state_path}),
+            )
+            .map_err(|error| Error::process(error.to_string()))?;
+        return Ok(0);
+    }
+
+    let choices = load_local_app_configs(&project)?;
+    let selected = if let Some(config) = config {
+        find_local_app_config(&choices, &config).ok_or_else(|| {
+            Error::invalid_input(format!(
+                "could not find configuration file {}; available configurations: {}",
+                normalized_app_config_name(&config),
+                choices
+                    .iter()
+                    .map(|choice| choice.file_name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        })?
+    } else if let Some(client_id) = client_id {
+        choices
+            .iter()
+            .find(|choice| choice.client_id == client_id)
+            .ok_or_else(|| {
+                Error::invalid_input(
+                    "the specified client ID could not be found in any app TOML file",
+                )
+            })?
+    } else {
+        if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+            return Err(Error::invalid_input(
+                "app config use requires CONFIG or --client-id outside an interactive terminal",
+            ));
+        }
+        select_local_app_config(&choices)?
+    };
+
+    state.set(project.root(), selected.file_name.clone());
+    state.write(&state_path)?;
+    output
+        .success(
+            &format!("Using configuration file {}", selected.file_name),
+            &serde_json::json!({
+                "project": project.root(),
+                "config": selected.file_name,
+                "path": selected.path,
+                "state_path": state_path,
+            }),
+        )
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
+#[derive(Debug, Clone)]
+struct LocalAppConfig {
+    path: PathBuf,
+    file_name: String,
+    client_id: String,
+}
+
+fn load_local_app_configs(project: &cfy_config::project::Project) -> Result<Vec<LocalAppConfig>> {
+    project
+        .config_files()
+        .iter()
+        .map(|path| {
+            let contents = std::fs::read_to_string(path).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not read {}", path.display()),
+                    error,
+                )
+            })?;
+            let document = toml::from_str::<toml::Value>(&contents).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not parse {}", path.display()),
+                    error,
+                )
+            })?;
+            let client_id = document
+                .get("client_id")
+                .and_then(toml::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    Error::invalid_input(format!(
+                        "configuration file {} needs a client_id",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    ))
+                })?;
+            Ok(LocalAppConfig {
+                path: path.clone(),
+                file_name: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                client_id: client_id.to_owned(),
+            })
+        })
+        .collect()
+}
+
+fn normalized_app_config_name(config: &str) -> String {
+    if config == "shopify.app.toml" || config.ends_with(".toml") {
+        config.to_owned()
+    } else {
+        format!("shopify.app.{config}.toml")
+    }
+}
+
+fn find_local_app_config<'a>(
+    choices: &'a [LocalAppConfig],
+    config: &str,
+) -> Option<&'a LocalAppConfig> {
+    let normalized = normalized_app_config_name(config);
+    choices.iter().find(|choice| choice.file_name == normalized)
+}
+
+fn select_local_app_config(choices: &[LocalAppConfig]) -> Result<&LocalAppConfig> {
+    if choices.is_empty() {
+        return Err(Error::invalid_input(
+            "no app configuration files were found",
+        ));
+    }
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not enable configuration selector",
+            error,
+        )
+    })?;
+    let _guard = AuthTerminalGuard;
+    execute!(io::stderr(), cursor::Hide).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not initialize configuration selector",
+            error,
+        )
+    })?;
+    let backend = CrosstermBackend::new(io::stderr());
+    let height = u16::try_from(choices.len().saturating_add(4).min(15)).unwrap_or(15);
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(height),
+        },
+    )
+    .map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not initialize configuration selector",
+            error,
+        )
+    })?;
+    let mut selected = 0;
+    loop {
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let mut lines = vec![Line::styled(
+                    "? Which app configuration would you like to use?",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )];
+                for (index, choice) in choices.iter().enumerate() {
+                    let active = index == selected;
+                    lines.push(Line::styled(
+                        format!("{}  {}", if active { ">" } else { " " }, choice.file_name),
+                        if active {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        },
+                    ));
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    "Press ↑↓ arrows to select, enter to confirm.",
+                    Style::default().fg(Color::DarkGray),
+                ));
+                frame.render_widget(Paragraph::new(lines).block(Block::new()), area);
+            })
+            .ok();
+        if let Event::Key(key) = event::read().map_err(|error| {
+            Error::with_source(
+                ErrorKind::Process,
+                "could not read configuration selection",
+                error,
+            )
+        })? && key.kind == KeyEventKind::Press
+            && let Some((next, confirmed)) =
+                update_list_selection(selected, choices.len(), key.code)?
+        {
+            selected = next;
+            if confirmed {
+                terminal.clear().ok();
+                return Ok(&choices[selected]);
+            }
+        }
+    }
+}
 fn update_list_selection(
     selected: usize,
     total: usize,
@@ -197,7 +439,18 @@ pub enum AppConfigCommand {
     /// Refresh an already-linked app configuration.
     Pull,
     /// Activate an app configuration.
-    Use { config: Option<String> },
+    Use {
+        /// Configuration name or filename to activate.
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
     /// Validate app configuration and extensions.
     Validate,
 }
@@ -301,17 +554,13 @@ async fn app_config_command(
             40,
             "the linked app configuration download backend is pending",
         )),
-        AppConfigCommand::Use { config } => Err(backend_unavailable(
-            "app config use",
-            24,
-            format!(
-                "configuration selection is not wired yet{}",
-                config
-                    .as_deref()
-                    .map(|name| format!(" for `{name}`"))
-                    .unwrap_or_default()
-            ),
-        )),
+        AppConfigCommand::Use {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+        } => app_config_use(config, client_id, path, reset, non_interactive, output),
         AppConfigCommand::Validate => Err(backend_unavailable(
             "app config validate",
             24,
@@ -2047,7 +2296,25 @@ fn selected_app_environment() -> Result<cfy_config::project::ProjectEnvironment>
     let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
     let project = discover(&cwd, Some(ProjectKind::App))?;
     let environment = env::vars().collect::<Environment>();
-    resolve_environment(project, &ProjectOverrides::default(), &environment)
+    let explicit_config = environment
+        .get("CFY_CONFIG")
+        .or_else(|| environment.get("SHOPIFY_FLAG_APP_CONFIG"))
+        .cloned();
+    let cached_config = if explicit_config.is_none() {
+        ActiveConfigState::load(&app_state_path())?
+            .selected(project.root())
+            .map(ToOwned::to_owned)
+    } else {
+        None
+    };
+    resolve_environment(
+        project,
+        &ProjectOverrides {
+            config: explicit_config.or(cached_config),
+            ..ProjectOverrides::default()
+        },
+        &environment,
+    )
 }
 
 async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {

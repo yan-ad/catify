@@ -1,5 +1,6 @@
 //! Configuration loading, filesystem primitives, and project path handling.
 
+pub mod active_config;
 pub mod app_env;
 pub mod graph;
 pub mod project;
