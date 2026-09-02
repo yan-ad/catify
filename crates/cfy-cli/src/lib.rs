@@ -3721,6 +3721,133 @@ fn selected_app_environment(
     )
 }
 
+fn app_info(
+    path: Option<PathBuf>,
+    config: Option<String>,
+    client_id: Option<String>,
+    reset: bool,
+    web_env: bool,
+    output: &Output,
+) -> Result<u8> {
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    if web_env {
+        let values = app_environment(&selected);
+        let rendered = values
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        output
+            .success(&rendered, &values)
+            .map_err(|error| Error::process(error.to_string()))?;
+        return Ok(0);
+    }
+
+    let graph =
+        cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
+    let app = graph
+        .apps
+        .first()
+        .ok_or_else(|| Error::config("selected app configuration produced no app node"))?;
+    let scopes = app
+        .config
+        .raw
+        .get("access_scopes")
+        .and_then(toml::Value::as_table)
+        .and_then(|table| table.get("scopes"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or_default();
+    let package_manager =
+        if graph.root.join("bun.lock").exists() || graph.root.join("bun.lockb").exists() {
+            "bun"
+        } else if graph.root.join("pnpm-lock.yaml").exists() {
+            "pnpm"
+        } else if graph.root.join("yarn.lock").exists() {
+            "yarn"
+        } else if graph.root.join("package-lock.json").exists() {
+            "npm"
+        } else {
+            "unknown"
+        };
+    let extensions = app
+        .extensions
+        .iter()
+        .map(|extension| {
+            serde_json::json!({
+                "name": extension.name,
+                "handle": extension.handle,
+                "type": extension.extension_type,
+                "family": format!("{:?}", extension.family),
+                "path": extension.path,
+            })
+        })
+        .collect::<Vec<_>>();
+    let webs = app
+        .webs
+        .iter()
+        .map(|web| {
+            serde_json::json!({
+                "name": web.name,
+                "roles": web.roles,
+                "type": web.web_type,
+                "path": web.path,
+            })
+        })
+        .collect::<Vec<_>>();
+    let diagnostics = graph
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            serde_json::json!({
+                "severity": format!("{:?}", diagnostic.severity).to_lowercase(),
+                "message": diagnostic.message,
+                "file": diagnostic.location.file,
+                "line": diagnostic.location.line,
+                "column": diagnostic.location.column,
+            })
+        })
+        .collect::<Vec<_>>();
+    let report = serde_json::json!({
+        "project_root": graph.root,
+        "config": selected.config_path,
+        "app": {
+            "name": app.config.name,
+            "client_id": app.config.client_id,
+            "application_url": app.config.application_url,
+            "embedded": app.config.embedded,
+            "scopes": scopes,
+        },
+        "extensions": extensions,
+        "webs": webs,
+        "system": {
+            "package_manager": package_manager,
+            "catify_version": env!("CARGO_PKG_VERSION"),
+            "os": env::consts::OS,
+            "arch": env::consts::ARCH,
+        },
+        "diagnostics": diagnostics,
+    });
+    let human = format!(
+        "App information\n\nName: {}\nClient ID: {}\nConfiguration: {}\nApplication URL: {}\nEmbedded: {}\nScopes: {}\nExtensions: {}\nWeb components: {}\nPackage manager: {}\nDiagnostics: {}",
+        app.config.name.as_deref().unwrap_or("unknown"),
+        app.config.client_id.as_deref().unwrap_or("unknown"),
+        selected.config_path.display(),
+        app.config.application_url.as_deref().unwrap_or("unknown"),
+        app.config
+            .embedded
+            .map_or("unknown".to_owned(), |value| value.to_string()),
+        if scopes.is_empty() { "none" } else { scopes },
+        app.extensions.len(),
+        app.webs.len(),
+        package_manager,
+        graph.diagnostics.len(),
+    );
+    output
+        .success(&human, &report)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
 async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     match command {
         AppCommand::Build {
@@ -3859,22 +3986,14 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::Info => {
-            let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
-            let project = cfy_config::project::discover(&cwd, None).ok();
-            if project.is_none() {
-                return Err(Error::invalid_input(
-                    "app info requires a Shopify app project; run it inside a directory containing shopify.app.toml or pass through a project directory",
-                ));
-            }
-            output
-                .success(
-                    "App information",
-                    &serde_json::json!({"cwd": cwd, "project_found": project.is_some()}),
-                )
-                .map_err(|error| Error::process(error.to_string()))?;
-            Ok(0)
-        }
+        AppCommand::Info {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+            web_env,
+        } => app_info(path, config, client_id, reset, web_env, output),
         AppCommand::Env { command } => app_env_command(command, output),
         AppCommand::Config { command } => {
             app_config_command(command, non_interactive, output).await
@@ -4170,9 +4289,22 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: Option<AppDevCommand>,
     },
-    /// Display the currently selected app.
+    /// Print basic information about the app and its extensions.
     #[command(alias = "show")]
-    Info,
+    Info {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_OUTPUT_WEB_ENV")]
+        web_env: bool,
+    },
     /// Initialize a new app project.
     Init {
         #[arg(long, short = 'd', default_value = ".")]

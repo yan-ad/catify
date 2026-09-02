@@ -5,22 +5,22 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 73,
+    "implemented": 74,
     "tested": 88,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "native": 46,
-      "partial": 13
+      "native": 47,
+      "partial": 12
     },
     "by_domain": {
       "app": {
         "blocked": 12,
         "library-only": 6,
-        "native": 9,
-        "partial": 4
+        "native": 10,
+        "partial": 3
       },
       "auth": {
         "native": 2
@@ -363,15 +363,16 @@
     {
       "command": "app info",
       "domain": "app",
-      "status": "partial",
+      "status": "native",
       "owner": 40,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path.",
       "tested": true,
       "evidence": [
+        "crates/cfy-cli/src/lib.rs",
         "crates/cfy-cli/tests/cli.rs"
       ],
       "live_verified": false,
-      "notes": "Project discovery works, but full app and extension details are incomplete."
+      "notes": "Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state."
     },
     {
       "command": "app init",

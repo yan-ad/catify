@@ -197,13 +197,14 @@
     },
     "app info": {
       "evidence": [
+        "crates/cfy-cli/src/lib.rs",
         "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path.",
       "live_verified": false,
-      "notes": "Project discovery works, but full app and extension details are incomplete.",
+      "notes": "Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state.",
       "owner": 40,
-      "status": "partial"
+      "status": "native"
     },
     "app init": {
       "evidence": [

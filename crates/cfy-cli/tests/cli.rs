@@ -8,6 +8,84 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_info_matches_shopify_flags_and_reports_project_structure() {
+    let root = std::env::temp_dir().join(format!(
+        "cfy-app-info-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(root.join("extensions/sample")).unwrap();
+    std::fs::create_dir_all(root.join("web")).unwrap();
+    std::fs::write(
+        root.join("shopify.app.toml"),
+        r#"name = "Fixture app"
+client_id = "fixture-client"
+application_url = "https://example.test"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,write_products"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("extensions/sample/shopify.extension.toml"),
+        "name = \"Sample extension\"\nhandle = \"sample\"\ntype = \"theme_app_extension\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("web/shopify.web.toml"),
+        "name = \"Web\"\nroles = [\"frontend\"]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["--json", "app", "info", "--path"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["app"]["name"], "Fixture app");
+    assert_eq!(report["extensions"].as_array().unwrap().len(), 1);
+    assert_eq!(report["webs"].as_array().unwrap().len(), 1);
+    assert_eq!(report["system"]["package_manager"], "pnpm");
+
+    let web_env = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "info", "--web-env", "--path"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(web_env.status.success());
+    let web_env = String::from_utf8_lossy(&web_env.stdout);
+    assert!(web_env.contains("SHOPIFY_API_KEY=fixture-client"));
+    assert!(web_env.contains("SHOPIFY_APP_URL=https://example.test"));
+
+    let help = cfy(&["app", "info", "--help"]);
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in [
+        "--auth-alias",
+        "--client-id",
+        "--config",
+        "--path",
+        "--reset",
+        "--web-env",
+    ] {
+        assert!(help.contains(flag), "missing app info flag {flag}");
+    }
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn theme_open_matches_shopify_flags_and_selection_guard() {
     let help = cfy(&["theme", "open", "--help"]);
     assert!(help.status.success());
@@ -992,7 +1070,7 @@ fn runtime_command_error_uses_core_exit_code() {
     let output = cfy_outside_project(&["a", "show"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("app info requires a Shopify app project"));
+    assert!(stderr.contains("no Shopify app or theme project found"));
     assert!(!stderr.contains("reserved but not implemented yet"));
 }
 
