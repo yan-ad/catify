@@ -12,7 +12,7 @@
     "app deploy": {"status":"native","owner":27,"json":true,"non_interactive":true},
     "app dev": {"status":"native","owner":29,"json":true,"non_interactive":false},
     "app dev clean": {"status":"native","owner":29,"json":true,"non_interactive":true},
-    "app env pull": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
+    "app env pull": {"status":"native","owner":40,"json":true,"non_interactive":true},
     "app env show": {"status":"native","owner":40,"json":true,"non_interactive":true},
     "app execute": {"status":"blocked-live","owner":40,"json":true,"non_interactive":true},
     "app function build": {"status":"adapter","owner":25,"json":true,"non_interactive":true},

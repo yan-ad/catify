@@ -8,6 +8,13 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_env_uses_shopify_compatible_nested_command_names() {
+    assert!(cfy(&["app", "env", "show", "--help"]).status.success());
+    assert!(cfy(&["app", "env", "pull", "--help"]).status.success());
+    assert!(!cfy(&["app", "env-pull"]).status.success());
+}
+
+#[test]
 fn app_config_validate_reports_selected_config_diagnostics() {
     use std::{
         fs,
@@ -103,14 +110,14 @@ fn app_config_use_persists_selection_and_reset_restores_default() {
     );
 
     let active = Command::new(env!("CARGO_BIN_EXE_cfy"))
-        .args(["app", "env", "--show", "--json"])
+        .args(["app", "env", "show", "--json"])
         .current_dir(&root)
         .env("CFY_APP_STATE_FILE", &state)
         .output()
         .unwrap();
     let active: serde_json::Value = serde_json::from_slice(&active.stdout).unwrap();
     assert_eq!(active["config"], "staging");
-    assert_eq!(active["values"]["SHOPIFY_API_KEY"], "staging-key");
+    assert_eq!(active["values"]["SHOPIFY_API_KEY"], "[REDACTED]");
 
     let reset = Command::new(env!("CARGO_BIN_EXE_cfy"))
         .args(["app", "config", "use", "--reset", "--path"])
@@ -121,14 +128,14 @@ fn app_config_use_persists_selection_and_reset_restores_default() {
     assert!(reset.status.success());
 
     let default = Command::new(env!("CARGO_BIN_EXE_cfy"))
-        .args(["app", "env", "--show", "--json"])
+        .args(["app", "env", "show", "--json"])
         .current_dir(&root)
         .env("CFY_APP_STATE_FILE", &state)
         .output()
         .unwrap();
     let default: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
     assert_eq!(default["config"], "default");
-    assert_eq!(default["values"]["SHOPIFY_API_KEY"], "default-key");
+    assert_eq!(default["values"]["SHOPIFY_API_KEY"], "[REDACTED]");
 }
 
 #[cfg(unix)]

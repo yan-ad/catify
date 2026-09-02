@@ -19,7 +19,7 @@ use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_config::{
     AutoUpgrade, UserSettings,
     active_config::ActiveConfigState,
-    app_env::{from_project as app_environment, redacted as redact_app_environment, render_dotenv},
+    app_env::{from_project as app_environment, merge_dotenv, redacted as redact_app_environment},
     clear_cache_root, write_atomic,
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
@@ -2575,25 +2575,53 @@ fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
     Ok(0)
 }
 
-fn selected_app_environment() -> Result<cfy_config::project::ProjectEnvironment> {
-    let cwd = env::current_dir().map_err(|error| Error::api(error.to_string()))?;
+fn selected_app_environment(
+    path: Option<PathBuf>,
+    config: Option<String>,
+    client_id: Option<String>,
+    reset: bool,
+) -> Result<cfy_config::project::ProjectEnvironment> {
+    let cwd = path.unwrap_or(env::current_dir().map_err(|error| Error::api(error.to_string()))?);
     let project = discover(&cwd, Some(ProjectKind::App))?;
+    let state_path = app_state_path();
+    let mut state = ActiveConfigState::load(&state_path)?;
+    if reset {
+        state.clear(project.root());
+        state.write(&state_path)?;
+    }
     let environment = env::vars().collect::<Environment>();
-    let explicit_config = environment
-        .get("CFY_CONFIG")
-        .or_else(|| environment.get("SHOPIFY_FLAG_APP_CONFIG"))
-        .cloned();
+    let explicit_config = config.or_else(|| {
+        environment
+            .get("CFY_CONFIG")
+            .or_else(|| environment.get("SHOPIFY_FLAG_APP_CONFIG"))
+            .cloned()
+    });
+    let client_config = if explicit_config.is_none() {
+        client_id
+            .map(|client_id| {
+                load_local_app_configs(&project)?
+                    .into_iter()
+                    .find(|choice| choice.client_id == client_id)
+                    .map(|choice| choice.file_name)
+                    .ok_or_else(|| {
+                        Error::invalid_input(
+                            "the specified client ID could not be found in any app TOML file",
+                        )
+                    })
+            })
+            .transpose()?
+    } else {
+        None
+    };
     let cached_config = if explicit_config.is_none() {
-        ActiveConfigState::load(&app_state_path())?
-            .selected(project.root())
-            .map(ToOwned::to_owned)
+        state.selected(project.root()).map(ToOwned::to_owned)
     } else {
         None
     };
     resolve_environment(
         project,
         &ProjectOverrides {
-            config: explicit_config.or(cached_config),
+            config: explicit_config.or(client_config).or(cached_config),
             ..ProjectOverrides::default()
         },
         &environment,
@@ -2638,53 +2666,7 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::Env { show } => {
-            let selected = selected_app_environment()?;
-            let values = app_environment(&selected);
-            let displayed = if show {
-                values.clone()
-            } else {
-                redact_app_environment(&values)
-            };
-            output
-                .success(
-                    "App environment",
-                    &serde_json::json!({
-                        "config": selected.config_name,
-                        "config_path": selected.config_path,
-                        "values": displayed,
-                        "secrets_visible": show,
-                        "remote_values_included": false,
-                    }),
-                )
-                .map_err(|error| Error::process(error.to_string()))?;
-            Ok(0)
-        }
-        AppCommand::EnvPull => {
-            let selected = selected_app_environment()?;
-            let values = app_environment(&selected);
-            let destination = selected.project.root().join(".env");
-            let contents = render_dotenv(&values);
-            write_atomic(&destination, contents.as_bytes()).map_err(|error| {
-                Error::with_source(
-                    ErrorKind::Config,
-                    format!("could not write {}", destination.display()),
-                    error,
-                )
-            })?;
-            output
-                .success(
-                    "App environment written",
-                    &serde_json::json!({
-                        "config": selected.config_name,
-                        "destination": destination,
-                        "variables": values.len(),
-                        "remote_values_included": false,
-                    }),
-                )
-                .map_err(|error| Error::process(error.to_string()))?;
-            Ok(0)
-        }
+        AppCommand::Env { command } => app_env_command(command, output),
         AppCommand::Config { command } => {
             app_config_command(command, non_interactive, output).await
         }
@@ -2760,6 +2742,106 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
 }
 
 #[derive(Debug, Subcommand)]
+pub enum AppEnvCommand {
+    /// Display app and extension environment variables.
+    Show {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
+    /// Pull app and extension environment variables into a dotenv file.
+    Pull {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_ENV_FILE")]
+        env_file: Option<PathBuf>,
+    },
+}
+
+fn app_env_command(command: AppEnvCommand, output: &Output) -> Result<u8> {
+    match command {
+        AppEnvCommand::Show {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+        } => {
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let values = app_environment(&selected);
+            output
+                .success(
+                    "App environment",
+                    &serde_json::json!({
+                        "config": selected.config_name,
+                        "config_path": selected.config_path,
+                        "values": redact_app_environment(&values),
+                        "remote_values_included": false,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        AppEnvCommand::Pull {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+            env_file,
+        } => {
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let values = app_environment(&selected);
+            let destination = env_file
+                .map(|path| {
+                    if path.is_absolute() {
+                        path
+                    } else {
+                        selected.project.root().join(path)
+                    }
+                })
+                .unwrap_or_else(|| selected.project.root().join(".env"));
+            let existing = std::fs::read_to_string(&destination).unwrap_or_default();
+            let contents = merge_dotenv(&existing, &values);
+            write_atomic(&destination, contents.as_bytes()).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not write {}", destination.display()),
+                    error,
+                )
+            })?;
+            output
+                .success(
+                    "App environment written",
+                    &serde_json::json!({
+                        "config": selected.config_name,
+                        "destination": destination,
+                        "variables": values.len(),
+                        "remote_values_included": false,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
 pub enum AppCommand {
     /// Display the currently selected app.
     #[command(alias = "show")]
@@ -2769,13 +2851,11 @@ pub enum AppCommand {
         #[arg(long, short = 'd', default_value = ".")]
         destination: PathBuf,
     },
-    /// Show app environment variables.
+    /// Manage app and extension environment variables.
     Env {
-        #[arg(long)]
-        show: bool,
+        #[command(subcommand)]
+        command: AppEnvCommand,
     },
-    /// Pull app environment configuration.
-    EnvPull,
     /// Manage app configuration.
     Config {
         #[command(subcommand)]

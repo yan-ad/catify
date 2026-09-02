@@ -35,6 +35,37 @@ pub fn from_project(environment: &ProjectEnvironment) -> AppEnvironment {
     values
 }
 
+/// Merges managed app variables into existing dotenv content while preserving
+/// comments, blank lines, and variables that Catify does not own.
+#[must_use]
+pub fn merge_dotenv(existing: &str, values: &AppEnvironment) -> String {
+    let mut pending = values.clone();
+    let mut output = String::new();
+    for line in existing.lines() {
+        let trimmed = line.trim_start();
+        let name = trimmed
+            .split_once('=')
+            .map(|(name, _)| name.trim())
+            .filter(|name| !name.is_empty() && !name.starts_with('#'));
+        if let Some(name) = name
+            && let Some(value) = pending.remove(name)
+        {
+            output.push_str(name);
+            output.push('=');
+            output.push_str(&quote_dotenv(&value));
+            output.push('\n');
+            continue;
+        }
+        output.push_str(line);
+        output.push('\n');
+    }
+    if !output.is_empty() && !output.ends_with("\n\n") && !pending.is_empty() {
+        output.push('\n');
+    }
+    output.push_str(&render_dotenv(&pending));
+    output
+}
+
 fn insert_string(values: &mut AppEnvironment, name: &str, value: Option<&toml::Value>) {
     if let Some(value) = value.and_then(toml::Value::as_str)
         && !value.trim().is_empty()
@@ -166,6 +197,20 @@ scopes = "read_products,write_products"
         assert_eq!(
             render_dotenv(&values),
             "A=plain-value\nB=\"has spaces\\nand newline\"\n"
+        );
+    }
+
+    #[test]
+    fn merges_managed_values_without_destroying_comments_or_custom_values() {
+        let values = AppEnvironment::from([
+            ("SHOPIFY_API_KEY".to_owned(), "new-key".to_owned()),
+            ("SCOPES".to_owned(), "read_products".to_owned()),
+        ]);
+        let existing = "# keep this\nCUSTOM=value\nSHOPIFY_API_KEY=old-key\n# SCOPES=commented\n";
+
+        assert_eq!(
+            merge_dotenv(existing, &values),
+            "# keep this\nCUSTOM=value\nSHOPIFY_API_KEY=new-key\n# SCOPES=commented\n\nSCOPES=read_products\n"
         );
     }
 }
