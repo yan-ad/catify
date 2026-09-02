@@ -290,25 +290,37 @@
       "notes": "Listing exists but does not yet mirror the full 111-command upstream table and columns."
     },
     "config autocorrect off": {
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "evidence": [],
-      "live_verified": false
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true
     },
     "config autocorrect on": {
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "evidence": [],
-      "live_verified": false
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true
     },
     "config autocorrect status": {
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "evidence": [],
-      "live_verified": false
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true
     },
     "config autoupgrade off": {
       "status": "native",
@@ -690,7 +702,9 @@
       "status": "blocked",
       "owner": 38,
       "implementation": "The exact nested command path and flags are exposed, but the local store-auth credential registry backend is not implemented yet.",
-      "evidence": ["crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+      ],
       "live_verified": false,
       "notes": "Execution remains blocked until store-auth sessions can be enumerated safely."
     },
@@ -698,7 +712,10 @@
       "status": "partial",
       "owner": 38,
       "implementation": "The exact nested command path invokes the native GraphQL management boundary with explicit operation IDs.",
-      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+      ],
       "live_verified": false,
       "notes": "Live Shopify schema and credential verification remain pending."
     },
@@ -706,7 +723,10 @@
       "status": "partial",
       "owner": 38,
       "implementation": "The exact nested command path runs native Admin GraphQL bulk orchestration with query or query-file input.",
-      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+      ],
       "live_verified": false,
       "notes": "Variables, output download, watch mode, and API-version override remain pending."
     },
@@ -714,7 +734,10 @@
       "status": "partial",
       "owner": 38,
       "implementation": "The exact nested command path invokes the native GraphQL management boundary with optional operation ID.",
-      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+      ],
       "live_verified": false,
       "notes": "Seven-day listing and live Shopify schema verification remain pending."
     },
@@ -722,7 +745,10 @@
       "status": "partial",
       "owner": 38,
       "implementation": "The exact nested command path and name/country flags invoke the native store management boundary.",
-      "evidence": ["crates/cfy-store/src/lib.rs tests", "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"],
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+      ],
       "live_verified": false,
       "notes": "The preview-store endpoint and country payload require live contract verification."
     },
@@ -867,7 +893,9 @@
       "status": "blocked",
       "owner": 39,
       "implementation": "The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet.",
-      "evidence": ["crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"],
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"
+      ],
       "live_verified": false,
       "notes": "Execution remains blocked on the Admin API metafield-definition contract."
     },

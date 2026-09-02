@@ -5,17 +5,17 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **58**
-- Commands with automated evidence: **76**
-- Live-verified commands: **4**
+- Implemented (`native` + `adapter`): **61**
+- Commands with automated evidence: **79**
+- Live-verified commands: **7**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
 | `library-only` | 6 | Core/backend exists, but the public command is not fully wired. |
-| `missing` | 12 | No compatible command implementation yet. |
-| `native` | 31 | Implemented in Rust and exposed at the upstream command path. |
+| `missing` | 9 | No compatible command implementation yet. |
+| `native` | 34 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 16 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -56,9 +56,9 @@
 | `auth login` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-auth/tests/auth.rs; crates/cfy-cli/tests/cli.rs. |
 | `auth logout` | `partial` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-auth/tests/auth.rs; crates/cfy-cli/tests/cli.rs. Local credential deletion exists; remote OAuth revocation is not implemented. |
 | `commands` | `partial` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; compatibility/scenarios.json. Listing exists but does not yet mirror the full 111-command upstream table and columns. |
-| `config autocorrect off` | `missing` | no | no | [#42](https://github.com/yan-ad/catify/issues/42) | No compatible Catify command implementation exists yet. |
-| `config autocorrect on` | `missing` | no | no | [#42](https://github.com/yan-ad/catify/issues/42) | No compatible Catify command implementation exists yet. |
-| `config autocorrect status` | `missing` | no | no | [#42](https://github.com/yan-ad/catify/issues/42) | No compatible Catify command implementation exists yet. |
+| `config autocorrect off` | `native` | yes | yes | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values. Evidence: crates/cfy-config/src/lib.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `config autocorrect on` | `native` | yes | yes | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values. Evidence: crates/cfy-config/src/lib.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `config autocorrect status` | `native` | yes | yes | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values. Evidence: crates/cfy-config/src/lib.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
 | `config autoupgrade off` | `native` | yes | no | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-config/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `config autoupgrade on` | `native` | yes | no | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-config/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `config autoupgrade status` | `native` | yes | no | [#42](https://github.com/yan-ad/catify/issues/42) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-config/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |

@@ -21,7 +21,7 @@ use cfy_config::theme::{
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_config::{
-    AutoUpgrade, UserSettings,
+    AutoCorrect, AutoUpgrade, UserSettings,
     active_config::ActiveConfigState,
     app_env::{from_project as app_environment, merge_dotenv, redacted as redact_app_environment},
     clear_cache_root, write_atomic,
@@ -74,6 +74,85 @@ struct AbortOnDrop(tokio::task::JoinHandle<()>);
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut previous = (0..=right.chars().count()).collect::<Vec<_>>();
+    for (left_index, left_char) in left.chars().enumerate() {
+        let mut current = vec![left_index + 1];
+        for (right_index, right_char) in right.chars().enumerate() {
+            current.push(std::cmp::min(
+                std::cmp::min(current[right_index] + 1, previous[right_index + 1] + 1),
+                previous[right_index] + usize::from(left_char != right_char),
+            ));
+        }
+        previous = current;
+    }
+    previous[right.chars().count()]
+}
+
+fn corrected_command_args(arguments: &[std::ffi::OsString]) -> Option<Vec<std::ffi::OsString>> {
+    let mut corrected = arguments.to_vec();
+    let mut command = Cli::command();
+    let mut changed = false;
+
+    for argument in corrected.iter_mut().skip(1) {
+        let token = argument.to_str()?;
+        if token.starts_with('-') || command.get_subcommands().next().is_none() {
+            break;
+        }
+
+        if let Some(exact) = command.find_subcommand(token).cloned() {
+            command = exact;
+            continue;
+        }
+
+        let mut candidates = command
+            .get_subcommands()
+            .filter_map(|candidate| {
+                let distance = edit_distance(token, candidate.get_name());
+                (distance <= 2).then_some((distance, candidate.get_name().to_owned()))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort();
+        if candidates.len() != 1 {
+            break;
+        }
+        *argument = candidates[0].1.clone().into();
+        let exact = command.find_subcommand(&candidates[0].1)?.clone();
+        command = exact;
+        changed = true;
+    }
+
+    changed.then_some(corrected)
+}
+
+/// Parse process arguments, automatically applying unambiguous command corrections when enabled.
+#[must_use]
+pub fn parse_cli() -> Cli {
+    let arguments = env::args_os().collect::<Vec<_>>();
+    match Cli::try_parse_from(&arguments) {
+        Ok(cli) => cli,
+        Err(original) => {
+            let settings = UserSettings::resolve(Some(&config_path()), None);
+            if matches!(settings.autocorrect, AutoCorrect::On)
+                && let Some(corrected) = corrected_command_args(&arguments)
+                && let Ok(cli) = Cli::try_parse_from(&corrected)
+            {
+                eprintln!(
+                    "Autocorrected command to `{}`.",
+                    corrected
+                        .iter()
+                        .skip(1)
+                        .filter_map(|value| value.to_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                return cli;
+            }
+            original.exit()
+        }
     }
 }
 
@@ -1720,9 +1799,37 @@ fn config_command(command: ConfigCommand, output: &Output) -> Result<u8> {
                     &serde_json::json!({"autoupgrade": matches!(current.autoupgrade, AutoUpgrade::On)}),
                 ),
                 AutoUpgradeMode::On | AutoUpgradeMode::Off => {
-                    let settings = UserSettings { autoupgrade: if matches!(mode, Some(AutoUpgradeMode::On)) { AutoUpgrade::On } else { AutoUpgrade::Off } };
+                    let settings = UserSettings {
+                        autoupgrade: if matches!(mode, Some(AutoUpgradeMode::On)) { AutoUpgrade::On } else { AutoUpgrade::Off },
+                        ..current
+                    };
                     settings.write_user(&path)?;
                     output.success("Automatic upgrades updated", &serde_json::json!({"path": path, "autoupgrade": matches!(settings.autoupgrade, AutoUpgrade::On)}))
+                }
+            }.map_err(|error| Error::process(error.to_string()))?;
+        }
+        ConfigCommand::Autocorrect { command } => {
+            let path = config_path();
+            let current = UserSettings::resolve(Some(&path), None);
+            match command {
+                AutoCorrectCommand::Status => output.success(
+                    if matches!(current.autocorrect, AutoCorrect::On) {
+                        "Autocorrect on. Catify will automatically run unambiguous command corrections."
+                    } else {
+                        "Autocorrect off. You'll need to confirm corrections for mistyped commands."
+                    },
+                    &serde_json::json!({"autocorrect": matches!(current.autocorrect, AutoCorrect::On)}),
+                ),
+                AutoCorrectCommand::On | AutoCorrectCommand::Off => {
+                    let settings = UserSettings {
+                        autocorrect: if matches!(command, AutoCorrectCommand::On) { AutoCorrect::On } else { AutoCorrect::Off },
+                        ..current
+                    };
+                    settings.write_user(&path)?;
+                    output.success(
+                        if matches!(settings.autocorrect, AutoCorrect::On) { "Autocorrect enabled" } else { "Autocorrect disabled" },
+                        &serde_json::json!({"path": path, "autocorrect": matches!(settings.autocorrect, AutoCorrect::On)}),
+                    )
                 }
             }.map_err(|error| Error::process(error.to_string()))?;
         }
@@ -1779,6 +1886,21 @@ pub enum CacheCommand {
 pub enum ConfigCommand {
     /// Enable automatic upgrades.
     Autoupgrade { mode: Option<AutoUpgradeMode> },
+    /// Manage automatic correction of mistyped commands.
+    Autocorrect {
+        #[command(subcommand)]
+        command: AutoCorrectCommand,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum AutoCorrectCommand {
+    /// Check whether autocorrect is enabled.
+    Status,
+    /// Enable autocorrect.
+    On,
+    /// Disable autocorrect.
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -3957,7 +4079,7 @@ fn backend_unavailable(command: &str, issue: u32, detail: impl AsRef<str>) -> Er
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Command, ThemeCommand, filesystem_event, format_themes,
+        Cli, Command, ThemeCommand, corrected_command_args, filesystem_event, format_themes,
         live_push_requires_confirmation, reusable_session, select_store, update_auth_selection,
         update_list_selection,
     };
@@ -4228,5 +4350,18 @@ mod tests {
         let error = Cli::try_parse_from(["cfy", "versoin"]).expect_err("typo should fail");
         assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
         assert!(error.to_string().contains("version"));
+    }
+
+    #[test]
+    fn autocorrect_only_changes_unique_command_tokens() {
+        let corrected = corrected_command_args(&[
+            "cfy".into(),
+            "config".into(),
+            "autocorrect".into(),
+            "statsu".into(),
+        ])
+        .unwrap();
+        assert_eq!(corrected[3], "status");
+        assert!(corrected_command_args(&["cfy".into(), "--json".into()]).is_none());
     }
 }

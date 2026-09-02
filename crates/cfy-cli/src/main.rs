@@ -1,10 +1,9 @@
-use cfy_cli::{Cli, output::Output, run};
-use clap::Parser;
+use cfy_cli::{output::Output, run};
 use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = cfy_cli::parse_cli();
     let output = Output::new(cli.global.json, cli.global.verbose);
     let _ = output.diagnostic("debug diagnostics enabled");
 

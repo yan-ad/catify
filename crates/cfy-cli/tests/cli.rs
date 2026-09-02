@@ -8,6 +8,51 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn config_autocorrect_commands_persist_exact_native_state() {
+    let root = std::env::temp_dir().join(format!(
+        "catify-autocorrect-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let config = root.join("config.toml");
+
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .args(args)
+            .env("CFY_CONFIG_FILE", &config)
+            .output()
+            .expect("cfy should execute")
+    };
+
+    let status = run(&["--json", "config", "autocorrect", "status"]);
+    assert!(status.status.success());
+    assert!(String::from_utf8_lossy(&status.stdout).contains("\"autocorrect\":false"));
+
+    assert!(run(&["config", "autocorrect", "on"]).status.success());
+    let enabled = run(&["--json", "config", "autocorrect", "status"]);
+    assert!(String::from_utf8_lossy(&enabled.stdout).contains("\"autocorrect\":true"));
+
+    assert!(run(&["config", "autocorrect", "off"]).status.success());
+    let contents = std::fs::read_to_string(&config).unwrap();
+    assert!(contents.contains("autocorrect = false"));
+    assert!(contents.contains("autoupgrade = true"));
+
+    assert!(run(&["config", "autocorrect", "on"]).status.success());
+    let corrected = run(&["versoin"]);
+    assert!(corrected.status.success());
+    assert!(String::from_utf8_lossy(&corrected.stderr).contains("Autocorrected command"));
+
+    assert!(run(&["config", "autocorrect", "off"]).status.success());
+    assert!(!run(&["versoin"]).status.success());
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn theme_metafields_uses_shopify_compatible_nested_path() {
     assert!(
         cfy(&[

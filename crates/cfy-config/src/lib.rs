@@ -29,6 +29,15 @@ use std::{
 pub struct Config {
     pub telemetry: Option<Telemetry>,
     pub autoupgrade: Option<bool>,
+    pub autocorrect: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoCorrect {
+    On,
+    #[default]
+    Off,
 }
 
 /// Remove files below a cache root and return the number of reclaimed bytes.
@@ -118,6 +127,7 @@ pub enum AutoUpgrade {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct UserSettings {
     pub autoupgrade: AutoUpgrade,
+    pub autocorrect: AutoCorrect,
 }
 
 impl UserSettings {
@@ -127,13 +137,21 @@ impl UserSettings {
         for path in [user, project].into_iter().flatten() {
             if let Ok(input) = fs::read_to_string(path)
                 && let Ok(config) = toml::from_str::<Config>(&input)
-                && let Some(value) = config.autoupgrade
             {
-                settings.autoupgrade = if value {
-                    AutoUpgrade::On
-                } else {
-                    AutoUpgrade::Off
-                };
+                if let Some(value) = config.autoupgrade {
+                    settings.autoupgrade = if value {
+                        AutoUpgrade::On
+                    } else {
+                        AutoUpgrade::Off
+                    };
+                }
+                if let Some(value) = config.autocorrect {
+                    settings.autocorrect = if value {
+                        AutoCorrect::On
+                    } else {
+                        AutoCorrect::Off
+                    };
+                }
             }
         }
         settings
@@ -141,8 +159,9 @@ impl UserSettings {
 
     pub fn write_user(&self, path: &Path) -> Result<()> {
         let content = format!(
-            "autoupgrade = {}\n",
-            matches!(self.autoupgrade, AutoUpgrade::On)
+            "autoupgrade = {}\nautocorrect = {}\n",
+            matches!(self.autoupgrade, AutoUpgrade::On),
+            matches!(self.autocorrect, AutoCorrect::On)
         );
         write_atomic(path, content.as_bytes()).map_err(|error| {
             Error::with_source(

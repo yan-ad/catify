@@ -5,15 +5,15 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 58,
-    "tested": 76,
-    "live_verified": 4,
+    "implemented": 61,
+    "tested": 79,
+    "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
       "library-only": 6,
-      "missing": 12,
-      "native": 31,
+      "missing": 9,
+      "native": 34,
       "partial": 16
     },
     "by_domain": {
@@ -31,8 +31,7 @@
         "partial": 1
       },
       "config": {
-        "missing": 3,
-        "native": 3
+        "native": 6
       },
       "doc": {
         "native": 2
@@ -495,34 +494,46 @@
     {
       "command": "config autocorrect off",
       "domain": "config",
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
-      "live_verified": false,
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true,
       "notes": null
     },
     {
       "command": "config autocorrect on",
       "domain": "config",
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
-      "live_verified": false,
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true,
       "notes": null
     },
     {
       "command": "config autocorrect status",
       "domain": "config",
-      "status": "missing",
+      "status": "native",
       "owner": 42,
-      "implementation": "No compatible Catify command implementation exists yet.",
-      "tested": false,
-      "evidence": [],
-      "live_verified": false,
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-config/src/lib.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true,
       "notes": null
     },
     {
