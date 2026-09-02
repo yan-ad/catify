@@ -1,0 +1,969 @@
+{
+  "schema_version": 1,
+  "commands": {
+    "app build": {
+      "status": "library-only",
+      "owner": 26,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app bulk cancel": {
+      "status": "library-only",
+      "owner": 40,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app bulk execute": {
+      "status": "library-only",
+      "owner": 40,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app bulk status": {
+      "status": "library-only",
+      "owner": 40,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app config link": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-app/src/lib.rs tests"
+      ],
+      "live_verified": true
+    },
+    "app config pull": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-app/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "app config use": {
+      "status": "native",
+      "owner": 24,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-app/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "app config validate": {
+      "status": "native",
+      "owner": 24,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-app/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "app deploy": {
+      "status": "library-only",
+      "owner": 27,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app dev": {
+      "status": "library-only",
+      "owner": 29,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app dev clean": {
+      "status": "library-only",
+      "owner": 29,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app env pull": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-config/src/app_env.rs tests"
+      ],
+      "live_verified": false
+    },
+    "app env show": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-config/src/app_env.rs tests"
+      ],
+      "live_verified": false
+    },
+    "app execute": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function build": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function info": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function replay": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function run": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function schema": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app function typegen": {
+      "status": "blocked",
+      "owner": 25,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app generate extension": {
+      "status": "library-only",
+      "owner": 24,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app graphiql": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app import-custom-data-definitions": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app import-extensions": {
+      "status": "library-only",
+      "owner": 24,
+      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app info": {
+      "status": "partial",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Project discovery works, but full app and extension details are incomplete."
+    },
+    "app init": {
+      "status": "partial",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Creates a minimal local skeleton; template selection/dependency setup are incomplete."
+    },
+    "app logs": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app logs sources": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "app release": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "app versions list": {
+      "status": "native",
+      "owner": 40,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "app webhook trigger": {
+      "status": "blocked",
+      "owner": 40,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "auth login": {
+      "status": "native",
+      "owner": 37,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-auth/tests/auth.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true
+    },
+    "auth logout": {
+      "status": "partial",
+      "owner": 37,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-auth/tests/auth.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true,
+      "notes": "Local credential deletion exists; remote OAuth revocation is not implemented."
+    },
+    "commands": {
+      "status": "partial",
+      "owner": 36,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false,
+      "notes": "Listing exists but does not yet mirror the full 111-command upstream table and columns."
+    },
+    "config autocorrect off": {
+      "status": "missing",
+      "owner": 42,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "config autocorrect on": {
+      "status": "missing",
+      "owner": 42,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "config autocorrect status": {
+      "status": "missing",
+      "owner": 42,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "config autoupgrade off": {
+      "status": "native",
+      "owner": 42,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "config autoupgrade on": {
+      "status": "native",
+      "owner": 42,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "config autoupgrade status": {
+      "status": "native",
+      "owner": 42,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-config/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "doc fetch": {
+      "status": "native",
+      "owner": 41,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-docs/src/lib.rs tests",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false
+    },
+    "doc search": {
+      "status": "native",
+      "owner": 41,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-docs/src/lib.rs tests",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false
+    },
+    "help": {
+      "status": "native",
+      "owner": 36,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false
+    },
+    "hydrogen build": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen check": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen codegen": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen customer-account-push": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen debug cpu": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen deploy": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen dev": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen env list": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen env pull": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen env push": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen generate route": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen generate routes": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen init": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen link": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen list": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen login": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen logout": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen preview": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen setup": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen setup css": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen setup markets": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen setup vite": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen shortcut": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen unlink": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "hydrogen upgrade": {
+      "status": "adapter",
+      "owner": 43,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-hydrogen/src/lib.rs tests"
+      ],
+      "live_verified": false
+    },
+    "organization list": {
+      "status": "blocked",
+      "owner": 37,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins add": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins inspect": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins install": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins link": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins remove": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins reset": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins uninstall": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins unlink": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "plugins update": {
+      "status": "missing",
+      "owner": 45,
+      "implementation": "No compatible Catify command implementation exists yet.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "search": {
+      "status": "native",
+      "owner": 41,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-docs/src/lib.rs tests",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false
+    },
+    "store auth": {
+      "status": "blocked",
+      "owner": 38,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "store auth list": {
+      "status": "name-mismatch",
+      "owner": 38,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "store bulk cancel": {
+      "status": "name-mismatch",
+      "owner": 38,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "store bulk execute": {
+      "status": "name-mismatch",
+      "owner": 38,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "store bulk status": {
+      "status": "name-mismatch",
+      "owner": 38,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "store create preview": {
+      "status": "name-mismatch",
+      "owner": 38,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "store execute": {
+      "status": "native",
+      "owner": 38,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "store graphiql": {
+      "status": "partial",
+      "owner": 38,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Builds a URL but does not yet launch a fully authenticated GraphiQL session."
+    },
+    "store info": {
+      "status": "native",
+      "owner": 38,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "store list": {
+      "status": "blocked",
+      "owner": 38,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "store open": {
+      "status": "partial",
+      "owner": 38,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Builds the Admin URL but does not yet reproduce the complete browser/auth workflow."
+    },
+    "theme check": {
+      "status": "adapter",
+      "owner": 39,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-cli/src/theme_check.rs tests"
+      ],
+      "live_verified": false
+    },
+    "theme console": {
+      "status": "blocked",
+      "owner": 39,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "theme delete": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme dev": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme duplicate": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme info": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme init": {
+      "status": "partial",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Creates a minimal directory instead of cloning/selecting an upstream theme template."
+    },
+    "theme language-server": {
+      "status": "adapter",
+      "owner": 39,
+      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-cli/src/theme_check.rs tests"
+      ],
+      "live_verified": false
+    },
+    "theme list": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme metafields pull": {
+      "status": "name-mismatch",
+      "owner": 39,
+      "implementation": "Related behavior exists under a flat or otherwise incompatible command path.",
+      "evidence": [],
+      "live_verified": false,
+      "notes": "Rename/nesting must be corrected before this counts as parity."
+    },
+    "theme open": {
+      "status": "partial",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Returns a preview URL but does not yet reproduce all browser/environment behavior."
+    },
+    "theme package": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme preview": {
+      "status": "blocked",
+      "owner": 39,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "theme profile": {
+      "status": "blocked",
+      "owner": 39,
+      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [],
+      "live_verified": false
+    },
+    "theme publish": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme pull": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme push": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme rename": {
+      "status": "native",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false
+    },
+    "theme share": {
+      "status": "partial",
+      "owner": 39,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": false,
+      "notes": "Returns an existing preview URL instead of creating a new randomized unpublished theme."
+    },
+    "upgrade": {
+      "status": "partial",
+      "owner": 36,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false,
+      "notes": "Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method."
+    },
+    "version": {
+      "status": "native",
+      "owner": 36,
+      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs",
+        "compatibility/scenarios.json"
+      ],
+      "live_verified": false
+    }
+  }
+}

@@ -13,6 +13,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/catify/issues). Architecture and compatibility decisions live in [`docs/adr`](docs/adr) and [`docs/compatibility.md`](docs/compatibility.md).
 
+The generated [CLI parity matrix](inventory/CLI-PARITY.md) tracks all 111 pinned
+Shopify CLI commands, including native/adapter status, automated test evidence,
+live verification, gaps, and the owning GitHub issue.
+
 Configuration precedence, file locations, and persistence guarantees are
 documented in [`docs/configuration.md`](docs/configuration.md).
 

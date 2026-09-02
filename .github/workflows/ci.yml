@@ -47,4 +47,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts/tests
+      - run: python3 scripts/generate-cli-matrix.py --check
       - run: ./scripts/check-inventory.sh
