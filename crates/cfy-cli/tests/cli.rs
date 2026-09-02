@@ -8,6 +8,65 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_dev_runs_declared_web_command_natively_and_cleans_state() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-dev-fixture-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let web = fixture.join("web");
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::write(
+        fixture.join("shopify.app.toml"),
+        "client_id='client'\nname='app'\n[web_directories]\ndirectories=['web']\n",
+    )
+    .unwrap();
+    std::fs::write(
+        web.join("shopify.web.toml"),
+        "name='web'\nroles=['frontend']\n[commands]\ndev='printf ready > dev-ready.txt'\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .args(["app", "dev", "--use-localhost"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(web.join("dev-ready.txt")).unwrap(),
+        "ready"
+    );
+
+    let state = fixture.join(".catify/dev");
+    std::fs::create_dir_all(&state).unwrap();
+    std::fs::write(state.join("session.json"), "{}").unwrap();
+    let clean = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .args(["app", "dev", "clean"])
+        .output()
+        .unwrap();
+    assert!(clean.status.success());
+    assert!(!state.exists());
+
+    std::fs::remove_dir_all(&fixture).unwrap();
+}
+
+#[test]
+fn app_dev_requires_explicit_localhost_until_tunnel_is_wired() {
+    let output = cfy_outside_project(&["app", "dev"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--use-localhost"));
+}
+
+#[test]
 fn app_build_uses_shopify_compatible_command_and_flags() {
     assert!(
         cfy(&[

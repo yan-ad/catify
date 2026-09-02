@@ -80,17 +80,22 @@
       "live_verified": false
     },
     "app dev": {
-      "status": "library-only",
+      "status": "partial",
       "owner": 29,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "evidence": [],
+      "implementation": "Native localhost orchestration runs shopify.web.toml commands with supervised lifecycle and Ctrl-C cleanup. Tunnel, store preview, notify, and theme-extension preview flags remain pending.",
+      "evidence": [
+        "crates/cfy-dev/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state"
+      ],
       "live_verified": false
     },
     "app dev clean": {
-      "status": "library-only",
+      "status": "partial",
       "owner": 29,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "evidence": [],
+      "implementation": "Native local dev-state cleanup is exposed at the exact command path. Restoring remote dev-store preview state remains pending.",
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state"
+      ],
       "live_verified": false
     },
     "app env pull": {

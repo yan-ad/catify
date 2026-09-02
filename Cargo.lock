@@ -500,6 +500,7 @@ dependencies = [
  "cfy-build",
  "cfy-config",
  "cfy-core",
+ "cfy-dev",
  "cfy-docs",
  "cfy-extension-adapter",
  "cfy-hydrogen",

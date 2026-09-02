@@ -6,23 +6,23 @@
   "summary": {
     "total": 111,
     "implemented": 57,
-    "tested": 67,
+    "tested": 69,
     "live_verified": 3,
     "by_status": {
       "adapter": 27,
       "blocked": 18,
-      "library-only": 8,
+      "library-only": 6,
       "missing": 12,
       "name-mismatch": 6,
       "native": 30,
-      "partial": 10
+      "partial": 12
     },
     "by_domain": {
       "app": {
         "blocked": 12,
-        "library-only": 8,
+        "library-only": 6,
         "native": 9,
-        "partial": 2
+        "partial": 4
       },
       "auth": {
         "native": 1,
@@ -192,22 +192,27 @@
     {
       "command": "app dev",
       "domain": "app",
-      "status": "library-only",
+      "status": "partial",
       "owner": 29,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native localhost orchestration runs shopify.web.toml commands with supervised lifecycle and Ctrl-C cleanup. Tunnel, store preview, notify, and theme-extension preview flags remain pending.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-dev/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app dev clean",
       "domain": "app",
-      "status": "library-only",
+      "status": "partial",
       "owner": 29,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Native local dev-state cleanup is exposed at the exact command path. Restoring remote dev-store preview state remains pending.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state"
+      ],
       "live_verified": false,
       "notes": null
     },

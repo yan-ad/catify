@@ -27,9 +27,11 @@ use cfy_config::{
     clear_cache_root, write_atomic,
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
+use cfy_dev::{ComponentSpec, DevOptions, DevSession};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
 use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
 use cfy_hydrogen::run as run_hydrogen;
+use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
     StoreTarget, browser_url,
@@ -72,6 +74,174 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
+    let AppDevArgs {
+        config,
+        auth_alias: _,
+        client_id,
+        path,
+        reset,
+        store: _,
+        skip_dependencies_installation,
+        no_update: _,
+        subscription_product_url,
+        checkout_cart_url,
+        install_mkcert,
+        use_localhost,
+        tunnel_url,
+        localhost_port: _,
+        theme,
+        theme_app_extension_port,
+        store_password,
+        notify,
+    } = args;
+    if !use_localhost || tunnel_url.is_some() {
+        return Err(Error::api(
+            "native `app dev` currently supports localhost mode only; pass --use-localhost. Tunnel-backed preview is tracked by issue #30",
+        ));
+    }
+    if subscription_product_url.is_some()
+        || checkout_cart_url.is_some()
+        || install_mkcert
+        || theme.is_some()
+        || theme_app_extension_port.is_some()
+        || store_password.is_some()
+        || notify.is_some()
+    {
+        return Err(Error::api(
+            "this app dev invocation requires preview features that are not wired to the native runtime yet; remove preview/theme/notify flags or track issue #29",
+        ));
+    }
+    if skip_dependencies_installation {
+        output
+            .lifecycle(
+                "warning: --skip-dependencies-installation is deprecated; Catify never installs dependencies during app dev",
+            )
+            .map_err(|error| Error::process(error.to_string()))?;
+    }
+
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    let graph =
+        cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
+    let app = graph
+        .apps
+        .first()
+        .ok_or_else(|| Error::config("selected app configuration was not loaded"))?;
+    let specs = app
+        .webs
+        .iter()
+        .filter_map(web_dev_component)
+        .collect::<Vec<_>>();
+    if specs.is_empty() {
+        return Err(Error::config(
+            "no [commands].dev entries were found in shopify.web.toml files",
+        ));
+    }
+
+    let supervisor = Supervisor::default();
+    let cancellation = Cancellation::default();
+    let signal = cancellation.clone();
+    let signal_supervisor = supervisor.clone();
+    let _signal_task = AbortOnDrop(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal.cancel();
+            let _ = signal_supervisor.shutdown().await;
+        }
+    }));
+    let mut session = DevSession::new(supervisor, &specs, DevOptions::default())?;
+    session.start(&specs, &cancellation).await?;
+    output
+        .lifecycle(&format!("Running {} app component(s)", specs.len()))
+        .map_err(|error| Error::process(error.to_string()))?;
+    match session.wait(&cancellation).await {
+        Ok(()) => Ok(0),
+        Err(cfy_dev::DevError::Cancelled) if cancellation.is_cancelled() => Ok(0),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn web_dev_component(web: &cfy_config::graph::WebConfig) -> Option<ComponentSpec> {
+    let command = web.raw.get("commands")?.as_table()?.get("dev")?.as_str()?;
+    #[cfg(windows)]
+    let process = ProcessSpec::new("cmd")
+        .args(["/C", command])
+        .current_dir(&web.directory)
+        .output(OutputMode::Inherit);
+    #[cfg(not(windows))]
+    let process = ProcessSpec::new("sh")
+        .args(["-c", command])
+        .current_dir(&web.directory)
+        .output(OutputMode::Inherit);
+    Some(ComponentSpec {
+        name: web
+            .name
+            .clone()
+            .unwrap_or_else(|| web.directory.display().to_string()),
+        process,
+        max_restarts: 1,
+        restart_backoff_ms: 250,
+    })
+}
+
+#[derive(Debug, Args)]
+pub struct AppDevArgs {
+    #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+    config: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+    auth_alias: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+    client_id: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+    path: Option<PathBuf>,
+    #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+    reset: bool,
+    #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+    store: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION")]
+    skip_dependencies_installation: bool,
+    #[arg(long, env = "SHOPIFY_FLAG_NO_UPDATE")]
+    no_update: bool,
+    #[arg(long, env = "SHOPIFY_FLAG_SUBSCRIPTION_PRODUCT_URL")]
+    subscription_product_url: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_CHECKOUT_CART_URL")]
+    checkout_cart_url: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_INSTALL_MKCERT")]
+    install_mkcert: bool,
+    #[arg(long, env = "SHOPIFY_FLAG_USE_LOCALHOST")]
+    use_localhost: bool,
+    #[arg(long, env = "SHOPIFY_FLAG_TUNNEL_URL")]
+    tunnel_url: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_LOCALHOST_PORT", value_parser = clap::value_parser!(u16).range(1..))]
+    localhost_port: Option<u16>,
+    #[arg(short = 't', long, env = "SHOPIFY_FLAG_THEME")]
+    theme: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_THEME_APP_EXTENSION_PORT", value_parser = clap::value_parser!(u16).range(1..))]
+    theme_app_extension_port: Option<u16>,
+    #[arg(long, env = "SHOPIFY_FLAG_STORE_PASSWORD")]
+    store_password: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_NOTIFY")]
+    notify: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppDevCommand {
+    /// Clean local development state for the selected app.
+    Clean {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
+    },
 }
 
 fn select_text_choice(title: &str, choices: &[String]) -> Result<usize> {
@@ -2829,6 +2999,36 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
+        AppCommand::Dev { args, command } => match command {
+            Some(AppDevCommand::Clean {
+                config,
+                auth_alias: _,
+                client_id,
+                path,
+                reset,
+                store: _,
+            }) => {
+                let selected = selected_app_environment(path, config, client_id, reset)?;
+                let state = selected.project.root().join(".catify/dev");
+                if state.exists() {
+                    std::fs::remove_dir_all(&state).map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Process,
+                            format!("could not remove {}", state.display()),
+                            error,
+                        )
+                    })?;
+                }
+                output
+                    .success(
+                        "Development state cleaned",
+                        &serde_json::json!({"cleaned": true, "path": state}),
+                    )
+                    .map_err(|error| Error::process(error.to_string()))?;
+                Ok(0)
+            }
+            None => app_dev(*args, output).await,
+        },
         AppCommand::Init { destination } => {
             std::fs::create_dir_all(destination.join("extensions"))
                 .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
@@ -3152,6 +3352,13 @@ pub enum AppCommand {
         reset: bool,
         #[arg(long, env = "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION")]
         skip_dependencies_installation: bool,
+    },
+    /// Run the app locally and watch its declared web processes.
+    Dev {
+        #[command(flatten)]
+        args: Box<AppDevArgs>,
+        #[command(subcommand)]
+        command: Option<AppDevCommand>,
     },
     /// Display the currently selected app.
     #[command(alias = "show")]
