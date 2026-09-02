@@ -5,4 +5,4 @@ __pycache__/
 *.profraw
 benchmarks/results/*.json
 !benchmarks/results/.gitkeep
-*.toml
+shopify*.toml
