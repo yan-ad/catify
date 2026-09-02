@@ -12,6 +12,7 @@ use cfy_auth::{
     flow::{LoginMode, headless_from_env},
     identity::{HttpIdentityTransport, IdentityClient, IdentityConfig},
 };
+use cfy_build::{BuildInput, BuildMode, BuildOptions, BuildPipeline};
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
@@ -27,6 +28,7 @@ use cfy_config::{
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_docs::{Cache as DocsCache, DocsClient, HttpDocsTransport};
+use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
 use cfy_hydrogen::run as run_hydrogen;
 use cfy_store::{
     AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
@@ -2741,6 +2743,92 @@ fn selected_app_environment(
 
 async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     match command {
+        AppCommand::Build {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+            skip_dependencies_installation,
+        } => {
+            if skip_dependencies_installation {
+                output.lifecycle(
+                    "warning: --skip-dependencies-installation is deprecated; Catify never installs dependencies during app build",
+                ).map_err(|error| Error::process(error.to_string()))?;
+            }
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let graph = cfy_config::graph::AppConfigGraph::load_selected(
+                &selected.project,
+                &selected.config_path,
+            )?;
+            if graph.diagnostics.iter().any(|diagnostic| {
+                diagnostic.severity == cfy_config::graph::DiagnosticSeverity::Error
+            }) {
+                return Err(Error::config(
+                    "app configuration contains errors; run `cfy app config validate` for details",
+                ));
+            }
+            let inputs = graph
+                .apps
+                .first()
+                .map(|app| {
+                    app.extensions
+                        .iter()
+                        .map(|extension| BuildInput {
+                            output_dir: graph.root.join(".catify/build").join(
+                                extension
+                                    .handle
+                                    .as_deref()
+                                    .or(extension.name.as_deref())
+                                    .unwrap_or("extension"),
+                            ),
+                            memory_mb: 256,
+                            configuration: serde_json::to_value(&extension.raw)
+                                .unwrap_or(serde_json::Value::Null),
+                            extension: extension.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let supervisor = cfy_process::Supervisor::default();
+            let adapter = if inputs.is_empty() {
+                None
+            } else {
+                let command = env::var_os("CFY_EXTENSION_ADAPTER").ok_or_else(|| {
+                    Error::config(
+                        "this app contains extensions; set CFY_EXTENSION_ADAPTER to a compatible build adapter executable",
+                    )
+                })?;
+                Some(
+                    Adapter::discover(
+                        &supervisor,
+                        AdapterCommand::new(PathBuf::from(command)),
+                        None,
+                    )
+                    .await?,
+                )
+            };
+            let pipeline = BuildPipeline::new(adapter.as_ref(), &supervisor);
+            let report = pipeline
+                .run(
+                    &graph,
+                    inputs,
+                    BuildOptions {
+                        mode: BuildMode::Incremental,
+                        parallelism: Parallelism {
+                            max_jobs: std::thread::available_parallelism()
+                                .map(usize::from)
+                                .unwrap_or(1),
+                            max_memory_mb: 1024,
+                        },
+                    },
+                )
+                .await?;
+            output
+                .success("App build completed", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         AppCommand::Init { destination } => {
             std::fs::create_dir_all(destination.join("extensions"))
                 .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
@@ -3050,6 +3138,21 @@ async fn app_versions_command(command: AppVersionsCommand, output: &Output) -> R
 
 #[derive(Debug, Subcommand)]
 pub enum AppCommand {
+    /// Build the app, including extensions.
+    Build {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_SKIP_DEPENDENCIES_INSTALLATION")]
+        skip_dependencies_installation: bool,
+    },
     /// Display the currently selected app.
     #[command(alias = "show")]
     Info,

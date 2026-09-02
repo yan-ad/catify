@@ -7,6 +7,55 @@ fn cfy(args: &[&str]) -> Output {
         .expect("cfy should execute")
 }
 
+#[test]
+fn app_build_uses_shopify_compatible_command_and_flags() {
+    assert!(
+        cfy(&[
+            "app",
+            "build",
+            "--config",
+            "staging",
+            "--auth-alias",
+            "work",
+            "--client-id",
+            "client",
+            "--path",
+            ".",
+            "--reset",
+            "--skip-dependencies-installation",
+            "--help",
+        ])
+        .status
+        .success()
+    );
+}
+
+#[test]
+fn app_build_without_extensions_runs_natively() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-build-fixture-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&fixture).unwrap();
+    std::fs::write(
+        fixture.join("shopify.app.toml"),
+        "client_id='client'\nname='app'\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .args(["--json", "app", "build"])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&fixture).unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"mode\":\"incremental\""));
+}
+
 fn cfy_outside_project(args: &[&str]) -> Output {
     let directory = std::env::temp_dir().join(format!(
         "cfy-no-project-{}-{}",

@@ -5,23 +5,23 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 56,
-    "tested": 66,
+    "implemented": 57,
+    "tested": 67,
     "live_verified": 3,
     "by_status": {
       "adapter": 27,
       "blocked": 18,
-      "library-only": 9,
+      "library-only": 8,
       "missing": 12,
       "name-mismatch": 6,
-      "native": 29,
+      "native": 30,
       "partial": 10
     },
     "by_domain": {
       "app": {
         "blocked": 12,
-        "library-only": 9,
-        "native": 8,
+        "library-only": 8,
+        "native": 9,
         "partial": 2
       },
       "auth": {
@@ -78,11 +78,14 @@
     {
       "command": "app build",
       "domain": "app",
-      "status": "library-only",
+      "status": "native",
       "owner": 26,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-build/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

@@ -2,10 +2,13 @@
   "schema_version": 1,
   "commands": {
     "app build": {
-      "status": "library-only",
+      "status": "native",
       "owner": 26,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "evidence": [],
+      "implementation": "Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol.",
+      "evidence": [
+        "crates/cfy-build/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false
     },
     "app bulk cancel": {

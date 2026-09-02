@@ -5,25 +5,25 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **56**
-- Commands with automated evidence: **66**
+- Implemented (`native` + `adapter`): **57**
+- Commands with automated evidence: **67**
 - Live-verified commands: **3**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 18 | Command path exists but required backend behavior is incomplete. |
-| `library-only` | 9 | Core/backend exists, but the public command is not fully wired. |
+| `library-only` | 8 | Core/backend exists, but the public command is not fully wired. |
 | `missing` | 12 | No compatible command implementation yet. |
 | `name-mismatch` | 6 | Behavior exists under a non-compatible command path. |
-| `native` | 29 | Implemented in Rust and exposed at the upstream command path. |
+| `native` | 30 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 10 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
 | Command | Status | Tested | Live | Owner | Implementation / gap |
 |---|---|:---:|:---:|---:|---|
-| `app build` | `library-only` | no | no | [#26](https://github.com/yan-ad/catify/issues/26) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
+| `app build` | `native` | yes | no | [#26](https://github.com/yan-ad/catify/issues/26) | Rust build pipeline is exposed at the exact upstream command path; apps without extensions run without an external runtime, while extension builds use the explicit adapter protocol. Evidence: crates/cfy-build/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app bulk cancel` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
 | `app bulk execute` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
 | `app bulk status` | `library-only` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust backend/library exists, but the exact public CLI command is not fully wired. |

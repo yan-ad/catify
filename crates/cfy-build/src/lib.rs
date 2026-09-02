@@ -73,13 +73,13 @@ struct Cache {
 }
 
 pub struct BuildPipeline<'a> {
-    adapter: &'a Adapter,
+    adapter: Option<&'a Adapter>,
     supervisor: &'a cfy_process::Supervisor,
     cancel: Cancellation,
 }
 
 impl<'a> BuildPipeline<'a> {
-    pub fn new(adapter: &'a Adapter, supervisor: &'a cfy_process::Supervisor) -> Self {
+    pub fn new(adapter: Option<&'a Adapter>, supervisor: &'a cfy_process::Supervisor) -> Self {
         Self {
             adapter,
             supervisor,
@@ -144,20 +144,29 @@ impl<'a> BuildPipeline<'a> {
                 },
             ));
         }
-        let responses = build_all(
-            self.supervisor,
-            self.adapter,
-            jobs.iter().map(|(_, _, job)| job.clone()).collect(),
-            options.parallelism,
-        )
-        .await
-        .map_err(|error| {
-            Error::with_source(
-                ErrorKind::Process,
-                "app extension build pipeline failed",
-                error,
+        let responses = if jobs.is_empty() {
+            Vec::new()
+        } else {
+            let adapter = self.adapter.ok_or_else(|| {
+                Error::config(
+                    "this app contains extensions; set CFY_EXTENSION_ADAPTER to a compatible build adapter executable",
+                )
+            })?;
+            build_all(
+                self.supervisor,
+                adapter,
+                jobs.iter().map(|(_, _, job)| job.clone()).collect(),
+                options.parallelism,
             )
-        })?;
+            .await
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Process,
+                    "app extension build pipeline failed",
+                    error,
+                )
+            })?
+        };
         let mut report = BuildReport {
             mode: if options.mode == BuildMode::Clean {
                 "clean".into()
@@ -391,5 +400,23 @@ mod tests {
         let after = fingerprint(&extension).unwrap();
         assert_ne!(before, after);
         let _ = SystemTime::now();
+    }
+
+    #[tokio::test]
+    async fn app_without_extensions_builds_without_an_adapter() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("shopify.app.toml");
+        fs::write(&config, "client_id='client'\nname='app'\n").unwrap();
+        let project =
+            cfy_config::project::discover(dir.path(), Some(cfy_config::project::ProjectKind::App))
+                .unwrap();
+        let graph = AppConfigGraph::load_selected(&project, &config).unwrap();
+        let supervisor = cfy_process::Supervisor::default();
+        let report = BuildPipeline::new(None, &supervisor)
+            .run(&graph, Vec::new(), BuildOptions::default())
+            .await
+            .unwrap();
+        assert!(report.artifacts.is_empty());
+        assert!(report.diagnostics.is_empty());
     }
 }
