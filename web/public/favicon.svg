@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Catify">
+  <rect width="64" height="64" rx="10" fill="#11120f"/>
+  <path d="M18 25 22 12l10 8 10-8 4 13v17c0 7-6 12-14 12S18 49 18 42V25Z" fill="#c8ff32"/>
+  <path d="M25 33h4M35 33h4" stroke="#11120f" stroke-width="3" stroke-linecap="square"/>
+  <path d="m28 43 4 3 4-3" fill="none" stroke="#11120f" stroke-width="2.5"/>
+</svg>

@@ -1,0 +1,16 @@
+{
+  "name": "Catify",
+  "short_name": "Catify",
+  "description": "A fast, Rust-native Shopify CLI alternative.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f0e5",
+  "theme_color": "#11120f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

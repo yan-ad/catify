@@ -10,3 +10,5 @@ shopify*.toml
 vendor/
 catify-cli-*.tgz
 dist/
+web/node_modules/
+web/dist/
