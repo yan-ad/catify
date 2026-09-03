@@ -2,6 +2,7 @@
 
 pub mod extension_generate;
 pub mod extension_import;
+pub mod webhook;
 
 use base64::{
     Engine as _,

@@ -1,18 +1,21 @@
 pub mod output;
 mod theme_check;
-
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_app::{
     AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
+    exchange_app_management_token,
     extension_generate::{GenerateExtensionOptions, generate_extension},
     extension_import::{
         ExistingDirectoryPolicy, ImportExtensionsOptions, ImportSelection, import_extensions,
     },
+    webhook::{
+        WebhookClient, WebhookDeliveryMethod, deliver_local_webhook, resolve_delivery_method,
+    },
     write_linked_config,
 };
 use cfy_auth::{
-    CredentialStore, NativeCredentialStore, Session,
+    CredentialStore, NativeCredentialStore, Secret, Session,
     flow::{LoginMode, headless_from_env},
     identity::{HttpIdentityTransport, IdentityClient, IdentityConfig},
 };
@@ -98,6 +101,51 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum WebhookDeliveryMethodArg {
+    Http,
+    GooglePubSub,
+    EventBridge,
+}
+
+impl From<WebhookDeliveryMethodArg> for WebhookDeliveryMethod {
+    fn from(value: WebhookDeliveryMethodArg) -> Self {
+        match value {
+            WebhookDeliveryMethodArg::Http => Self::Http,
+            WebhookDeliveryMethodArg::GooglePubSub => Self::GooglePubSub,
+            WebhookDeliveryMethodArg::EventBridge => Self::EventBridge,
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppWebhookCommand {
+    /// Trigger delivery of a sample webhook topic payload.
+    #[command(disable_version_flag = true)]
+    Trigger {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_TOPIC")]
+        topic: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_API_VERSION")]
+        api_version: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_DELIVERY_METHOD")]
+        delivery_method: Option<WebhookDeliveryMethodArg>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_SECRET")]
+        client_secret: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_ADDRESS")]
+        address: Option<String>,
+    },
 }
 
 async fn store_access_token(store: &str) -> Result<String> {
@@ -2714,7 +2762,7 @@ fn config_command(command: ConfigCommand, output: &Output) -> Result<u8> {
             let current = UserSettings::resolve(Some(&path), None);
             match mode.unwrap_or(AutoUpgradeMode::Status) {
                 AutoUpgradeMode::Status => output.success(
-                    "Automatic upgrades status",
+                    "Automatic upgrade checks status",
                     &serde_json::json!({"autoupgrade": matches!(current.autoupgrade, AutoUpgrade::On)}),
                 ),
                 AutoUpgradeMode::On | AutoUpgradeMode::Off => {
@@ -2723,7 +2771,7 @@ fn config_command(command: ConfigCommand, output: &Output) -> Result<u8> {
                         ..current
                     };
                     settings.write_user(&path)?;
-                    output.success("Automatic upgrades updated", &serde_json::json!({"path": path, "autoupgrade": matches!(settings.autoupgrade, AutoUpgrade::On)}))
+                    output.success("Automatic upgrade checks updated", &serde_json::json!({"path": path, "autoupgrade": matches!(settings.autoupgrade, AutoUpgrade::On)}))
                 }
             }.map_err(|error| Error::process(error.to_string()))?;
         }
@@ -2803,7 +2851,7 @@ pub enum CacheCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
-    /// Enable automatic upgrades.
+    /// Enable or disable automatic upgrade checks.
     Autoupgrade { mode: Option<AutoUpgradeMode> },
     /// Manage automatic correction of mistyped commands.
     Autocorrect {
@@ -4750,6 +4798,131 @@ async fn app_bulk_command(command: AppBulkCommand, output: &Output) -> Result<u8
     }
 }
 
+async fn app_webhook_command(
+    command: AppWebhookCommand,
+    non_interactive: bool,
+    output: &Output,
+) -> Result<u8> {
+    let AppWebhookCommand::Trigger {
+        config,
+        auth_alias,
+        client_id,
+        path,
+        reset,
+        topic,
+        api_version,
+        delivery_method,
+        client_secret,
+        address,
+    } = command;
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    let client_id = selected
+        .document
+        .get("client_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?;
+    let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+    let session = authenticated_session(&identity).await?;
+    let app_management = AppManagementClient::from_session(&session).await?;
+    let remote_app = app_management.app_by_client_id(client_id).await?;
+    let token = exchange_app_management_token(&session).await?;
+    let webhook = WebhookClient::for_organization(&token, &remote_app.organization_id)?;
+
+    let api_versions = webhook.api_versions().await?;
+    let api_version = if let Some(api_version) = api_version {
+        if !api_versions
+            .iter()
+            .any(|candidate| candidate == &api_version)
+        {
+            return Err(Error::invalid_input(format!(
+                "webhook API version `{api_version}` is not available"
+            )));
+        }
+        api_version
+    } else {
+        if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+            return Err(Error::invalid_input(
+                "--api-version is required in non-interactive mode",
+            ));
+        }
+        let index = select_text_choice("Which API version would you like to use?", &api_versions)?;
+        api_versions[index].clone()
+    };
+
+    let topics = webhook.topics(&api_version).await?;
+    let topic = if let Some(topic) = topic {
+        let normalized = topic.to_ascii_lowercase().replace('_', "/");
+        topics
+            .iter()
+            .find(|candidate| candidate.to_ascii_lowercase() == normalized)
+            .cloned()
+            .ok_or_else(|| {
+                Error::invalid_input(format!(
+                    "webhook topic `{topic}` is not available for API version `{api_version}`"
+                ))
+            })?
+    } else {
+        if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+            return Err(Error::invalid_input(
+                "--topic is required in non-interactive mode",
+            ));
+        }
+        let index = select_text_choice("Which webhook topic would you like to trigger?", &topics)?;
+        topics[index].clone()
+    };
+
+    let address = required_interactive_value(address, "Webhook address", non_interactive)?;
+    let delivery_method = resolve_delivery_method(&address, delivery_method.map(Into::into))?;
+    let credentials = if let Some(client_secret) = client_secret {
+        (client_id.to_owned(), Secret::new(client_secret))
+    } else {
+        let credentials = app_management.app_client_credentials(client_id).await?;
+        (credentials.client_id, credentials.client_secret)
+    };
+    let sample = webhook
+        .trigger(
+            &topic,
+            &api_version,
+            &address,
+            delivery_method,
+            &credentials.1,
+            (delivery_method == WebhookDeliveryMethod::EventBridge)
+                .then_some(credentials.0.as_str()),
+        )
+        .await?;
+    if !sample.success {
+        return Err(Error::api(format!(
+            "Shopify could not trigger the sample webhook: {}",
+            sample.errors.join(", ")
+        )));
+    }
+    let delivered_locally = if delivery_method == WebhookDeliveryMethod::Localhost {
+        if !deliver_local_webhook(&address, &sample).await? {
+            return Err(Error::api("localhost webhook delivery failed"));
+        }
+        true
+    } else {
+        false
+    };
+    output
+        .success(
+            if delivered_locally {
+                "Localhost delivery successful"
+            } else {
+                "Webhook has been enqueued for delivery"
+            },
+            &serde_json::json!({
+                "topic": topic,
+                "api_version": api_version,
+                "address": address,
+                "delivery_method": delivery_method,
+                "delivered_locally": delivered_locally,
+            }),
+        )
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
 async fn app_command(command: AppCommand, non_interactive: bool, output: &Output) -> Result<u8> {
     match command {
         AppCommand::Build {
@@ -4952,14 +5125,9 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 args.len()
             ),
         )),
-        AppCommand::WebhookTrigger { args } => Err(backend_unavailable(
-            "app webhook trigger",
-            40,
-            format!(
-                "the webhook trigger backend is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
-                args.len()
-            ),
-        )),
+        AppCommand::Webhook { command } => {
+            app_webhook_command(command, non_interactive, output).await
+        }
         AppCommand::Execute {
             context,
             query,
@@ -5523,10 +5691,10 @@ pub enum AppCommand {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// Trigger an app webhook.
-    WebhookTrigger {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+    /// Work with app webhooks.
+    Webhook {
+        #[command(subcommand)]
+        command: AppWebhookCommand,
     },
     /// Execute an Admin API query for the app.
     #[command(disable_version_flag = true)]
@@ -6026,6 +6194,28 @@ mod tests {
     #[test]
     fn command_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn webhook_trigger_uses_the_upstream_nested_command_path() {
+        assert!(
+            Cli::try_parse_from([
+                "cfy",
+                "app",
+                "webhook",
+                "trigger",
+                "--topic",
+                "orders/create",
+                "--api-version",
+                "2025-07",
+                "--delivery-method",
+                "http",
+                "--address",
+                "https://example.test/webhook",
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["cfy", "app", "webhook-trigger"]).is_err());
     }
 
     #[test]

@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **87**
-- Commands with automated evidence: **99**
+- Implemented (`native` + `adapter`): **88**
+- Commands with automated evidence: **100**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 12 | Command path exists but required backend behavior is incomplete. |
-| `native` | 60 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 11 | Command path exists but required backend behavior is incomplete. |
+| `native` | 61 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -50,7 +50,7 @@
 | `app logs sources` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app release` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app versions list` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `app webhook trigger` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `app webhook trigger` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust-native org-scoped Webhooks API client lists API versions/topics, validates delivery methods, requests sample payloads, and forwards localhost deliveries without invoking Shopify CLI. Evidence: crates/cfy-app/src/webhook.rs tests; crates/cfy-cli/src/lib.rs webhook command tests. |
 | `auth login` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-auth/tests/auth.rs; crates/cfy-cli/tests/cli.rs. |
 | `auth logout` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Native Rust local-session removal matches Shopify CLI logout semantics and does not invoke Shopify CLI. Evidence: crates/cfy-auth/tests/auth.rs::valid_sessions_skip_refresh_and_logout_removes_storage; crates/cfy-cli/tests/cli.rs::auth_logout_matches_shopify_local_session_command_contract. Shopify CLI logout is local-only; Catify removes the active default session idempotently. |
 | `commands` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Native Rust listing embeds the pinned 111-command Shopify runtime inventory and supports JSON, columns, sorting, tree, hidden, deprecated, and extended output without invoking Shopify CLI. Evidence: crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory; crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree; inventory/runtime-shopify-cli.json. Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow. |

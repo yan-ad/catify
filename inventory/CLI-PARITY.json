@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 87,
-    "tested": 99,
+    "implemented": 88,
+    "tested": 100,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 12,
-      "native": 60,
+      "blocked": 11,
+      "native": 61,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 10,
-        "native": 16,
+        "blocked": 9,
+        "native": 17,
         "partial": 5
       },
       "auth": {
@@ -468,11 +468,14 @@
     {
       "command": "app webhook trigger",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 40,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native org-scoped Webhooks API client lists API versions/topics, validates delivery methods, requests sample payloads, and forwards localhost deliveries without invoking Shopify CLI.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-app/src/webhook.rs tests",
+        "crates/cfy-cli/src/lib.rs webhook command tests"
+      ],
       "live_verified": false,
       "notes": null
     },
