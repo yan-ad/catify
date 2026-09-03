@@ -26,7 +26,7 @@ export function Head() {
         content="Shopify CLI alternative, Rust CLI, Shopify theme development, Shopify app development, open source developer tools"
       />
       <meta name="robots" content="index, follow, max-image-preview:large" />
-      <meta name="theme-color" content="#11120f" />
+      <meta name="theme-color" content="#080b09" />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Catify" />
       <meta property="og:image" content="/og-image.png" />
@@ -39,6 +39,7 @@ export function Head() {
       />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:image" content="/og-image.png" />
+      <link rel="apple-touch-icon" href="/catify-icon-192.png" />
       <link rel="manifest" href="/site.webmanifest" />
       <link rel="preconnect" href="https://github.com" />
       <script

@@ -4,13 +4,18 @@
   "description": "A fast, Rust-native Shopify CLI alternative.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f0e5",
-  "theme_color": "#11120f",
+  "background_color": "#080b09",
+  "theme_color": "#73ff2f",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "/catify-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/catify-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }

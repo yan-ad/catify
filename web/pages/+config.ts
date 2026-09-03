@@ -7,7 +7,7 @@ export default {
   title: 'Catify — A fast, Rust-native Shopify CLI alternative',
   description:
     'Catify is an independent, memory-efficient Shopify CLI alternative built natively in Rust for fast app and theme development workflows.',
-  favicon: '/favicon.svg',
+  favicon: '/favicon.png',
   lang: 'en',
   viewport: 'responsive',
 } satisfies Config

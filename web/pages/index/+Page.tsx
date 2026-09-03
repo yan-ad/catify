@@ -69,8 +69,8 @@ export function Page() {
     <div className="site-shell">
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Catify home">
-          <span className="brand-mark" aria-hidden="true">c_</span>
-          <span>catify</span>
+          <img src="/catify-icon-192.png" alt="" width="48" height="48" />
+          <span>Catify</span>
         </a>
         <nav aria-label="Main navigation">
           <a href="#why">Why Catify</a>
@@ -118,10 +118,18 @@ export function Page() {
           </div>
 
           <div className="hero-art reveal reveal-3" aria-hidden="true">
-            <div className="art-frame">
-              <span className="frame-label">CFY / NATIVE MODE</span>
-              <img src="/og-image.svg" alt="" width="1200" height="630" />
-              <span className="frame-index">001</span>
+            <div className="logo-stage">
+              <span className="logo-orbit logo-orbit-one" />
+              <span className="logo-orbit logo-orbit-two" />
+              <img
+                src="/catify-logo.png"
+                alt=""
+                width="1254"
+                height="1254"
+                fetchPriority="high"
+              />
+              <span className="stage-label stage-label-top">RUST / NATIVE</span>
+              <span className="stage-label stage-label-bottom">CFY_01</span>
             </div>
           </div>
 
@@ -201,8 +209,8 @@ export function Page() {
 
       <footer>
         <a className="brand footer-brand" href="#top">
-          <span className="brand-mark" aria-hidden="true">c_</span>
-          <span>catify</span>
+          <img src="/catify-icon-192.png" alt="" width="48" height="48" />
+          <span>Catify</span>
         </a>
         <p>Independent and not affiliated with, endorsed by, or sponsored by Shopify.</p>
         <p>MIT licensed · Built with Rust</p>
