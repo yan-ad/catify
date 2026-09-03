@@ -9,6 +9,7 @@ use cfy_app::{
     extension_import::{
         ExistingDirectoryPolicy, ImportExtensionsOptions, ImportSelection, import_extensions,
     },
+    logs::AppLogsClient,
     webhook::{
         WebhookClient, WebhookDeliveryMethod, deliver_local_webhook, resolve_delivery_method,
     },
@@ -107,6 +108,17 @@ impl Drop for AbortOnDrop {
 pub enum AppLogStatusArg {
     Success,
     Failure,
+}
+
+struct AppLogsRunArgs {
+    config: Option<String>,
+    auth_alias: Option<String>,
+    client_id: Option<String>,
+    path: Option<PathBuf>,
+    reset: bool,
+    stores: Vec<String>,
+    sources: Vec<String>,
+    status: Option<AppLogStatusArg>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -4832,6 +4844,19 @@ fn app_log_sources(
     let selected = selected_app_environment(path, config, client_id, reset)?;
     let graph =
         cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
+    let sources = app_log_source_names(&graph);
+    let human = if sources.is_empty() {
+        "No app log sources found.".to_owned()
+    } else {
+        format!("extensions\n{}", sources.join("\n"))
+    };
+    output
+        .success(&human, &sources)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
+fn app_log_source_names(graph: &cfy_config::graph::AppConfigGraph) -> Vec<String> {
     let mut sources = graph
         .apps
         .first()
@@ -4848,14 +4873,180 @@ fn app_log_sources(
         .collect::<Vec<_>>();
     sources.sort();
     sources.dedup();
-    let human = if sources.is_empty() {
-        "No app log sources found.".to_owned()
+    sources
+}
+
+async fn stream_app_logs(args: AppLogsRunArgs, output: &Output) -> Result<u8> {
+    let AppLogsRunArgs {
+        config,
+        auth_alias,
+        client_id,
+        path,
+        reset,
+        stores,
+        sources,
+        status,
+    } = args;
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    let graph =
+        cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
+    let valid_sources = app_log_source_names(&graph);
+    if valid_sources.is_empty() {
+        return Err(Error::invalid_input(
+            "this app has no function extension log sources",
+        ));
+    }
+    let invalid_sources = sources
+        .iter()
+        .filter(|source| !valid_sources.contains(source))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !invalid_sources.is_empty() {
+        return Err(Error::invalid_input(format!(
+            "invalid log sources: {}. Valid sources: {}",
+            invalid_sources.join(", "),
+            valid_sources.join(", ")
+        )));
+    }
+    let client_id = selected
+        .document
+        .get("client_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?;
+    let requested_stores = if stores.is_empty() {
+        selected.store.into_iter().collect::<Vec<_>>()
     } else {
-        format!("extensions\n{}", sources.join("\n"))
+        stores
     };
+    if requested_stores.is_empty() {
+        return Err(Error::invalid_input(
+            "at least one development or Shopify Plus sandbox store is required; pass --store",
+        ));
+    }
+    let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+    let session = authenticated_session(&identity).await?;
+    let app_management = AppManagementClient::from_session(&session).await?;
+    let remote_app = app_management.app_by_client_id(client_id).await?;
+    let organization_stores =
+        OrganizationStoreClient::from_session(&session, &remote_app.organization_id)
+            .await
+            .map_err(|error| Error::api(error.to_string()))?
+            .list()
+            .await
+            .map_err(|error| Error::api(error.to_string()))?;
+    let mut shop_ids = Vec::new();
+    let mut store_names = std::collections::BTreeMap::new();
+    for requested in requested_stores {
+        let target = StoreTarget::parse(&requested)
+            .map_err(|error| Error::invalid_input(error.to_string()))?;
+        let store = organization_stores
+            .stores
+            .iter()
+            .find(|store| store.store == target.domain)
+            .ok_or_else(|| {
+                Error::invalid_input(format!(
+                    "store `{}` is not an active development or Shopify Plus sandbox store in organization `{}`",
+                    target.domain, organization_stores.organization_name
+                ))
+            })?;
+        let id = store
+            .id
+            .as_deref()
+            .and_then(|id| id.rsplit('/').next())
+            .and_then(|id| id.parse::<i64>().ok())
+            .ok_or_else(|| {
+                Error::api(format!(
+                    "store `{}` has no numeric Shopify shop ID",
+                    target.domain
+                ))
+            })?;
+        shop_ids.push(id);
+        store_names.insert(id, target.domain);
+    }
+    shop_ids.sort_unstable();
+    shop_ids.dedup();
+
+    let token = exchange_app_management_token(&session).await?;
+    let logs = AppLogsClient::for_organization(&token, &remote_app.organization_id)?;
+    let mut subscription = logs.subscribe(&shop_ids, client_id).await?;
+    let cancellation = Cancellation::default();
+    let signal = cancellation.clone();
+    let watcher = AbortOnDrop(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal.cancel();
+        }
+    }));
     output
-        .success(&human, &sources)
+        .lifecycle("Waiting for app logs... Press Ctrl-C to stop.")
         .map_err(|error| Error::process(error.to_string()))?;
+    let status = status.map(|status| match status {
+        AppLogStatusArg::Success => "success",
+        AppLogStatusArg::Failure => "failure",
+    });
+    let mut cursor = None;
+    while !cancellation.is_cancelled() {
+        let retry_delay = match logs.poll(&subscription, cursor.as_deref()).await {
+            Ok(page) => {
+                cursor = page.cursor;
+                for log in page.logs.into_iter().filter(|log| {
+                    status.is_none_or(|status| log.status == status)
+                        && (sources.is_empty() || sources.contains(&log.source_name()))
+                }) {
+                    let store = store_names
+                        .get(&log.shop_id)
+                        .cloned()
+                        .unwrap_or_else(|| log.shop_id.to_string());
+                    let payload = log.parsed_payload();
+                    let value = serde_json::json!({
+                        "shop_id": log.shop_id,
+                        "store": store,
+                        "status": log.status,
+                        "source": log.source_name(),
+                        "log_type": log.log_type,
+                        "log_timestamp": log.log_timestamp,
+                        "payload": payload,
+                    });
+                    let human = format!(
+                        "{}\t{}\t{}\t{}\n{}",
+                        log.log_timestamp,
+                        log.status,
+                        log.source_name(),
+                        store,
+                        serde_json::to_string_pretty(&payload)
+                            .unwrap_or_else(|_| payload.to_string())
+                    );
+                    output
+                        .success(&human, &value)
+                        .map_err(|error| Error::process(error.to_string()))?;
+                }
+                Duration::from_millis(450)
+            }
+            Err(error) if error.is_unauthorized() => {
+                subscription = logs.subscribe(&shop_ids, client_id).await?;
+                Duration::from_millis(450)
+            }
+            Err(error) if error.is_rate_limited() => {
+                output
+                    .lifecycle("App logs rate limited; retrying in 60 seconds.")
+                    .map_err(|io_error| Error::process(io_error.to_string()))?;
+                Duration::from_secs(60)
+            }
+            Err(error) if error.is_server_error() => {
+                output
+                    .lifecycle("App logs service unavailable; retrying in 5 seconds.")
+                    .map_err(|io_error| Error::process(io_error.to_string()))?;
+                Duration::from_secs(5)
+            }
+            Err(error) => {
+                return Err(Error::api(format!(
+                    "could not poll app logs: {}",
+                    error.messages.join(", ")
+                )));
+            }
+        };
+        tokio::time::sleep(retry_delay).await;
+    }
+    drop(watcher);
     Ok(0)
 }
 
@@ -5202,11 +5393,32 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
             nested_reset || reset,
             output,
         ),
-        AppCommand::Logs { .. } => Err(backend_unavailable(
-            "app logs",
-            40,
-            "the streaming app logs subscription backend is pending; `cfy app logs sources` is already native",
-        )),
+        AppCommand::Logs {
+            config,
+            auth_alias,
+            client_id,
+            path,
+            reset,
+            stores,
+            sources,
+            status,
+            command: None,
+        } => {
+            stream_app_logs(
+                AppLogsRunArgs {
+                    config,
+                    auth_alias,
+                    client_id,
+                    path,
+                    reset,
+                    stores,
+                    sources,
+                    status,
+                },
+                output,
+            )
+            .await
+        }
         AppCommand::Webhook { command } => {
             app_webhook_command(command, non_interactive, output).await
         }

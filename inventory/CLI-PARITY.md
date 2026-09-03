@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **89**
-- Commands with automated evidence: **101**
+- Implemented (`native` + `adapter`): **90**
+- Commands with automated evidence: **102**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 10 | Command path exists but required backend behavior is incomplete. |
-| `native` | 62 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 9 | Command path exists but required backend behavior is incomplete. |
+| `native` | 63 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -46,7 +46,7 @@
 | `app import-extensions` | `partial` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path. Evidence: crates/cfy-app/src/extension_import.rs; crates/cfy-app/tests/extension_import.rs; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions. |
 | `app info` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path. Evidence: crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state. |
 | `app init` | `partial` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs. Creates a minimal local skeleton; template selection/dependency setup are incomplete. |
-| `app logs` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `app logs` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust-native app log subscription and polling resolves organization stores, subscribes through App Management, filters status/source, resubscribes after 401, backs off on throttling/server failures, and stops on Ctrl-C without invoking Shopify CLI. Evidence: crates/cfy-app/src/logs.rs tests; crates/cfy-cli/src/lib.rs::stream_app_logs; app logs command parser tests. |
 | `app logs sources` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust-native project graph inspection lists function extension log sources at the exact nested command path without Shopify API or Shopify CLI subprocesses. Evidence: crates/cfy-cli/src/lib.rs::app_log_sources; crates/cfy-cli/src/lib.rs app log sources parser test; isolated CLI fixture smoke. |
 | `app release` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app versions list` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |

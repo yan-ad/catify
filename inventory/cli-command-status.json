@@ -252,11 +252,15 @@
       "status": "partial"
     },
     "app logs": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-app/src/logs.rs tests",
+        "crates/cfy-cli/src/lib.rs::stream_app_logs",
+        "app logs command parser tests"
+      ],
+      "implementation": "Rust-native app log subscription and polling resolves organization stores, subscribes through App Management, filters status/source, resubscribes after 401, backs off on throttling/server failures, and stops on Ctrl-C without invoking Shopify CLI.",
       "live_verified": false,
       "owner": 40,
-      "status": "blocked"
+      "status": "native"
     },
     "app logs sources": {
       "evidence": [

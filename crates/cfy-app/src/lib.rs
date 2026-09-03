@@ -2,6 +2,7 @@
 
 pub mod extension_generate;
 pub mod extension_import;
+pub mod logs;
 pub mod webhook;
 
 use base64::{

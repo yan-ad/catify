@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 89,
-    "tested": 101,
+    "implemented": 90,
+    "tested": 102,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 10,
-      "native": 62,
+      "blocked": 9,
+      "native": 63,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 8,
-        "native": 18,
+        "blocked": 7,
+        "native": 19,
         "partial": 5
       },
       "auth": {
@@ -418,11 +418,15 @@
     {
       "command": "app logs",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 40,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native app log subscription and polling resolves organization stores, subscribes through App Management, filters status/source, resubscribes after 401, backs off on throttling/server failures, and stops on Ctrl-C without invoking Shopify CLI.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-app/src/logs.rs tests",
+        "crates/cfy-cli/src/lib.rs::stream_app_logs",
+        "app logs command parser tests"
+      ],
       "live_verified": false,
       "notes": null
     },
