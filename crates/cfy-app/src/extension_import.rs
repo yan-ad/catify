@@ -21,6 +21,179 @@ pub struct RemoteExtensionRegistration {
     pub extension_type: String,
     #[serde(default)]
     pub configuration: serde_json::Value,
+    #[serde(default)]
+    pub context: Option<String>,
+}
+
+pub fn is_migratable_type(extension_type: &str) -> bool {
+    matches!(
+        extension_type.to_ascii_lowercase().as_str(),
+        "payments_app"
+            | "payments_app_credit_card"
+            | "payments_app_custom_credit_card"
+            | "payments_app_custom_onsite"
+            | "payments_app_redeemable"
+            | "payments_app_card_present"
+            | "payments_extension"
+            | "flow_action_definition"
+            | "flow_trigger_definition"
+            | "flow_trigger_discovery_webhook"
+            | "marketing_activity_extension"
+            | "subscription_link"
+            | "subscription_link_extension"
+            | "app_link"
+            | "bulk_action"
+    )
+}
+
+fn transform_configuration(
+    registration: &RemoteExtensionRegistration,
+    handle: &str,
+) -> ImportResult<serde_json::Value> {
+    let mut config = registration.configuration.clone();
+    let table = config
+        .as_object_mut()
+        .ok_or_else(|| ExtensionImportError::Configuration {
+            uuid: registration.uuid.clone(),
+            message: "configuration must be a JSON object".into(),
+        })?;
+    match registration.extension_type.as_str() {
+        "flow_trigger_discovery_webhook" => {
+            let url = table.get("url").cloned().unwrap_or(serde_json::Value::Null);
+            return Ok(serde_json::json!({"url": url}));
+        }
+        "flow_action_definition" | "flow_trigger_definition" => {
+            rename_key(table, "url", "runtime_url");
+            rename_key(table, "custom_configuration_page_url", "config_page_url");
+            rename_key(
+                table,
+                "custom_configuration_page_preview_url",
+                "config_page_preview_url",
+            );
+            if registration.extension_type == "flow_action_definition"
+                && !table.contains_key("runtime_url")
+            {
+                table.insert(
+                    "runtime_url".into(),
+                    serde_json::Value::String("https://url.com/api/execute".into()),
+                );
+            }
+            table.remove("title");
+        }
+        "marketing_activity_extension" => {
+            if let Some(url) = table
+                .remove("app_api_url")
+                .and_then(|value| value.as_str().map(str::to_owned))
+                && let Ok(url) = url::Url::parse(&url)
+            {
+                let mut path = url.path().to_owned();
+                if let Some(query) = url.query() {
+                    path.push('?');
+                    path.push_str(query);
+                }
+                if let Some(fragment) = url.fragment() {
+                    path.push('#');
+                    path.push_str(fragment);
+                }
+                table.insert("api_path".into(), serde_json::Value::String(path));
+            }
+            if let Some(platform) = table
+                .remove("platform")
+                .and_then(|value| value.as_str().map(str::to_owned))
+            {
+                let channel = match platform.as_str() {
+                    "facebook" | "instagram" | "pinterest" | "snapchat" | "tiktok" => "social",
+                    "google" | "bing" => "search",
+                    "email" | "flow" => "email",
+                    "sms" => "sms",
+                    "verizon_media" => "display",
+                    "ebay" => "marketplace",
+                    _ => "",
+                };
+                table.insert(
+                    "marketing_channel".into(),
+                    serde_json::Value::String(channel.into()),
+                );
+                let domain = match platform.as_str() {
+                    "facebook" => "facebook.com",
+                    "instagram" => "instagram.com",
+                    "google" => "google.com",
+                    "pinterest" => "pinterest.com",
+                    "bing" => "bing.com",
+                    "snapchat" => "snapchat.com",
+                    "ebay" => "ebay.com",
+                    "tiktok" => "tiktok.com",
+                    _ => "",
+                };
+                table.insert(
+                    "referring_domain".into(),
+                    serde_json::Value::String(domain.into()),
+                );
+            }
+            if let Some(fields) = table
+                .get_mut("fields")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                for field in fields {
+                    if let Some(field) = field.as_object_mut() {
+                        field.remove("id");
+                    }
+                }
+            }
+        }
+        value if value.starts_with("payments_") => {
+            rename_key(table, "start_payment_session_url", "payment_session_url");
+            rename_key(table, "start_refund_session_url", "refund_session_url");
+            rename_key(table, "start_capture_session_url", "capture_session_url");
+            rename_key(table, "start_void_session_url", "void_session_url");
+            rename_key(table, "default_buyer_label", "buyer_label");
+            rename_key(table, "buyer_label_to_locale", "buyer_label_translations");
+            if let Some(certificate) = table.remove("encryption_certificate")
+                && let Some(fingerprint) = certificate.get("fingerprint").cloned()
+            {
+                table.insert("encryption_certificate_fingerprint".into(), fingerprint);
+            }
+            table.remove("api_version");
+            let target = registration
+                .context
+                .clone()
+                .unwrap_or_else(|| payment_target(value).into());
+            table.insert("targeting".into(), serde_json::json!([{"target": target}]));
+        }
+        _ => {}
+    }
+    table.insert("handle".into(), serde_json::Value::String(handle.into()));
+    Ok(config)
+}
+
+fn rename_key(table: &mut serde_json::Map<String, serde_json::Value>, from: &str, to: &str) {
+    if let Some(value) = table.remove(from) {
+        table.insert(to.into(), value);
+    }
+}
+
+fn local_extension_type(extension_type: &str) -> &str {
+    match extension_type {
+        "flow_action_definition" => "flow_action",
+        "flow_trigger_definition" => "flow_trigger",
+        "flow_trigger_discovery_webhook" => "flow_trigger_lifecycle_callback",
+        "marketing_activity_extension" => "marketing_activity",
+        "subscription_link" => "subscription_link_extension",
+        "app_link" | "bulk_action" => "admin_link",
+        value if value.starts_with("payments_") => "payments_extension",
+        value => value,
+    }
+}
+
+fn payment_target(extension_type: &str) -> &str {
+    match extension_type {
+        "payments_app_credit_card" => "payments.credit-card.render",
+        "payments_app_custom_credit_card" => "payments.custom-credit-card.render",
+        "payments_app_custom_onsite" => "payments.custom-onsite.render",
+        "payments_app_redeemable" => "payments.redeemable.render",
+        "payments_app_card_present" => "payments.card-present.render",
+        _ => "payments.offsite.render",
+    }
 }
 
 impl<'de> Deserialize<'de> for RemoteExtensionRegistration {
@@ -40,6 +213,8 @@ impl<'de> Deserialize<'de> for RemoteExtensionRegistration {
             extension_type: String,
             #[serde(default)]
             configuration: Option<serde_json::Value>,
+            #[serde(default)]
+            context: Option<String>,
             #[serde(rename = "draftVersion", default)]
             draft_version: Option<Version>,
             #[serde(rename = "activeVersion", default)]
@@ -62,6 +237,7 @@ impl<'de> Deserialize<'de> for RemoteExtensionRegistration {
             title: wire.title,
             extension_type: wire.extension_type,
             configuration,
+            context: wire.context,
         })
     }
 }
@@ -349,9 +525,10 @@ fn render_configuration(
     registration: &RemoteExtensionRegistration,
     handle: &str,
 ) -> ImportResult<String> {
-    let mut table = match &registration.configuration {
+    let transformed = transform_configuration(registration, handle)?;
+    let mut table = match &transformed {
         serde_json::Value::Null => toml::Table::new(),
-        serde_json::Value::Object(_) => toml::Value::try_from(&registration.configuration)
+        serde_json::Value::Object(_) => toml::Value::try_from(&transformed)
             .map_err(|error| ExtensionImportError::Configuration {
                 uuid: registration.uuid.clone(),
                 message: error.to_string(),
@@ -376,9 +553,14 @@ fn render_configuration(
     table.insert("handle".into(), toml::Value::String(handle.into()));
     table.insert(
         "type".into(),
-        toml::Value::String(registration.extension_type.clone()),
+        toml::Value::String(local_extension_type(&registration.extension_type).into()),
     );
-    toml::to_string_pretty(&table).map_err(|error| ExtensionImportError::Configuration {
+    let mut document = toml::Table::new();
+    document.insert(
+        "extensions".into(),
+        toml::Value::Array(vec![toml::Value::Table(table)]),
+    );
+    toml::to_string_pretty(&document).map_err(|error| ExtensionImportError::Configuration {
         uuid: registration.uuid.clone(),
         message: error.to_string(),
     })

@@ -4848,6 +4848,7 @@ async fn app_versions_command(command: AppVersionsCommand, output: &Output) -> R
 #[derive(Debug, Subcommand)]
 pub enum AppGenerateCommand {
     /// Generate a new app extension.
+    #[command(disable_version_flag = true)]
     Extension {
         #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
         config: Option<String>,
@@ -5001,6 +5002,7 @@ pub enum AppCommand {
         version: String,
     },
     /// Import dashboard-managed app extensions.
+    #[command(disable_version_flag = true)]
     ImportExtensions {
         #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
         config: Option<String>,

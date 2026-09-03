@@ -142,7 +142,7 @@
       "json": true,
       "non_interactive": true,
       "owner": 24,
-      "status": "native"
+      "status": "partial"
     },
     "app info": {
       "json": true,

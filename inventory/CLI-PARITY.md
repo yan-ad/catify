@@ -5,17 +5,16 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **79**
-- Commands with automated evidence: **92**
+- Implemented (`native` + `adapter`): **80**
+- Commands with automated evidence: **94**
 - Live-verified commands: **7**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
 | `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
-| `library-only` | 2 | Core/backend exists, but the public command is not fully wired. |
-| `native` | 52 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 11 | Exact command path exists, but behavior is not yet fully compatible. |
+| `native` | 53 | Implemented in Rust and exposed at the upstream command path. |
+| `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
 
@@ -41,10 +40,10 @@
 | `app function run` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app function schema` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app function typegen` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app generate extension` | `library-only` | no | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
+| `app generate extension` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native extension scaffolding clones the official or configured template repository through the process supervisor, renders Liquid templates, confines all output to extensions/<handle>, and exposes the exact public command path. Evidence: crates/cfy-app/src/extension_generate.rs; crates/cfy-app/tests/extension_generate.rs; crates/cfy-cli/tests/cli.rs. |
 | `app graphiql` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app import-custom-data-definitions` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app import-extensions` | `library-only` | no | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust backend/library exists, but the exact public CLI command is not fully wired. |
+| `app import-extensions` | `partial` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path. Evidence: crates/cfy-app/src/extension_import.rs; crates/cfy-app/tests/extension_import.rs; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions. |
 | `app info` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path. Evidence: crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state. |
 | `app init` | `partial` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs. Creates a minimal local skeleton; template selection/dependency setup are incomplete. |
 | `app logs` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |

@@ -185,11 +185,16 @@
       "status": "blocked"
     },
     "app generate extension": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-app/src/extension_generate.rs",
+        "crates/cfy-app/tests/extension_generate.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native extension scaffolding clones the official or configured template repository through the process supervisor, renders Liquid templates, confines all output to extensions/<handle>, and exposes the exact public command path.",
       "live_verified": false,
       "owner": 24,
-      "status": "library-only"
+      "status": "native",
+      "tested": true
     },
     "app graphiql": {
       "evidence": [],
@@ -206,11 +211,18 @@
       "status": "blocked"
     },
     "app import-extensions": {
-      "evidence": [],
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
+      "evidence": [
+        "crates/cfy-app/src/extension_import.rs",
+        "crates/cfy-app/tests/extension_import.rs",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path.",
       "live_verified": false,
+      "notes": "Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions.",
       "owner": 24,
-      "status": "library-only"
+      "status": "partial",
+      "tested": true
     },
     "app info": {
       "evidence": [

@@ -61,7 +61,71 @@ fn registration(uuid: &str, title: &str) -> RemoteExtensionRegistration {
         title: title.into(),
         extension_type: "theme".into(),
         configuration: json!({"description": "fixture"}),
+        context: None,
     }
+}
+
+#[test]
+fn converts_supported_dashboard_extension_families_to_local_toml() {
+    let flow = TempDir::new("flow-conversion");
+    let report = import_extension_registrations(
+        vec![RemoteExtensionRegistration {
+            uuid: "flow-1".into(),
+            title: "Create order".into(),
+            extension_type: "flow_action_definition".into(),
+            configuration: json!({
+                "title": "Create order",
+                "description": "Creates an order",
+                "url": "https://example.test/flow",
+                "custom_configuration_page_url": "https://example.test/config"
+            }),
+            context: None,
+        }],
+        &options(flow.path()),
+    )
+    .unwrap();
+    let config = fs::read_to_string(
+        flow.path()
+            .join("extensions")
+            .join(&report.items[0].handle)
+            .join("shopify.extension.toml"),
+    )
+    .unwrap();
+    assert!(config.contains("type = \"flow_action\""));
+    assert!(
+        config.contains("runtime_url = \"https://example.test/flow\""),
+        "{config}"
+    );
+    assert!(config.contains("config_page_url = \"https://example.test/config\""));
+
+    let payment = TempDir::new("payment-conversion");
+    let report = import_extension_registrations(
+        vec![RemoteExtensionRegistration {
+            uuid: "payment-1".into(),
+            title: "Pay now".into(),
+            extension_type: "payments_app".into(),
+            configuration: json!({
+                "api_version": "2025-07",
+                "start_payment_session_url": "https://example.test/pay",
+                "merchant_label": "Pay now"
+            }),
+            context: Some("payments.offsite.render".into()),
+        }],
+        &options(payment.path()),
+    )
+    .unwrap();
+    let config = fs::read_to_string(
+        payment
+            .path()
+            .join("extensions")
+            .join(&report.items[0].handle)
+            .join("shopify.extension.toml"),
+    )
+    .unwrap();
+    assert!(config.contains("type = \"payments_extension\""));
+    assert!(config.contains("payment_session_url = \"https://example.test/pay\""));
+    assert!(config.contains("target = \"payments.offsite.render\""));
+    assert!(!config.contains("api_version"));
 }
 
 fn options(root: &Path) -> ImportExtensionsOptions {

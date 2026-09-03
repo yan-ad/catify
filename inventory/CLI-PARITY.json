@@ -5,22 +5,20 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 79,
-    "tested": 92,
+    "implemented": 80,
+    "tested": 94,
     "live_verified": 7,
     "by_status": {
       "adapter": 27,
       "blocked": 19,
-      "library-only": 2,
-      "native": 52,
-      "partial": 11
+      "native": 53,
+      "partial": 12
     },
     "by_domain": {
       "app": {
         "blocked": 12,
-        "library-only": 2,
-        "native": 13,
-        "partial": 4
+        "native": 14,
+        "partial": 5
       },
       "auth": {
         "native": 2
@@ -335,11 +333,15 @@
     {
       "command": "app generate extension",
       "domain": "app",
-      "status": "library-only",
+      "status": "native",
       "owner": 24,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native extension scaffolding clones the official or configured template repository through the process supervisor, renders Liquid templates, confines all output to extensions/<handle>, and exposes the exact public command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-app/src/extension_generate.rs",
+        "crates/cfy-app/tests/extension_generate.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
@@ -368,13 +370,18 @@
     {
       "command": "app import-extensions",
       "domain": "app",
-      "status": "library-only",
+      "status": "partial",
       "owner": 24,
-      "implementation": "Rust backend/library exists, but the exact public CLI command is not fully wired.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-app/src/extension_import.rs",
+        "crates/cfy-app/tests/extension_import.rs",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
-      "notes": null
+      "notes": "Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions."
     },
     {
       "command": "app info",

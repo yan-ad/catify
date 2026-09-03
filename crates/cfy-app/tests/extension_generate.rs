@@ -13,6 +13,31 @@ fn git(repo: &Path, args: &[&str]) {
     assert!(status.success());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn rejects_symlinked_extensions_directory() {
+    use std::os::unix::fs::symlink;
+
+    let repo = fixture_repository();
+    let app = app_root();
+    let outside = TempDir::new().unwrap();
+    symlink(outside.path(), app.path().join("extensions")).unwrap();
+    let error = generate_extension(
+        &Supervisor::new(Duration::from_secs(2)),
+        &GenerateExtensionOptions {
+            app_directory: app.path().to_owned(),
+            name: "Unsafe".into(),
+            template: "checkout_ui_extension".into(),
+            flavor: Some("typescript".into()),
+            repository: Some(repo.path().to_string_lossy().into_owned()),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("escapes"));
+    assert!(!outside.path().join("unsafe").exists());
+}
+
 fn fixture_repository() -> TempDir {
     let repo = TempDir::new().unwrap();
     fs::create_dir_all(repo.path().join("checkout-extension/src")).unwrap();

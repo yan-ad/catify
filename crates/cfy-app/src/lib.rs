@@ -29,13 +29,19 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
-// The dashboard registration schema is unstable and deliberately isolated behind
-// ExtensionRegistrationProvider. Fixtures protect this wire shape from accidental drift.
 const EXTENSION_REGISTRATIONS_QUERY: &str = r#"query ExtensionRegistrations($apiKey: String!) {
   app: appByKey(key: $apiKey) {
-    extensionRegistrations { uuid title type draftVersion { config } activeVersion { config } }
-    configurationRegistrations { uuid title type draftVersion { config } activeVersion { config } }
-    dashboardManagedExtensionRegistrations { uuid title type draftVersion { config } activeVersion { config } }
+    activeRelease {
+      version {
+        appModules {
+          uuid
+          handle
+          config
+          target
+          specification { externalIdentifier }
+        }
+      }
+    }
   }
 }"#;
 
@@ -299,12 +305,30 @@ impl AppManagementClient {
         }
         #[derive(Deserialize)]
         struct App {
-            #[serde(rename = "extensionRegistrations", default)]
-            registrations: Vec<extension_import::RemoteExtensionRegistration>,
-            #[serde(rename = "configurationRegistrations", default)]
-            configurations: Vec<extension_import::RemoteExtensionRegistration>,
-            #[serde(rename = "dashboardManagedExtensionRegistrations", default)]
-            dashboard: Vec<extension_import::RemoteExtensionRegistration>,
+            #[serde(rename = "activeRelease")]
+            release: Option<Release>,
+        }
+        #[derive(Deserialize)]
+        struct Release {
+            version: Version,
+        }
+        #[derive(Deserialize)]
+        struct Version {
+            #[serde(rename = "appModules", default)]
+            modules: Vec<Module>,
+        }
+        #[derive(Deserialize)]
+        struct Module {
+            uuid: Option<String>,
+            handle: Option<String>,
+            config: Option<serde_json::Value>,
+            target: Option<String>,
+            specification: Specification,
+        }
+        #[derive(Deserialize)]
+        struct Specification {
+            #[serde(rename = "externalIdentifier")]
+            external_identifier: String,
         }
         let response = self
             .graphql
@@ -321,9 +345,25 @@ impl AppManagementClient {
         let app = response.data.app.ok_or_else(|| {
             Error::api(format!("no Shopify app found for client ID `{client_id}`"))
         })?;
-        let mut registrations = app.registrations;
-        registrations.extend(app.configurations);
-        registrations.extend(app.dashboard);
+        let mut registrations = app
+            .release
+            .map(|release| release.version.modules)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|module| {
+                let uuid = module.uuid?;
+                Some(extension_import::RemoteExtensionRegistration {
+                    title: module.handle.clone().unwrap_or_else(|| uuid.clone()),
+                    uuid,
+                    extension_type: module.specification.external_identifier,
+                    configuration: module.config.unwrap_or(serde_json::Value::Null),
+                    context: module.target,
+                })
+            })
+            .filter(|registration| {
+                extension_import::is_migratable_type(&registration.extension_type)
+            })
+            .collect::<Vec<_>>();
         registrations.sort_by(|left, right| left.uuid.cmp(&right.uuid));
         Ok(registrations)
     }
@@ -1518,8 +1558,9 @@ uri = "/webhooks"
             let request = String::from_utf8_lossy(&request[..read]);
             assert!(request.contains("organizationId"));
             assert!(request.contains("organization-7"));
-            assert!(request.contains("dashboardManagedExtensionRegistrations"));
-            let body = r#"{"data":{"app":{"extensionRegistrations":[{"uuid":"a","title":"Theme","type":"theme","draftVersion":{"config":"{\"description\":\"draft\"}"},"activeVersion":null}],"configurationRegistrations":[{"uuid":"b","title":"Flow","type":"flow_action","draftVersion":null,"activeVersion":{"config":"{\"description\":\"active\"}"}}],"dashboardManagedExtensionRegistrations":[{"uuid":"c","title":"Pixel","type":"web_pixel","draftVersion":{"config":"{\"runtime_context\":\"strict\"}"},"activeVersion":null}]}}}"#;
+            assert!(request.contains("appModules"));
+            assert!(request.contains("externalIdentifier"));
+            let body = r#"{"data":{"app":{"activeRelease":{"version":{"appModules":[{"uuid":"a","handle":"Payments","config":{"start_payment_session_url":"https://example.test/pay"},"target":"payments.offsite.render","specification":{"externalIdentifier":"payments_app"}},{"uuid":"b","handle":"Flow","config":{"title":"Flow","description":"active","url":"https://example.test/flow"},"specification":{"externalIdentifier":"flow_action_definition"}},{"uuid":"c","handle":"Admin link","config":{"text":"Open","url":"https://example.test/open"},"target":"products#show","specification":{"externalIdentifier":"app_link"}},{"uuid":"ignored","handle":"Pixel","config":{"runtime_context":"strict"},"specification":{"externalIdentifier":"web_pixel"}}]}}}}}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                 body.len(),
@@ -1543,9 +1584,13 @@ uri = "/webhooks"
                 .collect::<Vec<_>>(),
             ["a", "b", "c"]
         );
-        assert_eq!(registrations[0].configuration["description"], "draft");
+        assert_eq!(
+            registrations[0].configuration["start_payment_session_url"],
+            "https://example.test/pay"
+        );
         assert_eq!(registrations[1].configuration["description"], "active");
-        assert_eq!(registrations[2].configuration["runtime_context"], "strict");
+        assert_eq!(registrations[2].configuration["text"], "Open");
+        assert_eq!(registrations[2].context.as_deref(), Some("products#show"));
         server.await.unwrap();
     }
 

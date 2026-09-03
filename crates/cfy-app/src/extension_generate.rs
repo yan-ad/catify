@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     fs, io,
     path::{Component, Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 
@@ -19,6 +20,29 @@ pub struct GenerateExtensionOptions {
     pub template: String,
     pub flavor: Option<String>,
     pub repository: Option<String>,
+}
+
+fn ensure_no_symlink_ancestors(root: &Path, target: &Path) -> GenerateResult<()> {
+    if !target.starts_with(root) {
+        return Err(GenerateExtensionError::PathEscape(target.to_owned()));
+    }
+    let mut current = root.to_owned();
+    for component in target
+        .strip_prefix(root)
+        .expect("prefix checked")
+        .components()
+    {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(GenerateExtensionError::PathEscape(current));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(source) => return Err(io_at(&current, source)),
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -75,6 +99,7 @@ pub async fn generate_extension(
     let handle = slug(name);
     let root = absolute_lexical(&options.app_directory)?;
     let destination = confined_join(&root, Path::new("extensions").join(&handle).as_path())?;
+    ensure_no_symlink_ancestors(&root, &destination)?;
     if destination.exists() {
         return Err(GenerateExtensionError::ExistingDirectory(destination));
     }
@@ -85,9 +110,14 @@ pub async fn generate_extension(
             DEFAULT_UI_REPOSITORY.to_owned()
         }
     });
-    let temp = root
-        .join(".catify")
-        .join(format!("generate-extension-{}", std::process::id()));
+    let temp = root.join(".catify").join(format!(
+        "generate-extension-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
     if temp.exists() {
         remove_path(&temp).map_err(|source| io_at(&temp, source))?;
     }
@@ -100,6 +130,7 @@ pub async fn generate_extension(
             "clone".into(),
             "--depth".into(),
             "1".into(),
+            "--".into(),
             repository.clone(),
             temp.to_string_lossy().into_owned(),
         ];
