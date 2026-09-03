@@ -8,6 +8,51 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn theme_metafields_pull_resolves_named_environment_and_hides_force() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-theme-env-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    for directory in [
+        "assets",
+        "config",
+        "layout",
+        "sections",
+        "snippets",
+        "templates",
+    ] {
+        std::fs::create_dir_all(fixture.join(directory)).unwrap();
+    }
+    std::fs::write(
+        fixture.join("shopify.theme.toml"),
+        "[environments.staging]\nstore='staging-store'\npassword='theme-password'\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .current_dir(&fixture)
+        .args([
+            "theme",
+            "metafields",
+            "pull",
+            "--environment",
+            "staging",
+            "--help",
+        ])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&fixture).unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(help.contains("--environment"));
+    assert!(!help.contains("--force"));
+    assert!(!help.contains("-V, --version"));
+}
+
+#[test]
 fn app_graphiql_matches_shopify_loopback_ui_flags() {
     let help = cfy(&[
         "app",

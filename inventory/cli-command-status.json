@@ -970,13 +970,14 @@
     },
     "theme metafields pull": {
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet.",
+      "implementation": "Rust Admin GraphQL transport fetches metafield definitions for all Shopify owner types, supports theme environment precedence and Theme Access/store-auth credentials, handles partial owner failures, and atomically writes .shopify/metafields.json.",
       "live_verified": false,
       "notes": "Execution remains blocked on the Admin API metafield-definition contract.",
       "owner": 39,
-      "status": "blocked"
+      "status": "native"
     },
     "theme open": {
       "evidence": [

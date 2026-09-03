@@ -5,13 +5,13 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 85,
+    "implemented": 86,
     "tested": 98,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 14,
-      "native": 58,
+      "blocked": 13,
+      "native": 59,
       "partial": 12
     },
     "by_domain": {
@@ -53,8 +53,8 @@
       },
       "theme": {
         "adapter": 2,
-        "blocked": 4,
-        "native": 12,
+        "blocked": 3,
+        "native": 13,
         "partial": 1
       },
       "upgrade": {
@@ -1417,12 +1417,13 @@
     {
       "command": "theme metafields pull",
       "domain": "theme",
-      "status": "blocked",
+      "status": "native",
       "owner": 39,
-      "implementation": "The exact nested command path and Shopify-compatible flags are exposed, but the metafield-definition transport is not implemented yet.",
+      "implementation": "Rust Admin GraphQL transport fetches metafield definitions for all Shopify owner types, supports theme environment precedence and Theme Access/store-auth credentials, handles partial owner failures, and atomically writes .shopify/metafields.json.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs::theme_metafields_uses_shopify_compatible_nested_path"
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
       ],
       "live_verified": false,
       "notes": "Execution remains blocked on the Admin API metafield-definition contract."

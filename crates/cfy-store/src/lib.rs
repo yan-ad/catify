@@ -323,13 +323,39 @@ impl AdminStoreBackend {
     }
 
     pub async fn execute_query(&self, query: &str) -> Result<serde_json::Value> {
-        let request = GraphQlRequest::query(query, serde_json::json!({}));
+        self.execute_with_variables(query, serde_json::json!({}))
+            .await
+    }
+
+    pub async fn execute_with_variables(
+        &self,
+        query: &str,
+        variables: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let request = GraphQlRequest::query(query, variables);
         let response = self
             .client
             .execute::<_, serde_json::Value>(&request)
             .await
             .map_err(|error| StoreError::Backend(error.to_string()))?;
         Ok(response.data)
+    }
+
+    pub async fn metafield_definitions(&self, owner_type: &str) -> Result<Vec<serde_json::Value>> {
+        const QUERY: &str = r#"
+query metafieldDefinitionsByOwnerType($ownerType: MetafieldOwnerType!) {
+  metafieldDefinitions(ownerType: $ownerType, first: 250) {
+    nodes { key name namespace description type { category name } }
+  }
+}
+"#;
+        let data = self
+            .execute_with_variables(QUERY, serde_json::json!({"ownerType": owner_type}))
+            .await?;
+        data.pointer("/metafieldDefinitions/nodes")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .ok_or_else(|| StoreError::Backend("response omitted metafield definitions".into()))
     }
 }
 
@@ -666,5 +692,41 @@ mod tests {
             Some("gid://shopify/Shop/22")
         );
         assert_eq!(result.stores[1].store, "older.myshopify.com");
+    }
+
+    #[tokio::test]
+    async fn fetches_metafield_definitions_with_owner_type_variable() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 16 * 1024];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.contains("metafieldDefinitionsByOwnerType"));
+            assert!(request.contains("\"ownerType\":\"PRODUCT\""));
+            assert!(request.contains("x-shopify-access-token: theme-secret"));
+            let body = r#"{"data":{"metafieldDefinitions":{"nodes":[{"key":"subtitle","name":"Subtitle","namespace":"custom","description":"Text","type":{"category":"TEXT","name":"single_line_text_field"}}]}}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+        let target = StoreTarget::parse("demo").unwrap();
+        let mut backend = AdminStoreBackend::new(&target, "theme-secret").unwrap();
+        backend.client = GraphQlClient::new(
+            HttpClient::new(&format!("http://{address}"))
+                .unwrap()
+                .with_sensitive_header(
+                    reqwest::header::HeaderName::from_static("x-shopify-access-token"),
+                    reqwest::header::HeaderValue::from_static("theme-secret"),
+                ),
+            "/graphql",
+        );
+        let definitions = backend.metafield_definitions("PRODUCT").await.unwrap();
+        server.await.unwrap();
+        assert_eq!(definitions[0]["key"], "subtitle");
     }
 }

@@ -834,6 +834,7 @@ pub fn parse_cli() -> Cli {
 #[derive(Debug, Subcommand)]
 pub enum ThemeMetafieldsCommand {
     /// Download metafield definitions into the theme project.
+    #[command(disable_version_flag = true)]
     Pull {
         #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
         auth_alias: Option<String>,
@@ -845,6 +846,8 @@ pub enum ThemeMetafieldsCommand {
         store: Option<String>,
         #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
         environment: Vec<String>,
+        #[arg(short = 'f', long, env = "SHOPIFY_FLAG_FORCE", hide = true)]
+        force: bool,
     },
 }
 
@@ -2511,19 +2514,111 @@ async fn theme_parity_command(
             command:
                 ThemeMetafieldsCommand::Pull {
                     auth_alias: _,
-                    path: _,
-                    password: _,
+                    path,
+                    password,
                     store,
-                    environment: _,
+                    environment,
+                    force,
                 },
-        } => Err(backend_unavailable(
-            "theme metafields pull",
-            39,
-            format!(
-                "the metafields definition transport is pending for {}; use Shopify CLI for this command for now",
-                store.as_deref().unwrap_or("the selected environment")
-            ),
-        )),
+        } => {
+            let root = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not resolve current directory",
+                    error,
+                )
+            })?);
+            let is_theme = [
+                "assets",
+                "config",
+                "layout",
+                "sections",
+                "snippets",
+                "templates",
+            ]
+            .iter()
+            .all(|directory| root.join(directory).is_dir());
+            if !is_theme && env::var("SHOPIFY_LANGUAGE_SERVER").as_deref() == Ok("1") {
+                return Ok(0);
+            }
+            if !is_theme && !force {
+                return Err(Error::invalid_input(
+                    "the target directory does not look like a Shopify theme; pass --force to continue",
+                ));
+            }
+            let (environment_store, environment_password) =
+                theme_environment_credentials(&root, &environment)?;
+            let selected_store = store.or(environment_store);
+            let store = resolve_store(selected_store.as_deref())?;
+            let target = StoreTarget::parse(&store)?;
+            let token = match password.or(environment_password) {
+                Some(password) => password,
+                None => store_access_token(&target.domain).await?,
+            };
+            let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
+            const OWNERS: [(&str, &str); 12] = [
+                ("article", "ARTICLE"),
+                ("blog", "BLOG"),
+                ("collection", "COLLECTION"),
+                ("company", "COMPANY"),
+                ("company_location", "COMPANY_LOCATION"),
+                ("location", "LOCATION"),
+                ("market", "MARKET"),
+                ("order", "ORDER"),
+                ("page", "PAGE"),
+                ("product", "PRODUCT"),
+                ("variant", "PRODUCTVARIANT"),
+                ("shop", "SHOP"),
+            ];
+            let mut definitions = serde_json::Map::new();
+            let mut failed = Vec::new();
+            for (handle, owner) in OWNERS {
+                match backend.metafield_definitions(owner).await {
+                    Ok(values) => {
+                        definitions.insert(handle.into(), serde_json::Value::Array(values));
+                    }
+                    Err(_) => {
+                        failed.push(owner);
+                        definitions.insert(handle.into(), serde_json::Value::Array(Vec::new()));
+                    }
+                }
+            }
+            if failed.len() == OWNERS.len() {
+                return Err(Error::api(
+                    "failed to fetch metafield definitions for every owner type; check network access and Admin API scopes",
+                ));
+            }
+            let destination = root.join(".shopify").join("metafields.json");
+            let bytes = serde_json::to_vec_pretty(&definitions).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not serialize metafield definitions",
+                    error,
+                )
+            })?;
+            write_atomic(&destination, &bytes).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not write {}", destination.display()),
+                    error,
+                )
+            })?;
+            if !failed.is_empty() {
+                output
+                    .diagnostic(&format!(
+                        "failed to fetch metafield definitions for: {}",
+                        failed.join(", ")
+                    ))
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            output
+                .success(
+                    "Metafield definitions have been successfully downloaded.",
+                    &serde_json::json!({"path": destination, "failed_owner_types": failed}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         ThemeCommand::Profile { args } => Err(backend_unavailable(
             "theme profile",
             39,
@@ -3943,6 +4038,68 @@ fn resolve_store(explicit_store: Option<&str>) -> Result<String> {
     }
 
     select_store(explicit_store, &environment, None)
+}
+
+fn theme_environment_credentials(
+    root: &Path,
+    requested: &[String],
+) -> Result<(Option<String>, Option<String>)> {
+    if requested.len() > 1 {
+        return Err(Error::invalid_input(
+            "theme metafields pull accepts only one --environment",
+        ));
+    }
+    let path = root.join("shopify.theme.toml");
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && requested.is_empty() => {
+            return Ok((None, None));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::invalid_input(format!(
+                "theme environment `{}` requires {}",
+                requested[0],
+                path.display()
+            )));
+        }
+        Err(error) => {
+            return Err(Error::with_source(
+                ErrorKind::Config,
+                format!("could not read {}", path.display()),
+                error,
+            ));
+        }
+    };
+    let document: toml::Value = toml::from_str(&contents).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            format!("could not parse {}", path.display()),
+            error,
+        )
+    })?;
+    let name = requested.first().map(String::as_str).unwrap_or("default");
+    let environment = document
+        .get("environments")
+        .and_then(|value| value.get(name));
+    if environment.is_none() && requested.is_empty() {
+        return Ok((None, None));
+    }
+    let environment = environment.ok_or_else(|| {
+        Error::invalid_input(format!(
+            "theme environment `{name}` was not found in {}",
+            path.display()
+        ))
+    })?;
+    Ok((
+        environment
+            .get("store")
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned),
+        environment
+            .get("password")
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned),
+    ))
 }
 
 fn select_store(
