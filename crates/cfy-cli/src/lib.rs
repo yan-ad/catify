@@ -1,5 +1,11 @@
 pub mod output;
 mod theme_check;
+mod update_check;
+
+pub use update_check::{
+    is_update_check, maybe_notify_and_refresh, refresh as refresh_update_check,
+};
+
 use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_app::{
@@ -2778,7 +2784,7 @@ async fn theme_parity_command(
     }
 }
 
-fn config_path() -> PathBuf {
+pub(crate) fn config_path() -> PathBuf {
     env::var_os("CFY_CONFIG_FILE")
         .map(PathBuf::from)
         .or_else(|| {
@@ -4927,18 +4933,16 @@ async fn stream_app_logs(args: AppLogsRunArgs, output: &Output) -> Result<u8> {
     let session = authenticated_session(&identity).await?;
     let app_management = AppManagementClient::from_session(&session).await?;
     let remote_app = app_management.app_by_client_id(client_id).await?;
-    let organization_stores =
-        OrganizationStoreClient::from_session(&session, &remote_app.organization_id)
-            .await
-            .map_err(|error| Error::api(error.to_string()))?
-            .list()
-            .await
-            .map_err(|error| Error::api(error.to_string()))?;
+    let organization_stores = OrganizationStoreClient::from_session(&session, &remote_app.organization_id)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?
+        .list()
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
     let mut shop_ids = Vec::new();
     let mut store_names = std::collections::BTreeMap::new();
     for requested in requested_stores {
-        let target = StoreTarget::parse(&requested)
-            .map_err(|error| Error::invalid_input(error.to_string()))?;
+        let target = StoreTarget::parse(&requested).map_err(|error| Error::invalid_input(error.to_string()))?;
         let store = organization_stores
             .stores
             .iter()
@@ -4954,12 +4958,7 @@ async fn stream_app_logs(args: AppLogsRunArgs, output: &Output) -> Result<u8> {
             .as_deref()
             .and_then(|id| id.rsplit('/').next())
             .and_then(|id| id.parse::<i64>().ok())
-            .ok_or_else(|| {
-                Error::api(format!(
-                    "store `{}` has no numeric Shopify shop ID",
-                    target.domain
-                ))
-            })?;
+            .ok_or_else(|| Error::api(format!("store `{}` has no numeric Shopify shop ID", target.domain)))?;
         shop_ids.push(id);
         store_names.insert(id, target.domain);
     }
@@ -5012,8 +5011,7 @@ async fn stream_app_logs(args: AppLogsRunArgs, output: &Output) -> Result<u8> {
                         log.status,
                         log.source_name(),
                         store,
-                        serde_json::to_string_pretty(&payload)
-                            .unwrap_or_else(|_| payload.to_string())
+                        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
                     );
                     output
                         .success(&human, &value)
@@ -6298,6 +6296,9 @@ pub enum InternalCommand {
         #[arg(long)]
         watch: Option<PathBuf>,
     },
+    /// Refresh the cached latest-release metadata.
+    #[command(hide = true)]
+    UpdateCheck,
 }
 
 /// Execute a parsed command.
@@ -6338,6 +6339,9 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
             tokio::time::sleep(Duration::from_secs(seconds)).await;
             drop(watcher.take());
         }
+        Some(Command::Internal {
+            command: InternalCommand::UpdateCheck,
+        }) => update_check::refresh().await,
         Some(Command::App { command }) => {
             return app_command(command, cli.global.non_interactive, output).await;
         }
@@ -6443,6 +6447,27 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
     }
 
     Ok(0)
+}
+
+/// Shared entry point for the `cfy` and `catify` executable names.
+pub async fn main_entry() -> std::process::ExitCode {
+    let cli = parse_cli();
+    if let Some(Command::Internal { command }) = cli.command.as_ref()
+        && is_update_check(command)
+    {
+        refresh_update_check().await;
+        return std::process::ExitCode::SUCCESS;
+    }
+    maybe_notify_and_refresh(&cli);
+    let output = Output::new(cli.global.json, cli.global.verbose);
+    let _ = output.diagnostic("debug diagnostics enabled");
+    match run(cli, &output).await {
+        Ok(code) => std::process::ExitCode::from(code),
+        Err(error) => {
+            let _ = output.error(&error);
+            error.exit_code()
+        }
+    }
 }
 
 fn print_version(output: &Output) -> Result<()> {

@@ -27,10 +27,12 @@ CFY_RELEASE_BASE_URL="file://$TMP/releases" \
 CFY_INSTALL_DIR="$TMP/shell-bin" \
 sh "$ROOT/install.sh"
 "$TMP/shell-bin/cfy" version
+"$TMP/shell-bin/catify" version
 
 cd "$ROOT"
 PACKAGE=$(CFY_SKIP_DOWNLOAD=1 npm pack --silent)
 CFY_RELEASE_BASE_URL="file://$TMP/releases" \
   npm install --global --prefix "$TMP/npm" "./$PACKAGE"
 "$TMP/npm/bin/cfy" version
+"$TMP/npm/bin/catify" version
 rm -f "$ROOT/$PACKAGE"

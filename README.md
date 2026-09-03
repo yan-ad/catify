@@ -19,6 +19,7 @@ and [`benchmarks/results/latest.json`](benchmarks/results/latest.json).
 ```sh
 npm install --global catify-cli
 cfy version
+# `catify version` is equivalent
 ```
 
 The npm package installs the native binary for the current OS and architecture.

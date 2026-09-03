@@ -13,7 +13,7 @@ const binary = process.env.CFY_BINARY_PATH || path.join(
 
 const child = spawn(binary, process.argv.slice(2), {
   stdio: 'inherit',
-  env: process.env,
+  env: { ...process.env, CFY_INSTALL_CHANNEL: process.env.CFY_INSTALL_CHANNEL || 'npm' },
 });
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

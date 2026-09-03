@@ -10,6 +10,10 @@ repository.workspace = true
 name = "cfy"
 path = "src/main.rs"
 
+[[bin]]
+name = "catify"
+path = "src/bin/catify.rs"
+
 [dependencies]
 cfy-api.workspace = true
 cfy-app.workspace = true

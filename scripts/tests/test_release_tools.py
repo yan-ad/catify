@@ -39,6 +39,7 @@ class ReleaseToolsTest(unittest.TestCase):
             unix_archive = output / "cfy-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
             with tarfile.open(unix_archive, "r:gz") as archive:
                 self.assertIn("cfy-v1.2.3-x86_64-unknown-linux-gnu/cfy", archive.getnames())
+                self.assertIn("cfy-v1.2.3-x86_64-unknown-linux-gnu/catify", archive.getnames())
 
             subprocess.run(
                 [
@@ -60,6 +61,7 @@ class ReleaseToolsTest(unittest.TestCase):
             windows_archive = output / "cfy-v1.2.3-x86_64-pc-windows-msvc.zip"
             with zipfile.ZipFile(windows_archive) as archive:
                 self.assertIn("cfy-v1.2.3-x86_64-pc-windows-msvc/cfy.exe", archive.namelist())
+                self.assertIn("cfy-v1.2.3-x86_64-pc-windows-msvc/catify.exe", archive.namelist())
 
     def test_checksum_generator_sorts_and_hashes_assets(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -5,17 +5,24 @@
 
 use cfy_core::{Error, ErrorKind, Result};
 use cfy_process::{OutputMode, ProcessOutput, ProcessSpec, Supervisor};
+use semver::Version;
+use serde::{Deserialize, Serialize};
 use std::{
     env,
     ffi::{OsStr, OsString},
     fmt, fs,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 
 pub const HOMEBREW_FORMULA: &str = "catify";
 pub const CARGO_PACKAGE: &str = "cfy-cli";
+pub const NPM_PACKAGE: &str = "catify-cli";
 pub const EXECUTABLE_NAME: &str = "cfy";
+pub const DEFAULT_RELEASE_API_URL: &str =
+    "https://api.github.com/repos/yan-ad/catify/releases/latest";
+pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// The mechanism which placed the running executable on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +32,10 @@ pub enum InstallProvenance {
         formula: String,
     },
     Cargo {
+        executable: PathBuf,
+        package: String,
+    },
+    Npm {
         executable: PathBuf,
         package: String,
     },
@@ -45,12 +56,111 @@ pub enum InstallProvenance {
     },
 }
 
+/// A cached result from the release update checker.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateCache {
+    pub checked_at: u64,
+    pub latest_version: Option<String>,
+}
+
+impl UpdateCache {
+    #[must_use]
+    pub fn is_fresh_at(&self, now: u64) -> bool {
+        now.saturating_sub(self.checked_at) < UPDATE_CHECK_INTERVAL.as_secs()
+    }
+
+    #[must_use]
+    pub fn available_version(&self, current: &str) -> Option<&str> {
+        let current = Version::parse(current).ok()?;
+        let latest = Version::parse(self.latest_version.as_deref()?).ok()?;
+        (latest > current)
+            .then_some(self.latest_version.as_deref())
+            .flatten()
+    }
+}
+
+#[must_use]
+pub fn update_cache_path() -> PathBuf {
+    env::var_os("CFY_UPDATE_CACHE_FILE")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("XDG_CACHE_HOME").map(|root| PathBuf::from(root).join("catify/update.json"))
+        })
+        .or_else(|| {
+            env::var_os("HOME").map(|root| PathBuf::from(root).join(".cache/catify/update.json"))
+        })
+        .unwrap_or_else(|| PathBuf::from(".catify-cache/update.json"))
+}
+
+#[must_use]
+pub fn unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+pub fn read_update_cache(path: &Path) -> std::io::Result<Option<UpdateCache>> {
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(std::io::Error::other),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+pub fn write_update_cache(path: &Path, cache: &UpdateCache) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(
+        &temporary,
+        serde_json::to_vec(cache).map_err(std::io::Error::other)?,
+    )?;
+    #[cfg(windows)]
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct LatestRelease {
+    tag_name: String,
+}
+
+/// Fetch the latest stable Catify release version. This never downloads an executable.
+pub async fn fetch_latest_version(
+    url: &str,
+) -> std::result::Result<Option<Version>, reqwest::Error> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let response = reqwest::Client::builder()
+        .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(4))
+        .build()?
+        .get(url)
+        .send()
+        .await?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let release = response.error_for_status()?.json::<LatestRelease>().await?;
+    Ok(Version::parse(release.tag_name.trim_start_matches('v')).ok())
+}
+
 impl InstallProvenance {
     #[must_use]
     pub const fn kind(&self) -> ProvenanceKind {
         match self {
             Self::Homebrew { .. } => ProvenanceKind::Homebrew,
             Self::Cargo { .. } => ProvenanceKind::Cargo,
+            Self::Npm { .. } => ProvenanceKind::Npm,
             Self::Standalone { .. } => ProvenanceKind::Standalone,
             Self::Source { .. } => ProvenanceKind::Source,
             Self::Unknown { .. } => ProvenanceKind::Unknown,
@@ -62,6 +172,7 @@ impl InstallProvenance {
         match self {
             Self::Homebrew { executable, .. }
             | Self::Cargo { executable, .. }
+            | Self::Npm { executable, .. }
             | Self::Standalone { executable, .. }
             | Self::Source { executable, .. }
             | Self::Unknown { executable, .. } => executable,
@@ -73,6 +184,7 @@ impl InstallProvenance {
 pub enum ProvenanceKind {
     Homebrew,
     Cargo,
+    Npm,
     Standalone,
     Source,
     Unknown,
@@ -83,6 +195,7 @@ impl fmt::Display for ProvenanceKind {
         formatter.write_str(match self {
             Self::Homebrew => "homebrew",
             Self::Cargo => "cargo",
+            Self::Npm => "npm",
             Self::Standalone => "standalone",
             Self::Source => "source",
             Self::Unknown => "unknown",
@@ -159,6 +272,13 @@ pub fn detect_with(context: &DetectionContext) -> InstallProvenance {
         };
     }
 
+    if channel == Some("npm") {
+        return InstallProvenance::Npm {
+            executable,
+            package: NPM_PACKAGE.into(),
+        };
+    }
+
     let version_file = executable
         .parent()
         .unwrap_or(Path::new("."))
@@ -193,8 +313,11 @@ fn is_cargo_path(executable: &Path, context: &DetectionContext) -> bool {
         .cargo_home
         .clone()
         .or_else(|| context.home.as_ref().map(|home| home.join(".cargo")));
-    cargo_home
-        .is_some_and(|home| executable == canonical_or_original(&home.join("bin").join(exe_name())))
+    cargo_home.is_some_and(|home| {
+        executable_names()
+            .into_iter()
+            .any(|name| executable == canonical_or_original(&home.join("bin").join(name)))
+    })
 }
 
 fn is_homebrew_path(executable: &Path, configured_prefix: Option<&Path>) -> bool {
@@ -211,14 +334,16 @@ fn is_homebrew_path(executable: &Path, configured_prefix: Option<&Path>) -> bool
     prefixes.into_iter().any(|prefix| {
         let prefix = canonical_or_original(&prefix);
         executable.starts_with(prefix.join("Cellar").join(HOMEBREW_FORMULA))
-            || executable
-                == canonical_or_original(
-                    &prefix
-                        .join("opt")
-                        .join(HOMEBREW_FORMULA)
-                        .join("bin")
-                        .join(exe_name()),
-                )
+            || executable_names().into_iter().any(|name| {
+                executable
+                    == canonical_or_original(
+                        &prefix
+                            .join("opt")
+                            .join(HOMEBREW_FORMULA)
+                            .join("bin")
+                            .join(name),
+                    )
+            })
     })
 }
 
@@ -239,12 +364,12 @@ fn source_workspace(executable: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn exe_name() -> OsString {
-    OsString::from("cfy.exe")
+fn executable_names() -> [OsString; 2] {
+    [OsString::from("cfy.exe"), OsString::from("catify.exe")]
 }
 #[cfg(not(windows))]
-fn exe_name() -> OsString {
-    OsString::from(EXECUTABLE_NAME)
+fn executable_names() -> [OsString; 2] {
+    [OsString::from(EXECUTABLE_NAME), OsString::from("catify")]
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -290,6 +415,11 @@ pub enum UpgradePlan {
         package: String,
         command: UpgradeCommand,
     },
+    /// npm owns the launcher and downloaded native binary.
+    Npm {
+        package: String,
+        command: UpgradeCommand,
+    },
     /// Standalone replacement requires verified release metadata. The library
     /// identifies it but refuses to invent an unsafe curl/extract pipeline.
     Standalone {
@@ -302,7 +432,9 @@ impl UpgradePlan {
     #[must_use]
     pub fn command(&self) -> Option<&UpgradeCommand> {
         match self {
-            Self::Homebrew { command, .. } | Self::Cargo { command, .. } => Some(command),
+            Self::Homebrew { command, .. }
+            | Self::Cargo { command, .. }
+            | Self::Npm { command, .. } => Some(command),
             Self::Standalone { .. } => None,
         }
     }
@@ -315,7 +447,7 @@ pub enum UpgradeError {
     )]
     SourceInstall { workspace_root: PathBuf },
     #[error(
-        "cannot safely upgrade installation at {executable}: {reason}; reinstall cfy through Homebrew, Cargo, or a standalone release archive"
+        "cannot safely upgrade installation at {executable}: {reason}; reinstall cfy through npm, Homebrew, Cargo, or a standalone release archive"
     )]
     UnknownInstall { executable: PathBuf, reason: String },
     #[error(
@@ -347,6 +479,17 @@ pub fn plan(provenance: &InstallProvenance) -> std::result::Result<UpgradePlan, 
             command: UpgradeCommand {
                 program: "brew".into(),
                 args: vec!["upgrade".into(), formula.into()],
+            },
+        }),
+        InstallProvenance::Npm { package, .. } => Ok(UpgradePlan::Npm {
+            package: package.clone(),
+            command: UpgradeCommand {
+                program: "npm".into(),
+                args: vec![
+                    "install".into(),
+                    "--global".into(),
+                    format!("{package}@latest").into(),
+                ],
             },
         }),
         InstallProvenance::Cargo { package, .. } => Ok(UpgradePlan::Cargo {
@@ -441,7 +584,7 @@ fn shell_display(value: &OsStr) -> String {
     let value = value.to_string_lossy();
     if value
         .chars()
-        .all(|character| character.is_ascii_alphanumeric() || "-._/:".contains(character))
+        .all(|character| character.is_ascii_alphanumeric() || "-._/:@".contains(character))
     {
         value.into_owned()
     } else {

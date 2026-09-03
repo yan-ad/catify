@@ -82,8 +82,9 @@ SOURCE="${TMP_DIR}/cfy-v${VERSION}-${TARGET}/cfy"
 mkdir -p "$INSTALL_DIR"
 cp "$SOURCE" "${INSTALL_DIR}/cfy"
 chmod 755 "${INSTALL_DIR}/cfy"
+ln -sf cfy "${INSTALL_DIR}/catify"
 
-echo "Installed Catify ${VERSION} to ${INSTALL_DIR}/cfy"
+echo "Installed Catify ${VERSION} to ${INSTALL_DIR}/cfy (alias: catify)"
 case ":$PATH:" in
   *":${INSTALL_DIR}:"*) ;;
   *) echo "Add ${INSTALL_DIR} to PATH, then run: cfy version" ;;

@@ -30,14 +30,16 @@ def main():
     stage=ns.output/'staging'/name
     shutil.rmtree(stage, ignore_errors=True); stage.mkdir(parents=True)
     binary_name='cfy.exe' if 'windows' in ns.target else 'cfy'
-    shutil.copy2(ns.binary, stage/binary_name)
-    os.chmod(stage/binary_name, 0o755)
+    alias_name='catify.exe' if 'windows' in ns.target else 'catify'
+    for executable_name in (binary_name, alias_name):
+        shutil.copy2(ns.binary, stage/executable_name)
+        os.chmod(stage/executable_name, 0o755)
     repository=pathlib.Path(__file__).resolve().parents[1]
     for notice in ('LICENSE','THIRD_PARTY_NOTICES.md'):
         source=repository/notice
         if source.is_file(): shutil.copy2(source, stage/notice)
     (stage/'VERSION').write_text(ns.version+'\n')
-    (stage/'README.txt').write_text(f'Catify {ns.version} ({ns.target})\nBinary: {binary_name}\n')
+    (stage/'README.txt').write_text(f'Catify {ns.version} ({ns.target})\nCommands: {binary_name}, {alias_name}\n')
     ns.output.mkdir(parents=True, exist_ok=True)
     archive=ns.output/(name + ('.zip' if 'windows' in ns.target else '.tar.gz'))
     if archive.exists(): archive.unlink()
@@ -53,7 +55,7 @@ def main():
                 with tarfile.open(fileobj=gz, mode='w', format=tarfile.PAX_FORMAT) as t:
                     for path in sorted(stage.rglob('*')):
                         if path.is_file():
-                            info=t.gettarinfo(path, arcname=f'{name}/{path.relative_to(stage)}'); info.mtime=0; info.uid=0; info.gid=0; info.uname=''; info.gname=''; info.mode=0o755 if path.name=='cfy' else 0o644
+                            info=t.gettarinfo(path, arcname=f'{name}/{path.relative_to(stage)}'); info.mtime=0; info.uid=0; info.gid=0; info.uname=''; info.gname=''; info.mode=0o755 if path.name in ('cfy','catify') else 0o644
                             with open(path,'rb') as f: t.addfile(info,f)
     digest=sha256(archive)
     sums=ns.output/'SHA256SUMS'

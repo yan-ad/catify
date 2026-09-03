@@ -1,8 +1,11 @@
 use cfy_upgrade::{
     CARGO_PACKAGE, DetectionContext, ExecutionPolicy, HOMEBREW_FORMULA, InstallProvenance,
-    UpgradeError, UpgradePlan, detect_with, plan,
+    NPM_PACKAGE, UpdateCache, UpgradeError, UpgradePlan, detect_with, fetch_latest_version, plan,
+    read_update_cache, write_update_cache,
 };
 use std::{fs, path::PathBuf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 fn context(executable: impl Into<PathBuf>) -> DetectionContext {
     DetectionContext {
@@ -12,6 +15,16 @@ fn context(executable: impl Into<PathBuf>) -> DetectionContext {
         homebrew_prefix: None,
         install_channel: None,
     }
+}
+
+#[test]
+fn detects_long_catify_command_in_cargo_home() {
+    let mut context = context("/users/me/.cargo/bin/catify");
+    context.cargo_home = Some("/users/me/.cargo".into());
+    assert!(matches!(
+        detect_with(&context),
+        InstallProvenance::Cargo { .. }
+    ));
 }
 
 #[test]
@@ -115,13 +128,85 @@ fn unknown_install_is_typed_and_refused() {
 }
 
 #[test]
-fn unsupported_channel_does_not_become_a_managed_install() {
+fn npm_channel_builds_global_package_upgrade_plan() {
     let mut context = context("/some/custom/bin/cfy");
     context.install_channel = Some("npm".into());
-    let InstallProvenance::Unknown { reason, .. } = detect_with(&context) else {
-        panic!("expected unknown")
+    let provenance = detect_with(&context);
+    assert!(matches!(
+        provenance,
+        InstallProvenance::Npm { ref package, .. } if package == NPM_PACKAGE
+    ));
+    assert_eq!(
+        plan(&provenance).unwrap().command().unwrap().display(),
+        "npm install --global catify-cli@latest"
+    );
+}
+
+#[test]
+fn update_cache_is_fresh_and_only_reports_newer_semver() {
+    let cache = UpdateCache {
+        checked_at: 1_000,
+        latest_version: Some("1.3.0".into()),
     };
-    assert!(reason.contains("npm"));
+    assert!(cache.is_fresh_at(1_100));
+    assert!(!cache.is_fresh_at(1_000 + 24 * 60 * 60));
+    assert_eq!(cache.available_version("1.2.9"), Some("1.3.0"));
+    assert_eq!(cache.available_version("1.3.0"), None);
+    assert_eq!(cache.available_version("2.0.0"), None);
+}
+
+#[test]
+fn update_cache_round_trips_atomically() {
+    let root = std::env::temp_dir().join(format!(
+        "cfy-update-cache-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let path = root.join("nested/update.json");
+    let cache = UpdateCache {
+        checked_at: 42,
+        latest_version: Some("9.8.7".into()),
+    };
+    write_update_cache(&path, &cache).unwrap();
+    assert_eq!(read_update_cache(&path).unwrap(), Some(cache));
+    let replacement = UpdateCache {
+        checked_at: 43,
+        latest_version: None,
+    };
+    write_update_cache(&path, &replacement).unwrap();
+    assert_eq!(read_update_cache(&path).unwrap(), Some(replacement));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn fetches_latest_github_release_tag_as_semver() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 1024];
+        let _ = stream.read(&mut request).await.unwrap();
+        let body = r#"{"tag_name":"v2.4.1"}"#;
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+    });
+    let latest = fetch_latest_version(&format!("http://{address}/latest"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.to_string(), "2.4.1");
+    server.await.unwrap();
 }
 
 #[tokio::test]

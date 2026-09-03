@@ -1,6 +1,7 @@
 # Installing Catify
 
-Catify ships as a native `cfy` executable. Official release archives and their
+The project and npm package are named `catify-cli`. It exposes both `catify` and
+the shorter `cfy` command; both execute the same native Rust binary. Official release archives and their
 `SHA256SUMS` manifest are published on GitHub for every `v*` tag.
 
 ## Supported platforms
@@ -18,6 +19,7 @@ Catify ships as a native `cfy` executable. Official release archives and their
 ```sh
 npm install --global catify-cli
 cfy version
+catify version
 ```
 
 The package downloads the matching GitHub Release archive and verifies its SHA-256
@@ -51,10 +53,23 @@ CFY_INSTALL_DIR=/usr/local/bin sh install.sh
 CFY_VERSION=0.1.0 sh install.sh
 ```
 
-To upgrade, rerun the installer. To uninstall a default installation:
+The CLI checks GitHub Releases in the background at most once every 24 hours and
+prints a short notice when an upgrade is available. It never replaces the binary
+without an explicit upgrade command. Disable or re-enable the check with:
+
+```sh
+cfy config autoupgrade off
+cfy config autoupgrade on
+```
+
+Set `CFY_NO_UPDATE_CHECK=1` for a one-off command that must not check. JSON,
+non-interactive, completion, and CI invocations skip the check automatically.
+
+To upgrade a shell installation, rerun the installer. To uninstall a default installation:
 
 ```sh
 rm ~/.local/bin/cfy
+rm ~/.local/bin/catify
 ```
 
 ## Manual installation
@@ -62,8 +77,18 @@ rm ~/.local/bin/cfy
 1. Open the [latest GitHub Release](https://github.com/yan-ad/catify/releases/latest).
 2. Download the archive matching the target table above and `SHA256SUMS`.
 3. Verify the archive checksum.
-4. Extract `cfy` (`cfy.exe` on Windows) and place it in a directory on `PATH`.
+4. Extract `cfy`/`catify` (`.exe` on Windows) and place them in a directory on `PATH`.
 5. Run `cfy version`.
+
+## Install with Cargo
+
+```sh
+cargo install cfy-cli --locked
+cfy version
+catify version
+```
+
+Cargo installs both command names from the same `catify-cli` package.
 
 Example checksum verification:
 
