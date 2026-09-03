@@ -8,6 +8,46 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn store_auth_matches_shopify_pkce_and_local_list_command_shapes() {
+    let auth = cfy(&[
+        "store",
+        "auth",
+        "--store",
+        "shop.myshopify.com",
+        "--scopes",
+        "read_products,write_products",
+        "--help",
+    ]);
+    assert!(auth.status.success());
+    let auth_help = String::from_utf8_lossy(&auth.stdout);
+    assert!(auth_help.contains("--scopes"));
+    assert!(!auth_help.contains("-V, --version"));
+
+    let list = cfy(&["store", "auth", "list", "--help"]);
+    assert!(list.status.success());
+    assert!(!String::from_utf8_lossy(&list.stdout).contains("-V, --version"));
+
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-store-auth-list-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let listed = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .env("CFY_STORE_AUTH_INDEX", &fixture)
+        .args(["--json", "store", "auth", "list"])
+        .output()
+        .unwrap();
+    assert!(listed.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&listed.stdout).unwrap(),
+        serde_json::json!([])
+    );
+}
+
+#[test]
 fn store_list_matches_shopify_organization_flag_contract() {
     let binary = env!("CARGO_BIN_EXE_cfy");
     let output = Command::new(binary)

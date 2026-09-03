@@ -758,21 +758,25 @@
       "status": "native"
     },
     "store auth": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-store/src/store_auth.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust PKCE S256 browser OAuth with loopback callback validation, code exchange, granted-scope verification, native keychain storage, refresh lifecycle, and exact Shopify command flags.",
       "live_verified": false,
       "owner": 38,
-      "status": "blocked"
+      "status": "native"
     },
     "store auth list": {
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-store/src/store_auth.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "The exact nested command path and flags are exposed, but the local store-auth credential registry backend is not implemented yet.",
+      "implementation": "Rust store-auth credential registry lists current keychain-backed sessions without exposing access or refresh tokens and prunes stale index entries.",
       "live_verified": false,
       "notes": "Execution remains blocked until store-auth sessions can be enumerated safely.",
       "owner": 38,
-      "status": "blocked"
+      "status": "native"
     },
     "store bulk cancel": {
       "evidence": [

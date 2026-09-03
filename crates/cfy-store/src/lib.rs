@@ -1,5 +1,7 @@
 //! Store command contracts: selection, safety, progress, and adapters.
 
+pub mod store_auth;
+
 use async_trait::async_trait;
 use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
 use cfy_app::exchange_business_platform_token;

@@ -52,6 +52,7 @@ use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
     AdminStoreBackend, OrganizationStoreClient, StoreBackend, StoreCommand as StoreOperation,
     StoreManagementBackend, StoreTarget, browser_url,
+    store_auth::{StoreAuthBootstrap, StoreAuthCallback, StoreAuthRegistry, exchange_code},
 };
 use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
@@ -96,6 +97,27 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn store_access_token(store: &str) -> Result<String> {
+    if let Ok(token) = env::var("SHOPIFY_CLI_ADMIN_AUTH_TOKEN") {
+        return Ok(token);
+    }
+    if let Ok(token) = env::var("SHOPIFY_CLI_TOKEN") {
+        return Ok(token);
+    }
+    let token = StoreAuthRegistry::default()
+        .access_token(store)
+        .await?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::Api,
+                format!(
+                    "no store-auth session for `{store}`; run `cfy store auth --store {store} --scopes <comma-separated-scopes>`"
+                ),
+            )
+        })?;
+    Ok(token.expose().to_owned())
 }
 
 async fn authenticated_session(identity: &str) -> Result<Session> {
@@ -828,6 +850,7 @@ pub enum ThemeMetafieldsCommand {
 #[derive(Debug, Subcommand)]
 pub enum StoreAuthCommand {
     /// List stores authenticated directly with store auth.
+    #[command(disable_version_flag = true)]
     List,
 }
 
@@ -2713,12 +2736,17 @@ pub enum DocCommand {
 #[derive(Debug, Subcommand)]
 pub enum StoreCliCommand {
     /// Authenticate against a store.
+    #[command(
+        disable_version_flag = true,
+        subcommand_negates_reqs = true,
+        args_conflicts_with_subcommands = true
+    )]
     Auth {
         #[command(subcommand)]
         command: Option<StoreAuthCommand>,
-        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE", required = true)]
         store: Option<String>,
-        #[arg(long, env = "SHOPIFY_FLAG_SCOPES")]
+        #[arg(long, env = "SHOPIFY_FLAG_SCOPES", required = true)]
         scopes: Option<String>,
     },
     /// Run, check, and cancel bulk Admin API operations.
@@ -2778,6 +2806,94 @@ async fn store_command(
     output: &Output,
 ) -> Result<u8> {
     match command {
+        StoreCliCommand::Auth {
+            command: Some(StoreAuthCommand::List),
+            ..
+        } => {
+            let entries = StoreAuthRegistry::default()
+                .list_current()
+                .await?
+                .iter()
+                .map(cfy_store::store_auth::StoreAuthSummary::public)
+                .collect::<Vec<_>>();
+            let human = if entries.is_empty() {
+                "No stores authenticated directly with `cfy store auth`.".to_owned()
+            } else {
+                entries
+                    .iter()
+                    .map(|entry| {
+                        format!(
+                            "{}\t{}\t{}\t{}",
+                            entry.store,
+                            entry
+                                .associated_user
+                                .email
+                                .as_deref()
+                                .unwrap_or(&entry.user_id),
+                            entry.scopes.join(","),
+                            entry.acquired_at
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            output
+                .success(&human, &entries)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Auth {
+            command: None,
+            store,
+            scopes,
+        } => {
+            if non_interactive || !io::stdin().is_terminal() {
+                return Err(Error::invalid_input(
+                    "store auth requires an interactive browser flow",
+                ));
+            }
+            let store = store.ok_or_else(|| Error::invalid_input("store auth requires --store"))?;
+            let requested_scopes =
+                scopes.ok_or_else(|| Error::invalid_input("store auth requires --scopes"))?;
+            let registry = StoreAuthRegistry::default();
+            let normalized_store = StoreTarget::parse(&store)?.domain;
+            let mut scopes = requested_scopes
+                .split([',', ' '])
+                .map(str::trim)
+                .filter(|scope| !scope.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            if let Some(previous) = registry
+                .list()?
+                .into_iter()
+                .find(|summary| summary.store == normalized_store)
+            {
+                scopes.extend(previous.scopes);
+            }
+            scopes.sort();
+            scopes.dedup();
+            let bootstrap = StoreAuthBootstrap::new(&store, &scopes.join(","))?;
+            let callback = StoreAuthCallback::bind(&bootstrap).await?;
+            output
+                .lifecycle("Opening Shopify store authentication in your browser...")
+                .map_err(|error| Error::process(error.to_string()))?;
+            let opened = open_browser(&bootstrap.authorization_url);
+            if !opened {
+                output
+                    .lifecycle(&format!(
+                        "Open this URL manually:\n{}",
+                        bootstrap.authorization_url
+                    ))
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            let code = callback.wait(Duration::from_secs(5 * 60)).await?;
+            let result = exchange_code(&bootstrap, &code).await?;
+            registry.save(&result).await?;
+            output
+                .success(&format!("Authenticated {}", result.store), &result.public())
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
         StoreCliCommand::List { organization_id } => {
             let identity = "default";
             let credential_store = Arc::new(NativeCredentialStore::default());
@@ -2946,7 +3062,7 @@ async fn store_command(
         }
         StoreCliCommand::Info { store } => {
             let target = StoreTarget::parse(&store)?;
-            let token = store_token()?;
+            let token = store_access_token(&target.domain).await?;
             let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
             let info = backend.info(&target).await.map_err(Error::from)?;
             output
@@ -2956,7 +3072,7 @@ async fn store_command(
         }
         StoreCliCommand::Execute { store, query } => {
             let target = StoreTarget::parse(&store)?;
-            let token = store_token()?;
+            let token = store_access_token(&target.domain).await?;
             let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
             let data = backend
                 .execute(&target, &query)
@@ -2997,7 +3113,7 @@ async fn store_command(
                 }
             };
             let target = StoreTarget::parse(&store)?;
-            let token = store_token()?;
+            let token = store_access_token(&target.domain).await?;
             let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
             let cancellation = Cancellation::default();
             let mut progress = |_event| {};
@@ -3032,20 +3148,7 @@ async fn store_command(
         StoreCliCommand::Delete { store, confirm } => {
             (StoreOperation::Delete, store, true, confirm)
         }
-        StoreCliCommand::Auth {
-            command: None,
-            store,
-            scopes: _,
-        } => (
-            StoreOperation::Auth,
-            store.unwrap_or_else(|| "current".to_owned()),
-            false,
-            false,
-        ),
-        StoreCliCommand::Auth {
-            command: Some(StoreAuthCommand::List),
-            ..
-        } => (StoreOperation::AuthList, "current".to_owned(), false, false),
+        StoreCliCommand::Auth { .. } => unreachable!("store auth returns before fallback dispatch"),
         StoreCliCommand::Info { store } => (StoreOperation::Info, store, false, false),
         StoreCliCommand::Execute { store, .. } => (StoreOperation::Execute, store, false, false),
         StoreCliCommand::Create {

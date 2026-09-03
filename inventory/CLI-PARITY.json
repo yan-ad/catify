@@ -5,13 +5,13 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 81,
-    "tested": 95,
+    "implemented": 83,
+    "tested": 96,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 18,
-      "native": 54,
+      "blocked": 16,
+      "native": 56,
       "partial": 12
     },
     "by_domain": {
@@ -48,8 +48,7 @@
         "native": 1
       },
       "store": {
-        "blocked": 2,
-        "native": 3,
+        "native": 5,
         "partial": 6
       },
       "theme": {
@@ -1135,23 +1134,27 @@
     {
       "command": "store auth",
       "domain": "store",
-      "status": "blocked",
+      "status": "native",
       "owner": 38,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust PKCE S256 browser OAuth with loopback callback validation, code exchange, granted-scope verification, native keychain storage, refresh lifecycle, and exact Shopify command flags.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-store/src/store_auth.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "store auth list",
       "domain": "store",
-      "status": "blocked",
+      "status": "native",
       "owner": 38,
-      "implementation": "The exact nested command path and flags are exposed, but the local store-auth credential registry backend is not implemented yet.",
+      "implementation": "Rust store-auth credential registry lists current keychain-backed sessions without exposing access or refresh tokens and prunes stale index entries.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-store/src/store_auth.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
       ],
       "live_verified": false,
       "notes": "Execution remains blocked until store-auth sessions can be enumerated safely."

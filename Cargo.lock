@@ -717,14 +717,21 @@ name = "cfy-store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64",
  "cfy-api",
  "cfy-app",
  "cfy-auth",
+ "cfy-config",
  "cfy-core",
+ "getrandom 0.3.4",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror 2.0.20",
+ "time",
  "tokio",
  "url",
 ]
