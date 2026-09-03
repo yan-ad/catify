@@ -50,8 +50,8 @@ use cfy_plugins::{
 };
 use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
-    AdminStoreBackend, StoreBackend, StoreCommand as StoreOperation, StoreManagementBackend,
-    StoreTarget, browser_url,
+    AdminStoreBackend, OrganizationStoreClient, StoreBackend, StoreCommand as StoreOperation,
+    StoreManagementBackend, StoreTarget, browser_url,
 };
 use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
@@ -2731,6 +2731,12 @@ pub enum StoreCliCommand {
         #[command(subcommand)]
         command: StoreCreateCommand,
     },
+    /// List stores in a Shopify organization.
+    #[command(disable_version_flag = true)]
+    List {
+        #[arg(long, env = "SHOPIFY_FLAG_ORGANIZATION_ID")]
+        organization_id: Option<String>,
+    },
     /// Show store information.
     Info {
         #[arg(long)]
@@ -2772,6 +2778,99 @@ async fn store_command(
     output: &Output,
 ) -> Result<u8> {
     match command {
+        StoreCliCommand::List { organization_id } => {
+            let identity = "default";
+            let credential_store = Arc::new(NativeCredentialStore::default());
+            let identity_client = Arc::new(IdentityClient::new(
+                HttpIdentityTransport::new()?,
+                IdentityConfig::from_env(|key| env::var(key).ok())?,
+            ));
+            let sessions = cfy_auth::SessionManager::new(credential_store, identity_client);
+            let session = sessions.session(identity).await?.ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Api,
+                    "no authenticated session; run `cfy auth login` first",
+                )
+            })?;
+            let organizations = BusinessPlatformClient::from_session(&session)
+                .await?
+                .list_organizations()
+                .await?;
+            if organizations.is_empty() {
+                output
+                    .success(
+                        "No stores found in your Shopify organization.",
+                        &serde_json::json!({"stores": []}),
+                    )
+                    .map_err(|error| Error::process(error.to_string()))?;
+                return Ok(0);
+            }
+            let organization = if let Some(requested) = organization_id {
+                organizations
+                    .iter()
+                    .find(|organization| organization.id == requested)
+                    .cloned()
+                    .ok_or_else(|| {
+                        let available = organizations
+                            .iter()
+                            .map(|organization| format!("{} ({})", organization.name, organization.id))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        Error::invalid_input(format!(
+                            "organization with ID {requested} was not found; available organizations: {available}"
+                        ))
+                    })?
+            } else if organizations.len() == 1 {
+                organizations[0].clone()
+            } else if non_interactive {
+                return Err(Error::invalid_input(
+                    "an organization ID is required to list stores non-interactively; pass --organization-id or run `cfy organization list`",
+                ));
+            } else {
+                select_organization(&organizations)?
+            };
+            let result = OrganizationStoreClient::from_session(&session, &organization.id)
+                .await
+                .map_err(Error::from)?
+                .list()
+                .await
+                .map_err(Error::from)?;
+            if result.truncated {
+                output
+                    .lifecycle(&format!(
+                        "Showing the {} most recent stores in {}. More stores exist.",
+                        cfy_store::STORE_LIST_LIMIT,
+                        result.organization_name
+                    ))
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            let human = if result.stores.is_empty() {
+                format!("No stores found in {}.", result.organization_name)
+            } else {
+                let rows = result
+                    .stores
+                    .iter()
+                    .map(|store| {
+                        format!(
+                            "{}\t{}\t{}\t{}",
+                            store.store,
+                            store.name.as_deref().unwrap_or(""),
+                            store.store_type.as_deref().unwrap_or(""),
+                            store.created_at
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!(
+                    "Organization: {} ({})\nSubdomain\tName\tType\tCreated\n{}",
+                    result.organization_name, result.organization_id, rows
+                )
+            };
+            output
+                .success(&human, &result)
+                .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
         StoreCliCommand::Create {
             command: StoreCreateCommand::Preview { name, country: _ },
         } => {
@@ -2967,6 +3066,7 @@ async fn store_command(
             command: StoreBulkCommand::Cancel { store, .. },
         } => (StoreOperation::BulkCancel, store, true, true),
         StoreCliCommand::StripeAuth { store } => (StoreOperation::StripeAuth, store, false, false),
+        StoreCliCommand::List { .. } => unreachable!("store list returns before fallback dispatch"),
     };
 
     let _target = StoreTarget::parse(&target)?;

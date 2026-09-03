@@ -8,6 +8,19 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn store_list_matches_shopify_organization_flag_contract() {
+    let binary = env!("CARGO_BIN_EXE_cfy");
+    let output = Command::new(binary)
+        .args(["store", "list", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(help.contains("--organization-id"));
+    assert!(!help.contains("-V, --version"));
+}
+
+#[test]
 fn app_extension_commands_match_nested_paths_and_generate_natively() {
     let generate_help = cfy(&["app", "generate", "extension", "--help"]);
     assert!(generate_help.status.success());

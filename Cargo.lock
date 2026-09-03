@@ -718,11 +718,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cfy-api",
+ "cfy-app",
+ "cfy-auth",
  "cfy-core",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tokio",
  "url",
 ]
 

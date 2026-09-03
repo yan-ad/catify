@@ -2,6 +2,8 @@
 
 use async_trait::async_trait;
 use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
+use cfy_app::exchange_business_platform_token;
+use cfy_auth::Session;
 use cfy_core::{Cancellation, Error, ErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,6 +11,200 @@ use thiserror::Error as ThisError;
 use url::Url;
 
 type Result<T> = std::result::Result<T, StoreError>;
+
+const STORE_LIST_QUERY: &str = r#"
+query ListAccessibleShops($first: Int!) {
+  organization {
+    id
+    name
+    accessibleShops(
+      first: $first
+      sort: SHOP_CREATED_AT_DESC
+      filters: [{field: STORE_STATUS, operator: EQUALS, value: "active"}]
+    ) {
+      edges {
+        node { id shopifyShopId name storeType primaryDomain url createdAt }
+      }
+      pageInfo { hasNextPage }
+    }
+  }
+}
+"#;
+
+pub const STORE_LIST_LIMIT: usize = 250;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OrganizationStore {
+    pub id: Option<String>,
+    pub store: String,
+    pub created_at: String,
+    pub organization_id: String,
+    pub organization_name: String,
+    pub name: Option<String>,
+    pub store_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OrganizationStoreList {
+    pub stores: Vec<OrganizationStore>,
+    pub organization_id: String,
+    pub organization_name: String,
+    pub truncated: bool,
+}
+
+pub struct OrganizationStoreClient {
+    graphql: GraphQlClient,
+    organization_id: String,
+}
+
+impl OrganizationStoreClient {
+    pub async fn from_session(session: &Session, organization_id: &str) -> Result<Self> {
+        let token = exchange_business_platform_token(session)
+            .await
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        let endpoint = std::env::var("CFY_BUSINESS_PLATFORM_ORGANIZATIONS_URL")
+            .unwrap_or_else(|_| {
+                format!(
+                    "https://destinations.shopifysvc.com/organizations/api/unstable/organization/{organization_id}/graphql"
+                )
+            });
+        Self::new(&endpoint, token.expose(), organization_id)
+    }
+
+    pub fn new(endpoint: &str, token: &str, organization_id: &str) -> Result<Self> {
+        let url = Url::parse(endpoint).map_err(|error| {
+            StoreError::Backend(format!("invalid organization API URL: {error}"))
+        })?;
+        if url.scheme() != "https"
+            && url.host_str() != Some("127.0.0.1")
+            && url.host_str() != Some("localhost")
+        {
+            return Err(StoreError::Backend(
+                "organization API URL must use HTTPS".into(),
+            ));
+        }
+        let base = format!(
+            "{}://{}{}",
+            url.scheme(),
+            url.host_str().unwrap_or_default(),
+            url.port()
+                .map(|port| format!(":{port}"))
+                .unwrap_or_default()
+        );
+        let http = HttpClient::new(&base)
+            .map_err(|error| StoreError::Backend(error.to_string()))?
+            .with_sensitive_header(
+                reqwest::header::HeaderName::from_static("authorization"),
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                    .map_err(|error| StoreError::Backend(format!("invalid token: {error}")))?,
+            );
+        Ok(Self {
+            graphql: GraphQlClient::new(http, url.path()),
+            organization_id: organization_id.to_owned(),
+        })
+    }
+
+    pub async fn list(&self) -> Result<OrganizationStoreList> {
+        #[derive(Deserialize)]
+        struct Data {
+            organization: Option<Organization>,
+        }
+        #[derive(Deserialize)]
+        struct Organization {
+            name: String,
+            #[serde(rename = "accessibleShops")]
+            shops: Option<Connection>,
+        }
+        #[derive(Deserialize)]
+        struct Connection {
+            edges: Vec<Edge>,
+            #[serde(rename = "pageInfo")]
+            page_info: PageInfo,
+        }
+        #[derive(Deserialize)]
+        struct Edge {
+            node: Node,
+        }
+        #[derive(Deserialize)]
+        struct Node {
+            #[serde(rename = "shopifyShopId")]
+            shopify_shop_id: Option<String>,
+            name: Option<String>,
+            #[serde(rename = "storeType")]
+            store_type: Option<String>,
+            #[serde(rename = "primaryDomain")]
+            primary_domain: Option<String>,
+            url: Option<String>,
+            #[serde(rename = "createdAt")]
+            created_at: String,
+        }
+        #[derive(Deserialize)]
+        struct PageInfo {
+            #[serde(rename = "hasNextPage")]
+            has_next_page: bool,
+        }
+
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                STORE_LIST_QUERY,
+                serde_json::json!({"first": STORE_LIST_LIMIT}),
+            ))
+            .await
+            .map_err(|error| StoreError::Backend(format!("could not list stores: {error}")))?;
+        let organization = response
+            .data
+            .organization
+            .ok_or_else(|| StoreError::Backend("organization was not returned".into()))?;
+        let connection = organization.shops.unwrap_or(Connection {
+            edges: Vec::new(),
+            page_info: PageInfo {
+                has_next_page: false,
+            },
+        });
+        let mut stores = connection
+            .edges
+            .into_iter()
+            .filter_map(|edge| {
+                let raw_store = edge.node.url.or(edge.node.primary_domain)?;
+                let store = Url::parse(&raw_store)
+                    .ok()
+                    .and_then(|url| url.host_str().map(str::to_owned))
+                    .unwrap_or(raw_store);
+                Some(OrganizationStore {
+                    id: edge
+                        .node
+                        .shopify_shop_id
+                        .map(|id| format!("gid://shopify/Shop/{id}")),
+                    store,
+                    created_at: edge.node.created_at,
+                    organization_id: self.organization_id.clone(),
+                    organization_name: organization.name.clone(),
+                    name: edge.node.name,
+                    store_type: edge.node.store_type.map(normalize_store_type),
+                })
+            })
+            .collect::<Vec<_>>();
+        stores.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| left.store.cmp(&right.store))
+        });
+        let truncated = connection.page_info.has_next_page || stores.len() > STORE_LIST_LIMIT;
+        stores.truncate(STORE_LIST_LIMIT);
+        Ok(OrganizationStoreList {
+            stores,
+            organization_id: self.organization_id.clone(),
+            organization_name: organization.name,
+            truncated,
+        })
+    }
+}
+
+fn normalize_store_type(value: String) -> String {
+    value.trim().to_ascii_lowercase().replace('_', "-")
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct StoreTarget {
@@ -361,6 +557,10 @@ pub fn browser_url(command: StoreCommand, target: &StoreTarget, headless: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
 
     #[test]
     fn normalizes_handles_and_rejects_urls() {
@@ -420,5 +620,49 @@ mod tests {
                 .path(),
             "/admin/api/graphiql"
         );
+    }
+
+    #[tokio::test]
+    async fn lists_organization_stores_with_canonical_fields() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 16 * 1024];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.contains("ListAccessibleShops"));
+            assert!(request.contains("\"first\":250"));
+            assert!(request.contains("authorization: Bearer secret-token"));
+            let body_start = request.find("\r\n\r\n").unwrap_or(request.len());
+            assert!(!request[body_start..].contains("secret-token"));
+            let body = r#"{"data":{"organization":{"name":"Example Org","accessibleShops":{"edges":[{"node":{"shopifyShopId":"22","name":"Newest","storeType":"APP_DEVELOPMENT","primaryDomain":"newest.myshopify.com","url":"https://newest.myshopify.com","createdAt":"2026-02-02T00:00:00Z"}},{"node":{"shopifyShopId":"11","name":"Older","storeType":"SHOPIFY_PLUS","primaryDomain":"older.myshopify.com","url":null,"createdAt":"2026-01-01T00:00:00Z"}}],"pageInfo":{"hasNextPage":true}}}}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let client =
+            OrganizationStoreClient::new(&format!("http://{address}/graphql"), "secret-token", "7")
+                .unwrap();
+        let result = client.list().await.unwrap();
+        server.await.unwrap();
+
+        assert_eq!(result.organization_id, "7");
+        assert_eq!(result.organization_name, "Example Org");
+        assert!(result.truncated);
+        assert_eq!(result.stores[0].store, "newest.myshopify.com");
+        assert_eq!(
+            result.stores[0].store_type.as_deref(),
+            Some("app-development")
+        );
+        assert_eq!(
+            result.stores[0].id.as_deref(),
+            Some("gid://shopify/Shop/22")
+        );
+        assert_eq!(result.stores[1].store, "older.myshopify.com");
     }
 }

@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **80**
-- Commands with automated evidence: **94**
-- Live-verified commands: **7**
+- Implemented (`native` + `adapter`): **81**
+- Commands with automated evidence: **95**
+- Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 19 | Command path exists but required backend behavior is incomplete. |
-| `native` | 53 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 18 | Command path exists but required backend behavior is incomplete. |
+| `native` | 54 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -108,7 +108,7 @@
 | `store execute` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `store graphiql` | `partial` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Builds a URL but does not yet launch a fully authenticated GraphiQL session. |
 | `store info` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `store list` | `blocked` | no | no | [#38](https://github.com/yan-ad/catify/issues/38) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `store list` | `native` | yes | yes | [#38](https://github.com/yan-ad/catify/issues/38) | Rust Business Platform organization selection and accessible-shop listing are exposed at the exact Shopify command path with sorting, truncation signalling, human/JSON output, and non-interactive guards. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `store open` | `partial` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Builds the Admin URL but does not yet reproduce the complete browser/auth workflow. |
 | `theme check` | `adapter` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-cli/src/theme_check.rs tests. |
 | `theme console` | `blocked` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Command path exists, but execution still returns an actionable backend-unavailable error. |

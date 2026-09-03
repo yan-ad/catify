@@ -850,11 +850,14 @@
       "status": "native"
     },
     "store list": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "live_verified": false,
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust Business Platform organization selection and accessible-shop listing are exposed at the exact Shopify command path with sorting, truncation signalling, human/JSON output, and non-interactive guards.",
+      "live_verified": true,
       "owner": 38,
-      "status": "blocked"
+      "status": "native"
     },
     "store open": {
       "evidence": [

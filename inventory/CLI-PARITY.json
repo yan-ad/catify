@@ -5,13 +5,13 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 80,
-    "tested": 94,
-    "live_verified": 7,
+    "implemented": 81,
+    "tested": 95,
+    "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 19,
-      "native": 53,
+      "blocked": 18,
+      "native": 54,
       "partial": 12
     },
     "by_domain": {
@@ -48,8 +48,8 @@
         "native": 1
       },
       "store": {
-        "blocked": 3,
-        "native": 2,
+        "blocked": 2,
+        "native": 3,
         "partial": 6
       },
       "theme": {
@@ -1257,12 +1257,15 @@
     {
       "command": "store list",
       "domain": "store",
-      "status": "blocked",
+      "status": "native",
       "owner": 38,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
-      "live_verified": false,
+      "implementation": "Rust Business Platform organization selection and accessible-shop listing are exposed at the exact Shopify command path with sorting, truncation signalling, human/JSON output, and non-interactive guards.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-store/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "live_verified": true,
       "notes": null
     },
     {
