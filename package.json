@@ -17,6 +17,7 @@
     "app-development"
   ],
   "bin": {
+    "catify": "bin/cfy.js",
     "cfy": "bin/cfy.js"
   },
   "files": [
