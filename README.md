@@ -2,6 +2,16 @@
 
 Catify (`cfy`) is an independent, memory-efficient CLI aiming for behavioral compatibility with common Shopify CLI workflows. It is experimental and is not affiliated with, endorsed by, or sponsored by Shopify.
 
+| Compatibility | Memory Usage | Bundle Size | Load Time |
+| ---: | ---: | ---: | ---: |
+| **73%** | **24.7x lower** | **2.9x smaller** | **93.6x faster** |
+
+Measured on macOS arm64 against Shopify CLI 4.7.1: compatibility is 81 of 111
+upstream commands implemented, memory is peak RSS, bundle size compares the
+17 MB release binary with the 47 MB installed Shopify CLI package, and load time
+is median warm startup. See [`inventory/CLI-PARITY.md`](inventory/CLI-PARITY.md)
+and [`benchmarks/results/latest.json`](benchmarks/results/latest.json).
+
 ## Development
 
 ```sh
