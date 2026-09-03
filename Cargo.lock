@@ -573,6 +573,7 @@ dependencies = [
  "cfy-dev",
  "cfy-docs",
  "cfy-extension-adapter",
+ "cfy-functions",
  "cfy-hydrogen",
  "cfy-organization",
  "cfy-plugins",

@@ -146,46 +146,76 @@
       "status": "native"
     },
     "app function build": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native function discovery and build orchestration executes the extension-declared compiler command, supervises signals/exit status, and verifies the expected WASM artifact.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app function info": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native function discovery reports handle, name, API version, targets, schema/WASM paths, and resolved function-runner path with JSON and human output.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app function replay": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native replay-log discovery, selection, input extraction, rebuild/watch lifecycle, and process supervision invoke Shopify function-runner only as the intrinsic WASM runtime engine.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app function run": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native function discovery, build orchestration, runner download/cache resolution, input/export/profile argument handling, and signal propagation invoke Shopify function-runner only as the intrinsic WASM runtime engine.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app function schema": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native app/session resolution calls the Functions GraphQL API, redacts tokens, and writes schema.graphql atomically or emits it to stdout.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app function typegen": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust-native function discovery and type-generation orchestration runs the configured typegen command or detected package-manager GraphQL code generator with supervised exit handling.",
       "live_verified": false,
       "owner": 25,
-      "status": "blocked"
+      "status": "native"
     },
     "app generate extension": {
       "evidence": [

@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **90**
-- Commands with automated evidence: **102**
+- Implemented (`native` + `adapter`): **96**
+- Commands with automated evidence: **108**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 9 | Command path exists but required backend behavior is incomplete. |
-| `native` | 63 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 3 | Command path exists but required backend behavior is incomplete. |
+| `native` | 69 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -34,12 +34,12 @@
 | `app env pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-config/src/app_env.rs tests. |
 | `app env show` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-config/src/app_env.rs tests. |
 | `app execute` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust app configuration resolution, app client-credential exchange, Admin API version negotiation, query/mutation execution, JSON variables, atomic output files, and development-store mutation guard are exposed at the exact Shopify command path. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `app function build` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app function info` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app function replay` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app function run` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app function schema` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
-| `app function typegen` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `app function build` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native function discovery and build orchestration executes the extension-declared compiler command, supervises signals/exit status, and verifies the expected WASM artifact. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `app function info` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native function discovery reports handle, name, API version, targets, schema/WASM paths, and resolved function-runner path with JSON and human output. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `app function replay` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native replay-log discovery, selection, input extraction, rebuild/watch lifecycle, and process supervision invoke Shopify function-runner only as the intrinsic WASM runtime engine. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `app function run` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native function discovery, build orchestration, runner download/cache resolution, input/export/profile argument handling, and signal propagation invoke Shopify function-runner only as the intrinsic WASM runtime engine. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `app function schema` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native app/session resolution calls the Functions GraphQL API, redacts tokens, and writes schema.graphql atomically or emits it to stdout. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
+| `app function typegen` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native function discovery and type-generation orchestration runs the configured typegen command or detected package-manager GraphQL code generator with supervised exit handling. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
 | `app generate extension` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native extension scaffolding clones the official or configured template repository through the process supervisor, renders Liquid templates, confines all output to extensions/<handle>, and exposes the exact public command path. Evidence: crates/cfy-app/src/extension_generate.rs; crates/cfy-app/tests/extension_generate.rs; crates/cfy-cli/tests/cli.rs. |
 | `app graphiql` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust loopback-only GraphiQL UI reuses native app credential exchange and Admin GraphQL execution, protects localhost with a random per-session key, never exposes access tokens to browser content, and shuts down on Ctrl+C. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app import-custom-data-definitions` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |

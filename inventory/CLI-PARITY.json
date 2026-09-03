@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 90,
-    "tested": 102,
+    "implemented": 96,
+    "tested": 108,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 9,
-      "native": 63,
+      "blocked": 3,
+      "native": 69,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 7,
-        "native": 19,
+        "blocked": 1,
+        "native": 25,
         "partial": 5
       },
       "auth": {
@@ -269,66 +269,96 @@
     {
       "command": "app function build",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native function discovery and build orchestration executes the extension-declared compiler command, supervises signals/exit status, and verifies the expected WASM artifact.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app function info",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native function discovery reports handle, name, API version, targets, schema/WASM paths, and resolved function-runner path with JSON and human output.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app function replay",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native replay-log discovery, selection, input extraction, rebuild/watch lifecycle, and process supervision invoke Shopify function-runner only as the intrinsic WASM runtime engine.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app function run",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native function discovery, build orchestration, runner download/cache resolution, input/export/profile argument handling, and signal propagation invoke Shopify function-runner only as the intrinsic WASM runtime engine.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app function schema",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native app/session resolution calls the Functions GraphQL API, redacts tokens, and writes schema.graphql atomically or emits it to stdout.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
     {
       "command": "app function typegen",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 25,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native function discovery and type-generation orchestration runs the configured typegen command or detected package-manager GraphQL code generator with supervised exit handling.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-functions/src/lib.rs",
+        "crates/cfy-functions/tests/functions.rs",
+        "crates/cfy-cli/src/lib.rs",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

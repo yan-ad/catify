@@ -52,6 +52,11 @@ impl Output {
         self.mode
     }
 
+    #[must_use]
+    pub fn with_json(&self, enabled: bool) -> Self {
+        Self::new(enabled || self.mode == OutputMode::Json, self.verbosity)
+    }
+
     pub fn success<T: Serialize>(&self, human: &str, value: &T) -> std::io::Result<()> {
         let stdout = std::io::stdout();
         let mut stdout = stdout.lock();

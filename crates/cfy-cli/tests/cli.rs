@@ -1,5 +1,96 @@
 use std::process::{Command, Output};
 
+#[cfg(unix)]
+#[test]
+fn function_commands_run_natively_with_declared_tools() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-function-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let function = fixture.join("extensions/discount");
+    std::fs::create_dir_all(function.join("dist")).unwrap();
+    std::fs::create_dir_all(fixture.join(".shopify/logs")).unwrap();
+    std::fs::write(
+        fixture.join("shopify.app.toml"),
+        "client_id = \"fixture-client\"\nname = \"Fixture\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        function.join("shopify.extension.toml"),
+        r#"api_version = "2026-01"
+name = "Discount"
+handle = "discount"
+type = "product_discounts"
+
+[build]
+command = "mkdir -p dist && printf wasm > dist/index.wasm"
+typegen_command = "printf generated > generated.txt"
+
+[[targeting]]
+target = "cart.lines.discounts.generate.run"
+input_query = "src/run.graphql"
+export = "run"
+"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(function.join("src")).unwrap();
+    std::fs::write(
+        function.join("src/run.graphql"),
+        "query RunInput { cart { id } }",
+    )
+    .unwrap();
+    std::fs::write(function.join("input.json"), r#"{"cart":{}}"#).unwrap();
+    std::fs::write(function.join("schema.graphql"), "type Query { cart: Cart }").unwrap();
+    let runner = fixture.join("function-runner");
+    std::fs::write(
+        &runner,
+        "#!/bin/sh\ncat >/dev/null || true\nprintf '{\"result\":\"ok\"}\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&runner).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&runner, permissions).unwrap();
+    std::fs::write(
+        fixture.join(".shopify/logs/2026-01-01_00-00-00_000_extensions_discount_replay.json"),
+        r#"{"payload":{"input":{"cart":{}},"export":"run"}}"#,
+    )
+    .unwrap();
+
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .current_dir(&fixture)
+            .env("CFY_FUNCTION_RUNNER_BIN", &runner)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    assert!(run(&["app", "function", "build"]).status.success());
+    assert!(function.join("dist/index.wasm").is_file());
+    let info = run(&["app", "function", "info", "--json"]);
+    assert!(info.status.success());
+    assert!(String::from_utf8_lossy(&info.stdout).contains("discount"));
+    assert!(run(&["app", "function", "typegen"]).status.success());
+    assert!(function.join("generated.txt").is_file());
+    assert!(
+        run(&["app", "function", "run", "--input", "input.json"])
+            .status
+            .success()
+    );
+    assert!(
+        run(&["app", "function", "replay", "--log", "replay", "--no-watch"])
+            .status
+            .success()
+    );
+
+    std::fs::remove_dir_all(&fixture).unwrap();
+}
+
 fn cfy(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_cfy"))
         .args(args)
@@ -1517,10 +1608,10 @@ fn runtime_command_error_uses_core_exit_code() {
 
 #[test]
 fn unavailable_backends_have_command_specific_diagnostics() {
-    let app = cfy(&["app", "logs"]);
+    let app = cfy(&["app", "import-custom-data-definitions"]);
     assert_eq!(app.status.code(), Some(1));
     let app_stderr = String::from_utf8_lossy(&app.stderr);
-    assert!(app_stderr.contains("app logs is not available"));
+    assert!(app_stderr.contains("app import-custom-data-definitions is not available"));
     assert!(app_stderr.contains("issues/40"));
     assert!(!app_stderr.contains("reserved but not implemented yet"));
 
