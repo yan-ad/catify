@@ -3,45 +3,26 @@ import { useState } from 'react'
 const installCommand = 'npm install --global catify-cli'
 
 const stats = [
-  { value: '73%', label: 'command compatibility' },
-  { value: '24.7×', label: 'lower peak memory' },
-  { value: '2.9×', label: 'smaller install size' },
-  { value: '93.6×', label: 'faster warm startup' },
+  ['73%', 'command compatibility'],
+  ['24.7×', 'lower peak memory'],
+  ['2.9×', 'smaller install'],
+  ['93.6×', 'faster warm start'],
 ]
 
-const features = [
+const principles = [
   {
-    number: '01',
-    title: 'Native where it matters',
-    body: 'Parsing, configuration, filesystem behavior, transport, and output are implemented directly in Rust—not hidden behind another CLI.',
+    title: 'Native by default',
+    body: 'Command parsing, configuration, filesystem behavior, transport, and output are implemented directly in Rust—not delegated to another CLI.',
   },
   {
-    number: '02',
-    title: 'Built for real workflows',
-    body: 'Use familiar app and theme command structures while keeping predictable output, stable exit codes, and automation-friendly JSON.',
+    title: 'Familiar command surface',
+    body: 'Catify follows Shopify CLI command names and nesting so existing knowledge and automation carry over with less friction.',
   },
   {
-    number: '03',
-    title: 'Open by default',
-    body: 'MIT licensed, independently built, and developed in public with an explicit compatibility matrix and reproducible benchmarks.',
+    title: 'Built in public',
+    body: 'Compatibility status, benchmarks, architecture decisions, and known gaps are documented in the repository.',
   },
 ]
-
-function ArrowIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 8h9M8.5 3.5 13 8l-4.5 4.5" />
-    </svg>
-  )
-}
-
-function GithubIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.9c-2.78.62-3.37-1.2-3.37-1.2-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .08 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.1-.66.35-1.11.63-1.37-2.22-.26-4.55-1.14-4.55-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.35 9.35 0 0 1 12 6.95a9.3 9.3 0 0 1 2.5.34c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.59.69.49A10.24 10.24 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z" />
-    </svg>
-  )
-}
 
 function CopyButton() {
   const [copied, setCopied] = useState(false)
@@ -50,171 +31,115 @@ function CopyButton() {
     try {
       await navigator.clipboard.writeText(installCommand)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
+      window.setTimeout(() => setCopied(false), 1600)
     } catch {
       setCopied(false)
     }
   }
 
   return (
-    <button className="copy-button" type="button" onClick={copyCommand}>
-      <span className="copy-icon" aria-hidden="true">{copied ? '✓' : '⧉'}</span>
-      {copied ? 'Copied' : 'Copy'}
+    <button type="button" className="copy-button" onClick={copyCommand}>
+      {copied ? 'copied' : 'copy'}
     </button>
   )
 }
 
 export function Page() {
   return (
-    <div className="site-shell">
-      <header className="site-header">
-        <a className="brand" href="#top" aria-label="Catify home">
-          <img src="/catify-icon-192.png" alt="" width="48" height="48" />
-          <span>Catify</span>
-        </a>
+    <main className="page" id="top">
+      <header className="masthead">
+        <a className="wordmark" href="#top" aria-label="Catify home">catify</a>
         <nav aria-label="Main navigation">
-          <a href="#why">Why Catify</a>
+          <a href="#about">About</a>
           <a href="#benchmarks">Benchmarks</a>
-          <a
-            className="nav-github"
-            href="https://github.com/yan-ad/catify"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <GithubIcon />
-            GitHub
-          </a>
+          <a href="https://github.com/yan-ad/catify" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 
-      <main id="top">
-        <section className="hero" aria-labelledby="hero-title">
-          <div className="hero-copy">
-            <p className="eyebrow reveal reveal-1">
-              <span className="pulse" aria-hidden="true" />
-              Experimental · open source · Rust native
-            </p>
-            <h1 id="hero-title" className="reveal reveal-2">
-              Shopify workflows.
-              <br />
-              <em>Less waiting.</em>
-            </h1>
-            <p className="hero-lede reveal reveal-3">
-              Catify is an independent, memory-efficient CLI built for developers who want familiar Shopify workflows without carrying a heavy runtime everywhere.
-            </p>
-            <div className="hero-actions reveal reveal-4">
-              <a className="button button-primary" href="#install">
-                Install Catify <ArrowIcon />
-              </a>
-              <a
-                className="button button-secondary"
-                href="https://github.com/yan-ad/catify"
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-              </a>
-            </div>
-          </div>
-
-          <div className="hero-art reveal reveal-3" aria-hidden="true">
-            <div className="logo-stage">
-              <span className="logo-orbit logo-orbit-one" />
-              <span className="logo-orbit logo-orbit-two" />
-              <img
-                src="/catify-logo.png"
-                alt=""
-                width="1254"
-                height="1254"
-                fetchPriority="high"
-              />
-              <span className="stage-label stage-label-top">RUST / NATIVE</span>
-              <span className="stage-label stage-label-bottom">CFY_01</span>
-            </div>
-          </div>
-
-          <div id="benchmarks" className="stat-grid reveal reveal-4">
-            {stats.map((stat) => (
-              <div className="stat" key={stat.label}>
-                <strong>{stat.value}</strong>
-                <span>{stat.label}</span>
-              </div>
-            ))}
-          </div>
-          <p className="benchmark-note">
-            Benchmarked on macOS arm64 against Shopify CLI 4.7.1. See the repository for methodology and current results.
+      <section className="hero" aria-labelledby="hero-title">
+        <div className="hero-copy">
+          <p className="status"><span aria-hidden="true" /> Experimental open source software</p>
+          <h1 id="hero-title">A Shopify CLI,<br />written in Rust.</h1>
+          <p className="lede">
+            Catify is an independent, memory-efficient implementation of familiar Shopify developer workflows.
           </p>
-        </section>
 
-        <section id="why" className="manifesto section-pad">
-          <div className="section-heading">
-            <p className="kicker">Why Catify</p>
-            <h2>Small tool.<br />Serious intent.</h2>
-          </div>
-          <div className="feature-list">
-            {features.map((feature) => (
-              <article className="feature" key={feature.number}>
-                <span>{feature.number}</span>
-                <div>
-                  <h3>{feature.title}</h3>
-                  <p>{feature.body}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="install" className="install-section section-pad" aria-labelledby="install-title">
-          <div className="install-copy">
-            <p className="kicker">Start here</p>
-            <h2 id="install-title">One command.<br />Native speed.</h2>
-            <p>
-              Install through npm on macOS, Linux, or Windows. Node.js handles the installation; your commands run in the native Rust binary.
-            </p>
+          <div className="install-command" aria-label="Install Catify with npm">
+            <code>{installCommand}</code>
+            <CopyButton />
           </div>
 
-          <div className="terminal" aria-label="Installation commands">
-            <div className="terminal-bar">
-              <span className="terminal-dots" aria-hidden="true"><i /><i /><i /></span>
-              <span>~/your-project</span>
-              <span>bash</span>
-            </div>
-            <div className="terminal-body">
-              <div className="command-row">
-                <code><span>$</span> {installCommand}</code>
-                <CopyButton />
+          <p className="link-row">
+            <a href="https://www.npmjs.com/package/catify-cli" target="_blank" rel="noreferrer">npm</a>
+            <span>·</span>
+            <a href="https://github.com/yan-ad/catify/blob/main/docs/installation.md" target="_blank" rel="noreferrer">installation</a>
+            <span>·</span>
+            <a href="https://github.com/yan-ad/catify" target="_blank" rel="noreferrer">source</a>
+          </p>
+        </div>
+
+        <img
+          className="hero-logo"
+          src="/catify-logo.png"
+          alt="Catify mascot: a black cat with a terminal and the Rust logo"
+          width="1254"
+          height="1254"
+          fetchPriority="high"
+        />
+      </section>
+
+      <section className="benchmarks" id="benchmarks" aria-labelledby="benchmark-title">
+        <div className="section-heading">
+          <p className="section-number">01</p>
+          <h2 id="benchmark-title">Current snapshot</h2>
+        </div>
+        <div>
+          <dl className="stat-list">
+            {stats.map(([value, label]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
               </div>
-              <code className="response">+ catify-cli@0.1.0</code>
-              <code><span>$</span> cfy version</code>
-              <code className="response">catify 0.1.0 <b>▮</b></code>
-            </div>
-          </div>
-        </section>
+            ))}
+          </dl>
+          <p className="fine-print">
+            Measured on macOS arm64 against Shopify CLI 4.7.1. Compatibility is 81 of 111 pinned commands. Memory is peak RSS; startup is median warm load time.
+          </p>
+          <p className="text-link">
+            <a href="https://github.com/yan-ad/catify/blob/main/inventory/CLI-PARITY.md" target="_blank" rel="noreferrer">See compatibility matrix →</a>
+          </p>
+        </div>
+      </section>
 
-        <section className="cta section-pad">
-          <div>
-            <p className="kicker">Built in public</p>
-            <h2>A sharper CLI starts with an open conversation.</h2>
-          </div>
-          <a
-            className="button button-invert"
-            href="https://github.com/yan-ad/catify"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Explore on GitHub <ArrowIcon />
-          </a>
-        </section>
-      </main>
+      <section className="about" id="about" aria-labelledby="about-title">
+        <div className="section-heading">
+          <p className="section-number">02</p>
+          <h2 id="about-title">Why it exists</h2>
+        </div>
+        <div className="principles">
+          {principles.map((principle) => (
+            <article key={principle.title}>
+              <h3>{principle.title}</h3>
+              <p>{principle.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="closing" aria-labelledby="closing-title">
+        <h2 id="closing-title">Small binary.<br />Visible tradeoffs.</h2>
+        <p>
+          Catify is experimental and not yet a complete replacement. Follow the work, report gaps, or contribute on GitHub.
+        </p>
+        <a className="primary-link" href="https://github.com/yan-ad/catify" target="_blank" rel="noreferrer">
+          View the repository →
+        </a>
+      </section>
 
       <footer>
-        <a className="brand footer-brand" href="#top">
-          <img src="/catify-icon-192.png" alt="" width="48" height="48" />
-          <span>Catify</span>
-        </a>
-        <p>Independent and not affiliated with, endorsed by, or sponsored by Shopify.</p>
         <p>MIT licensed · Built with Rust</p>
+        <p>Not affiliated with, endorsed by, or sponsored by Shopify.</p>
       </footer>
-    </div>
+    </main>
   )
 }
