@@ -1,5 +1,6 @@
 //! Store command contracts: selection, safety, progress, and adapters.
 
+pub mod custom_data;
 pub mod store_auth;
 
 use async_trait::async_trait;
@@ -310,7 +311,32 @@ pub struct AdminStoreBackend {
 
 impl AdminStoreBackend {
     pub fn new(target: &StoreTarget, token: &str) -> std::result::Result<Self, StoreError> {
-        let http = HttpClient::new(&format!("https://{}", target.domain))
+        Self::new_at(
+            &format!("https://{}/admin/api/2025-01/graphql.json", target.domain),
+            token,
+        )
+    }
+
+    pub fn new_at(endpoint: &str, token: &str) -> std::result::Result<Self, StoreError> {
+        let endpoint = Url::parse(endpoint)
+            .map_err(|error| StoreError::Backend(format!("invalid Admin API URL: {error}")))?;
+        if endpoint.scheme() != "https"
+            && endpoint.host_str() != Some("127.0.0.1")
+            && endpoint.host_str() != Some("localhost")
+        {
+            return Err(StoreError::Backend(
+                "Admin API URL must use HTTPS unless it targets loopback".into(),
+            ));
+        }
+        let base = format!(
+            "{}://{}{}",
+            endpoint.scheme(),
+            endpoint.host_str().unwrap_or_default(),
+            endpoint
+                .port()
+                .map_or_else(String::new, |port| format!(":{port}"))
+        );
+        let http = HttpClient::new(&base)
             .map_err(|error| StoreError::Backend(error.to_string()))?
             .with_sensitive_header(
                 reqwest::header::HeaderName::from_static("x-shopify-access-token"),
@@ -318,7 +344,7 @@ impl AdminStoreBackend {
                     .map_err(|error| StoreError::Backend(format!("invalid token: {error}")))?,
             );
         Ok(Self {
-            client: GraphQlClient::new(http, "/admin/api/2025-01/graphql.json"),
+            client: GraphQlClient::new(http, endpoint.path()),
         })
     }
 

@@ -1608,13 +1608,6 @@ fn runtime_command_error_uses_core_exit_code() {
 
 #[test]
 fn unavailable_backends_have_command_specific_diagnostics() {
-    let app = cfy(&["app", "import-custom-data-definitions"]);
-    assert_eq!(app.status.code(), Some(1));
-    let app_stderr = String::from_utf8_lossy(&app.stderr);
-    assert!(app_stderr.contains("app import-custom-data-definitions is not available"));
-    assert!(app_stderr.contains("issues/40"));
-    assert!(!app_stderr.contains("reserved but not implemented yet"));
-
     let theme = cfy(&["theme", "console"]);
     assert_eq!(theme.status.code(), Some(1));
     let theme_stderr = String::from_utf8_lossy(&theme.stderr);

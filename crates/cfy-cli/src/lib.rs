@@ -68,6 +68,7 @@ use cfy_process::{OutputMode, ProcessSpec, Supervisor};
 use cfy_store::{
     AdminStoreBackend, OrganizationStoreClient, StoreBackend, StoreCommand as StoreOperation,
     StoreManagementBackend, StoreTarget, browser_url,
+    custom_data::{existing_definitions, import_definitions},
     store_auth::{StoreAuthBootstrap, StoreAuthCallback, StoreAuthRegistry, exchange_code},
 };
 use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
@@ -6138,11 +6139,56 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::ImportCustomDataDefinitions => Err(backend_unavailable(
-            "app import-custom-data-definitions",
-            40,
-            "the remote custom-data definitions backend is pending; use Shopify CLI for this command for now",
-        )),
+        AppCommand::ImportCustomDataDefinitions {
+            context,
+            include_existing,
+        } => {
+            let selected = selected_app_environment(
+                context.path,
+                context.config,
+                context.client_id,
+                context.reset,
+            )?;
+            let client_id = selected
+                .document
+                .get("client_id")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Error::invalid_input("selected app configuration has no client_id")
+                })?;
+            let store_domain = context.store.or(selected.store.clone()).ok_or_else(|| {
+                Error::invalid_input("a development store is required; pass --store")
+            })?;
+            let store_domain = BulkStoreDomain::parse(&store_domain)
+                .map_err(|error| Error::invalid_input(error.to_string()))?;
+            let identity = context.auth_alias.unwrap_or_else(|| "default".to_owned());
+            let session = authenticated_session(&identity).await?;
+            let app_management = AppManagementClient::from_session(&session).await?;
+            let credentials = app_management.app_client_credentials(client_id).await?;
+            let credentials = BulkAppCredentials::new(
+                credentials.client_id,
+                credentials.client_secret.expose().to_owned(),
+            );
+            let token = exchange_client_credentials(&store_domain, &credentials)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            let target = StoreTarget::parse(store_domain.as_str())
+                .map_err(|error| Error::invalid_input(error.to_string()))?;
+            let backend = AdminStoreBackend::new(&target, token.secret().expose())
+                .map_err(|error| Error::api(error.to_string()))?;
+            let existing = existing_definitions(&selected.document);
+            let report = import_definitions(&backend, &target.domain, &existing, include_existing)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            let human = format!(
+                "Conversion to TOML complete.\n\nConverted {} metafields and {} metaobjects from {}.\n\n{}",
+                report.metafield_count, report.metaobject_count, report.store, report.toml
+            );
+            output
+                .success(&human, &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
     }
 }
 
@@ -6531,8 +6577,14 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: AppGenerateCommand,
     },
-    /// Import custom data definitions.
-    ImportCustomDataDefinitions,
+    /// Import metafield and metaobject definitions.
+    #[command(disable_version_flag = true)]
+    ImportCustomDataDefinitions {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(long, env = "SHOPIFY_FLAG_INCLUDE_EXISTING")]
+        include_existing: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -6955,9 +7007,9 @@ fn backend_unavailable(command: &str, issue: u32, detail: impl AsRef<str>) -> Er
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Command, ThemeCommand, corrected_command_args, filesystem_event, format_themes,
-        live_push_requires_confirmation, reusable_session, select_store, select_theme_for_open,
-        update_auth_selection, update_list_selection,
+        AppCommand, Cli, Command, ThemeCommand, corrected_command_args, filesystem_event,
+        format_themes, live_push_requires_confirmation, reusable_session, select_store,
+        select_theme_for_open, update_auth_selection, update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -7339,6 +7391,34 @@ mod tests {
         let error = Cli::try_parse_from(["cfy", "versoin"]).expect_err("typo should fail");
         assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
         assert!(error.to_string().contains("version"));
+    }
+
+    #[test]
+    fn custom_data_import_matches_shopify_command_path_and_flags() {
+        let parsed = Cli::try_parse_from([
+            "cfy",
+            "app",
+            "import-custom-data-definitions",
+            "--store",
+            "demo.myshopify.com",
+            "--include-existing",
+            "--config",
+            "staging",
+        ])
+        .unwrap();
+        let Some(Command::App {
+            command:
+                AppCommand::ImportCustomDataDefinitions {
+                    context,
+                    include_existing,
+                },
+        }) = parsed.command
+        else {
+            panic!("expected import-custom-data-definitions command");
+        };
+        assert_eq!(context.store.as_deref(), Some("demo.myshopify.com"));
+        assert_eq!(context.config.as_deref(), Some("staging"));
+        assert!(include_existing);
     }
 
     #[test]

@@ -240,11 +240,15 @@
       "status": "native"
     },
     "app import-custom-data-definitions": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-store/src/custom_data.rs tests",
+        "crates/cfy-cli/src/lib.rs tests"
+      ],
+      "implementation": "Rust-native Admin GraphQL pagination imports app-reserved metafield and metaobject definitions, filters declarations already present in the selected app TOML unless --include-existing is set, converts access/capabilities/validations/reference types, and prints Shopify-compatible declarative TOML at the exact public command path.",
       "live_verified": false,
       "owner": 40,
-      "status": "blocked"
+      "status": "native",
+      "tested": true
     },
     "app import-extensions": {
       "evidence": [

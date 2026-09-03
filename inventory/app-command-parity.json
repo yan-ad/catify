@@ -148,7 +148,7 @@
       "json": true,
       "non_interactive": true,
       "owner": 40,
-      "status": "blocked-live"
+      "status": "native"
     },
     "app import-extensions": {
       "json": true,

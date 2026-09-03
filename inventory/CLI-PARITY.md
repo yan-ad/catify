@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **96**
-- Commands with automated evidence: **108**
+- Implemented (`native` + `adapter`): **97**
+- Commands with automated evidence: **109**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 3 | Command path exists but required backend behavior is incomplete. |
-| `native` | 69 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 2 | Command path exists but required backend behavior is incomplete. |
+| `native` | 70 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -42,7 +42,7 @@
 | `app function typegen` | `native` | yes | no | [#25](https://github.com/yan-ad/catify/issues/25) | Rust-native function discovery and type-generation orchestration runs the configured typegen command or detected package-manager GraphQL code generator with supervised exit handling. Evidence: crates/cfy-functions/src/lib.rs; crates/cfy-functions/tests/functions.rs; crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. |
 | `app generate extension` | `native` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native extension scaffolding clones the official or configured template repository through the process supervisor, renders Liquid templates, confines all output to extensions/<handle>, and exposes the exact public command path. Evidence: crates/cfy-app/src/extension_generate.rs; crates/cfy-app/tests/extension_generate.rs; crates/cfy-cli/tests/cli.rs. |
 | `app graphiql` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust loopback-only GraphiQL UI reuses native app credential exchange and Admin GraphQL execution, protects localhost with a random per-session key, never exposes access tokens to browser content, and shuts down on Ctrl+C. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `app import-custom-data-definitions` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `app import-custom-data-definitions` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust-native Admin GraphQL pagination imports app-reserved metafield and metaobject definitions, filters declarations already present in the selected app TOML unless --include-existing is set, converts access/capabilities/validations/reference types, and prints Shopify-compatible declarative TOML at the exact public command path. Evidence: crates/cfy-store/src/custom_data.rs tests; crates/cfy-cli/src/lib.rs tests. |
 | `app import-extensions` | `partial` | yes | no | [#24](https://github.com/yan-ad/catify/issues/24) | Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path. Evidence: crates/cfy-app/src/extension_import.rs; crates/cfy-app/tests/extension_import.rs; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions. |
 | `app info` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path. Evidence: crates/cfy-cli/src/lib.rs; crates/cfy-cli/tests/cli.rs. Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state. |
 | `app init` | `partial` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs. Creates a minimal local skeleton; template selection/dependency setup are incomplete. |
