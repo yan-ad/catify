@@ -4738,14 +4738,95 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 args.len()
             ),
         )),
-        AppCommand::Execute { query } => Err(backend_unavailable(
-            "app execute",
-            40,
-            format!(
-                "the app-scoped GraphQL backend is not configured (query length: {} bytes); use `cfy store execute` for store Admin API queries",
-                query.len()
-            ),
-        )),
+        AppCommand::Execute {
+            context,
+            query,
+            query_file,
+            variables,
+            variable_file,
+            version,
+            output_file,
+        } => {
+            let document = match (query, query_file) {
+                (Some(query), None) => query,
+                (None, Some(path)) => std::fs::read_to_string(&path).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        format!("could not read GraphQL document {}", path.display()),
+                        error,
+                    )
+                })?,
+                _ => {
+                    return Err(Error::invalid_input(
+                        "provide exactly one of --query or --query-file",
+                    ));
+                }
+            };
+            let variables = match (variables, variable_file) {
+                (Some(variables), None) => serde_json::from_str(&variables).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        "--variables must contain a JSON object",
+                        error,
+                    )
+                })?,
+                (None, Some(path)) => {
+                    let bytes = std::fs::read(&path).map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Config,
+                            format!("could not read variables file {}", path.display()),
+                            error,
+                        )
+                    })?;
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Config,
+                            format!("variables file {} is not valid JSON", path.display()),
+                            error,
+                        )
+                    })?
+                }
+                (None, None) => serde_json::json!({}),
+                (Some(_), Some(_)) => unreachable!("clap rejects conflicting variables flags"),
+            };
+            if !variables.is_object() {
+                return Err(Error::invalid_input(
+                    "GraphQL variables must be a JSON object",
+                ));
+            }
+            let client = app_bulk_client(context, version.as_deref()).await?;
+            let result = client
+                .execute_document(&document, variables)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            if let Some(path) = output_file {
+                let bytes = serde_json::to_vec_pretty(&result).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        "could not serialize GraphQL result",
+                        error,
+                    )
+                })?;
+                write_atomic(&path, &bytes).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        format!("could not write GraphQL result {}", path.display()),
+                        error,
+                    )
+                })?;
+                output
+                    .success(
+                        "GraphQL result written",
+                        &serde_json::json!({"output_file": path, "data": result}),
+                    )
+                    .map_err(|error| Error::process(error.to_string()))?;
+            } else {
+                output
+                    .success("GraphQL request completed", &result)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            Ok(0)
+        }
         AppCommand::Graphiql => Err(backend_unavailable(
             "app graphiql",
             40,
@@ -5181,7 +5262,37 @@ pub enum AppCommand {
         args: Vec<String>,
     },
     /// Execute an Admin API query for the app.
-    Execute { query: String },
+    #[command(disable_version_flag = true)]
+    Execute {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(
+            short = 'q',
+            long,
+            env = "SHOPIFY_FLAG_QUERY",
+            conflicts_with = "query_file"
+        )]
+        query: Option<String>,
+        #[arg(
+            long,
+            env = "SHOPIFY_FLAG_QUERY_FILE",
+            required_unless_present = "query"
+        )]
+        query_file: Option<PathBuf>,
+        #[arg(
+            short = 'v',
+            long,
+            env = "SHOPIFY_FLAG_VARIABLES",
+            conflicts_with = "variable_file"
+        )]
+        variables: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_VARIABLE_FILE")]
+        variable_file: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_OUTPUT_FILE")]
+        output_file: Option<PathBuf>,
+    },
     /// Open GraphiQL for the app.
     Graphiql,
     /// Release an app version.

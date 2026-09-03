@@ -136,11 +136,14 @@
       "status": "native"
     },
     "app execute": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust app configuration resolution, app client-credential exchange, Admin API version negotiation, query/mutation execution, JSON variables, atomic output files, and development-store mutation guard are exposed at the exact Shopify command path.",
       "live_verified": false,
       "owner": 40,
-      "status": "blocked"
+      "status": "native"
     },
     "app function build": {
       "evidence": [],

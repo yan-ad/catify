@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **83**
-- Commands with automated evidence: **96**
+- Implemented (`native` + `adapter`): **84**
+- Commands with automated evidence: **97**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 16 | Command path exists but required backend behavior is incomplete. |
-| `native` | 56 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 15 | Command path exists but required backend behavior is incomplete. |
+| `native` | 57 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -33,7 +33,7 @@
 | `app dev clean` | `partial` | yes | no | [#29](https://github.com/yan-ad/catify/issues/29) | Native local dev-state cleanup is exposed at the exact command path. Restoring remote dev-store preview state remains pending. Evidence: crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state. |
 | `app env pull` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-config/src/app_env.rs tests. |
 | `app env show` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-config/src/app_env.rs tests. |
-| `app execute` | `blocked` | no | no | [#40](https://github.com/yan-ad/catify/issues/40) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `app execute` | `native` | yes | no | [#40](https://github.com/yan-ad/catify/issues/40) | Rust app configuration resolution, app client-credential exchange, Admin API version negotiation, query/mutation execution, JSON variables, atomic output files, and development-store mutation guard are exposed at the exact Shopify command path. Evidence: crates/cfy-bulk/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `app function build` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app function info` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `app function replay` | `blocked` | no | no | [#25](https://github.com/yan-ad/catify/issues/25) | Command path exists, but execution still returns an actionable backend-unavailable error. |

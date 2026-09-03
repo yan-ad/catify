@@ -8,6 +8,49 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_execute_matches_shopify_query_variables_and_output_flags() {
+    let help = cfy(&[
+        "app",
+        "execute",
+        "--query",
+        "query { shop { name } }",
+        "--variables",
+        "{}",
+        "--store",
+        "shop.myshopify.com",
+        "--version",
+        "2026-01",
+        "--output-file",
+        "result.json",
+        "--help",
+    ]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in [
+        "--query",
+        "--query-file",
+        "--variables",
+        "--variable-file",
+        "--output-file",
+        "--store",
+        "--version",
+    ] {
+        assert!(help.contains(flag), "missing {flag}");
+    }
+    assert!(!help.contains("-V, --version"));
+
+    let conflicts = cfy(&[
+        "app",
+        "execute",
+        "--query",
+        "query { shop { name } }",
+        "--query-file",
+        "query.graphql",
+    ]);
+    assert_eq!(conflicts.status.code(), Some(2));
+}
+
+#[test]
 fn store_auth_matches_shopify_pkce_and_local_list_command_shapes() {
     let auth = cfy(&[
         "store",

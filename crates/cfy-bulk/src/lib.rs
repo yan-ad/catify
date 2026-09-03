@@ -452,6 +452,24 @@ impl BulkClient {
             ))
     }
 
+    /// Execute a regular Admin GraphQL query or mutation. Mutations are guarded
+    /// to partner development stores, matching Shopify CLI safety semantics.
+    pub async fn execute_document(
+        &self,
+        document: &str,
+        variables: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        if operation_kind(document)? == OperationKind::Mutation {
+            let shop: ShopPlanData = self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
+            if !shop.shop.plan.partner_development {
+                return Err(BulkError::InvalidStore(
+                    "mutations are only allowed on partner development stores".into(),
+                ));
+            }
+        }
+        self.graphql(document, variables).await
+    }
+
     pub async fn list_recent(&self, since: &str) -> Result<Vec<BulkOperation>> {
         let data: ListData = self
             .graphql(
@@ -620,7 +638,7 @@ impl BulkClient {
 
     async fn graphql<T: DeserializeOwned>(
         &self,
-        query: &'static str,
+        query: &str,
         variables: serde_json::Value,
     ) -> Result<T> {
         let response = send(
@@ -739,8 +757,8 @@ impl RawJsonl {
 }
 
 #[derive(Serialize)]
-struct GraphQlBody {
-    query: &'static str,
+struct GraphQlBody<'a> {
+    query: &'a str,
     variables: serde_json::Value,
 }
 #[derive(Deserialize)]
@@ -1192,6 +1210,51 @@ mod unit_tests {
             Err(BulkError::QueryRequired)
         ));
         assert_eq!(server.count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn executes_regular_documents_and_guards_mutations_to_dev_stores() {
+        let server = MockServer::start(vec![
+            MockResponse {
+                status: 200,
+                body: r#"{"data":{"shop":{"name":"Demo"}}}"#,
+                headers: vec![],
+            },
+            MockResponse {
+                status: 200,
+                body: r#"{"data":{"shop":{"plan":{"partnerDevelopment":false}}}}"#,
+                headers: vec![],
+            },
+        ])
+        .await;
+        let client = BulkClient::new_at(
+            server.base.clone(),
+            &ApiVersion::parse("2026-01").unwrap(),
+            &Secret::new("admin-secret"),
+        )
+        .unwrap();
+
+        let data = client
+            .execute_document(
+                "query ShopName($unused: String) { shop { name } }",
+                serde_json::json!({"unused": "value"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(data["shop"]["name"], "Demo");
+        let request = server.request(0).await;
+        assert!(request.contains("query ShopName"));
+        assert!(request.contains("\"unused\":\"value\""));
+        assert!(request.contains("x-shopify-access-token: admin-secret"));
+
+        let error = client
+            .execute_document(
+                "mutation UpdateShop { shopUpdate(input: {}) { userErrors { message } } }",
+                serde_json::json!({}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("partner development stores"));
     }
 
     #[tokio::test]

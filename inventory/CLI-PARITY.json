@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 83,
-    "tested": 96,
+    "implemented": 84,
+    "tested": 97,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 16,
-      "native": 56,
+      "blocked": 15,
+      "native": 57,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 12,
-        "native": 14,
+        "blocked": 11,
+        "native": 15,
         "partial": 5
       },
       "auth": {
@@ -255,11 +255,14 @@
     {
       "command": "app execute",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 40,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust app configuration resolution, app client-credential exchange, Admin API version negotiation, query/mutation execution, JSON variables, atomic output files, and development-store mutation guard are exposed at the exact Shopify command path.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },
