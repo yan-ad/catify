@@ -27,6 +27,12 @@ pub struct Theme {
     pub processing: Option<bool>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ThemePreview {
+    pub url: String,
+    pub preview_identifier: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ThemeChange {
     Upload(ThemeAsset),
@@ -228,6 +234,46 @@ impl ThemeClient {
             .await
             .map_err(theme_api_error)?;
         response.json::<ThemeEnvelope>().map(|value| value.theme)
+    }
+
+    pub async fn preview(
+        &self,
+        theme_id: u64,
+        overrides: serde_json::Value,
+        preview_identifier: Option<&str>,
+    ) -> Result<ThemePreview, ApiError> {
+        if !overrides.is_object() {
+            return Err(ApiError::Configuration(
+                "theme preview overrides must be a JSON object".into(),
+            ));
+        }
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query.append_pair("preview_theme_id", &theme_id.to_string());
+        if let Some(identifier) = preview_identifier {
+            query.append_pair("preview_identifier", identifier);
+        }
+        let mut request = HttpRequest::new(
+            Method::POST,
+            format!("theme_preview.json?{}", query.finish()),
+        );
+        request.body = Some(overrides);
+        request.retry_safety = crate::RetrySafety::Unsafe;
+        let value: serde_json::Value = self
+            .http
+            .execute(&request)
+            .await
+            .map_err(theme_api_error)?
+            .json()?;
+        if let Some(error) = value.get("error").and_then(serde_json::Value::as_str) {
+            return Err(ApiError::GraphQlResponse {
+                request_id: None,
+                message: format!("theme preview failed: {error}"),
+            });
+        }
+        serde_json::from_value(value).map_err(|source| ApiError::MalformedJson {
+            request_id: None,
+            source,
+        })
     }
 
     pub async fn rename(&self, theme_id: u64, name: &str) -> Result<Theme, ApiError> {
@@ -891,5 +937,42 @@ mod tests {
                 .contains("refresh SHOPIFY_CLI_THEME_TOKEN")
         );
         assert!(error.to_string().contains("theme read permissions"));
+    }
+
+    #[tokio::test]
+    async fn creates_and_updates_theme_previews_from_json_overrides() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 16 * 1024];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.contains(
+                "POST /theme_preview.json?preview_theme_id=42&preview_identifier=existing"
+            ));
+            assert!(request.contains("\"sections\""));
+            let body = r#"{"url":"https://demo.myshopify.com/?preview_theme_id=42","preview_identifier":"next-id"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base).unwrap();
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        let preview = client
+            .preview(
+                42,
+                serde_json::json!({"sections": {"header": {"disabled": true}}}),
+                Some("existing"),
+            )
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(preview.preview_identifier, "next-id");
+        assert!(preview.url.contains("preview_theme_id=42"));
     }
 }

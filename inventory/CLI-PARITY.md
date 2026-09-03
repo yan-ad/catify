@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **86**
-- Commands with automated evidence: **98**
+- Implemented (`native` + `adapter`): **87**
+- Commands with automated evidence: **99**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 13 | Command path exists but required backend behavior is incomplete. |
-| `native` | 59 | Implemented in Rust and exposed at the upstream command path. |
+| `blocked` | 12 | Command path exists but required backend behavior is incomplete. |
+| `native` | 60 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Commands
@@ -122,7 +122,7 @@
 | `theme metafields pull` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust Admin GraphQL transport fetches metafield definitions for all Shopify owner types, supports theme environment precedence and Theme Access/store-auth credentials, handles partial owner failures, and atomically writes .shopify/metafields.json. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Execution remains blocked on the Admin API metafield-definition contract. |
 | `theme open` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Native Rust Theme API selection resolves theme ID/name, live, development, or interactive choice; generates preview/editor URLs and opens the browser without Shopify CLI. Evidence: crates/cfy-cli/src/lib.rs::select_theme_for_open; crates/cfy-cli/src/lib.rs tests::theme_open_resolves_id_name_live_and_development_without_prompting; crates/cfy-cli/tests/cli.rs::theme_open_matches_shopify_flags_and_selection_guard; crates/cfy-api/src/theme.rs tests. Supports the complete Shopify 4.6.1 flag surface and prints both preview and editor URLs in non-interactive mode. |
 | `theme package` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `theme preview` | `blocked` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `theme preview` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust Theme API preview create/update accepts validated JSON overrides, resolves themes by ID or name, supports Shopify theme environments and stored credentials, returns preview URL/identifier, and optionally opens the browser. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme profile` | `blocked` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Command path exists, but execution still returns an actionable backend-unavailable error. |
 | `theme publish` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme pull` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |

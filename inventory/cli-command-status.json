@@ -1003,11 +1003,14 @@
       "status": "native"
     },
     "theme preview": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust Theme API preview create/update accepts validated JSON overrides, resolves themes by ID or name, supports Shopify theme environments and stored credentials, returns preview URL/identifier, and optionally opens the browser.",
       "live_verified": false,
       "owner": 39,
-      "status": "blocked"
+      "status": "native"
     },
     "theme profile": {
       "evidence": [],

@@ -2482,19 +2482,83 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        ThemeCommand::Preview { theme, store } => Err(backend_unavailable(
-            "theme preview",
-            39,
-            format!(
-                "preview session orchestration is pending{}{}; use `cfy theme open --theme <id> --store <store>` for an existing remote theme",
-                theme
-                    .map(|value| format!(" for theme {value}"))
-                    .unwrap_or_default(),
-                store
-                    .map(|value| format!(" on {value}"))
-                    .unwrap_or_default(),
-            ),
-        )),
+        ThemeCommand::Preview {
+            theme,
+            overrides,
+            preview_id,
+            open,
+            auth_alias: _,
+            path,
+            password,
+            store,
+            environment,
+        } => {
+            let root = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not resolve current directory",
+                    error,
+                )
+            })?);
+            let (environment_store, environment_password) =
+                theme_environment_credentials(&root, &environment)?;
+            let selected_store = store.or(environment_store);
+            let store = resolve_store(selected_store.as_deref())?;
+            let target = StoreTarget::parse(&store)?;
+            let token = match password.or(environment_password) {
+                Some(password) => password,
+                None => store_access_token(&target.domain).await?,
+            };
+            let client = ThemeClient::new(&target.domain, &token, SHOPIFY_API_VERSION)
+                .map_err(Error::from)?;
+            let themes = client.list().await.map_err(Error::from)?;
+            let selected = themes
+                .iter()
+                .find(|candidate| candidate.id.to_string() == theme || candidate.name == theme)
+                .ok_or_else(|| Error::invalid_input(format!("theme `{theme}` was not found")))?;
+            let overrides_path = if overrides.is_absolute() {
+                overrides
+            } else {
+                root.join(overrides)
+            };
+            let overrides_bytes = std::fs::read(&overrides_path).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not read overrides file {}", overrides_path.display()),
+                    error,
+                )
+            })?;
+            let overrides: serde_json::Value =
+                serde_json::from_slice(&overrides_bytes).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        format!(
+                            "overrides file {} is not valid JSON",
+                            overrides_path.display()
+                        ),
+                        error,
+                    )
+                })?;
+            let preview = client
+                .preview(selected.id, overrides, preview_id.as_deref())
+                .await
+                .map_err(Error::from)?;
+            output
+                .success(
+                    &format!(
+                        "Preview is ready\n{}\nPreview ID: {}",
+                        preview.url, preview.preview_identifier
+                    ),
+                    &preview,
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            if open && !non_interactive && !open_browser(&preview.url) {
+                output
+                    .lifecycle("Browser did not open automatically. Open the preview URL manually.")
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            Ok(0)
+        }
         ThemeCommand::Console { args } => Err(backend_unavailable(
             "theme console",
             39,
@@ -5685,11 +5749,26 @@ pub enum ThemeCommand {
         store: String,
     },
     /// Preview a theme locally or remotely.
+    #[command(disable_version_flag = true)]
     Preview {
-        #[arg(long)]
-        theme: Option<u64>,
-        #[arg(long)]
+        #[arg(short = 't', long, env = "SHOPIFY_FLAG_THEME_ID", required = true)]
+        theme: String,
+        #[arg(long, env = "SHOPIFY_FLAG_OVERRIDES", required = true)]
+        overrides: PathBuf,
+        #[arg(long, env = "SHOPIFY_FLAG_PREVIEW_ID")]
+        preview_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_OPEN")]
+        open: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
         store: Option<String>,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
+        environment: Vec<String>,
     },
     /// Start the interactive theme console.
     Console {

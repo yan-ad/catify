@@ -5,13 +5,13 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 86,
-    "tested": 98,
+    "implemented": 87,
+    "tested": 99,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 13,
-      "native": 59,
+      "blocked": 12,
+      "native": 60,
       "partial": 12
     },
     "by_domain": {
@@ -53,8 +53,8 @@
       },
       "theme": {
         "adapter": 2,
-        "blocked": 3,
-        "native": 13,
+        "blocked": 2,
+        "native": 14,
         "partial": 1
       },
       "upgrade": {
@@ -1461,11 +1461,14 @@
     {
       "command": "theme preview",
       "domain": "theme",
-      "status": "blocked",
+      "status": "native",
       "owner": 39,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust Theme API preview create/update accepts validated JSON overrides, resolves themes by ID or name, supports Shopify theme environments and stored credentials, returns preview URL/identifier, and optionally opens the browser.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

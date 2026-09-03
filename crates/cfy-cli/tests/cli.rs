@@ -8,6 +8,28 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn theme_preview_matches_shopify_override_and_preview_id_flags() {
+    let help = cfy(&[
+        "theme",
+        "preview",
+        "--theme",
+        "123",
+        "--overrides",
+        "overrides.json",
+        "--preview-id",
+        "existing",
+        "--open",
+        "--help",
+    ]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in ["--theme", "--overrides", "--preview-id", "--open"] {
+        assert!(help.contains(flag), "missing {flag}");
+    }
+    assert!(!help.contains("-V, --version"));
+}
+
+#[test]
 fn theme_metafields_pull_resolves_named_environment_and_hides_force() {
     let fixture = std::env::temp_dir().join(format!(
         "cfy-theme-env-{}-{}",
@@ -1502,10 +1524,10 @@ fn unavailable_backends_have_command_specific_diagnostics() {
     assert!(app_stderr.contains("issues/40"));
     assert!(!app_stderr.contains("reserved but not implemented yet"));
 
-    let theme = cfy(&["theme", "preview"]);
+    let theme = cfy(&["theme", "console"]);
     assert_eq!(theme.status.code(), Some(1));
     let theme_stderr = String::from_utf8_lossy(&theme.stderr);
-    assert!(theme_stderr.contains("theme preview is not available"));
+    assert!(theme_stderr.contains("theme console is not available"));
     assert!(theme_stderr.contains("issues/39"));
     assert!(!theme_stderr.contains("reserved but not implemented yet"));
 }
