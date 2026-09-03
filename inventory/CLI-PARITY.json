@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 88,
-    "tested": 100,
+    "implemented": 89,
+    "tested": 101,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 11,
-      "native": 61,
+      "blocked": 10,
+      "native": 62,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 9,
-        "native": 17,
+        "blocked": 8,
+        "native": 18,
         "partial": 5
       },
       "auth": {
@@ -429,11 +429,15 @@
     {
       "command": "app logs sources",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 40,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native project graph inspection lists function extension log sources at the exact nested command path without Shopify API or Shopify CLI subprocesses.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-cli/src/lib.rs::app_log_sources",
+        "crates/cfy-cli/src/lib.rs app log sources parser test",
+        "isolated CLI fixture smoke"
+      ],
       "live_verified": false,
       "notes": null
     },

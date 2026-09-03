@@ -259,11 +259,15 @@
       "status": "blocked"
     },
     "app logs sources": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-cli/src/lib.rs::app_log_sources",
+        "crates/cfy-cli/src/lib.rs app log sources parser test",
+        "isolated CLI fixture smoke"
+      ],
+      "implementation": "Rust-native project graph inspection lists function extension log sources at the exact nested command path without Shopify API or Shopify CLI subprocesses.",
       "live_verified": false,
       "owner": 40,
-      "status": "blocked"
+      "status": "native"
     },
     "app release": {
       "evidence": [

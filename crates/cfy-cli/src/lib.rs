@@ -104,6 +104,30 @@ impl Drop for AbortOnDrop {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum AppLogStatusArg {
+    Success,
+    Failure,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppLogsCommand {
+    /// Print source names accepted by `app logs --source`.
+    #[command(disable_version_flag = true)]
+    Sources {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum WebhookDeliveryMethodArg {
     Http,
     GooglePubSub,
@@ -4798,6 +4822,43 @@ async fn app_bulk_command(command: AppBulkCommand, output: &Output) -> Result<u8
     }
 }
 
+fn app_log_sources(
+    path: Option<PathBuf>,
+    config: Option<String>,
+    client_id: Option<String>,
+    reset: bool,
+    output: &Output,
+) -> Result<u8> {
+    let selected = selected_app_environment(path, config, client_id, reset)?;
+    let graph =
+        cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
+    let mut sources = graph
+        .apps
+        .first()
+        .into_iter()
+        .flat_map(|app| &app.extensions)
+        .filter(|extension| extension.family == cfy_config::graph::ExtensionFamily::Function)
+        .filter_map(|extension| {
+            extension
+                .handle
+                .as_deref()
+                .or(extension.name.as_deref())
+                .map(|handle| format!("extensions.{handle}"))
+        })
+        .collect::<Vec<_>>();
+    sources.sort();
+    sources.dedup();
+    let human = if sources.is_empty() {
+        "No app log sources found.".to_owned()
+    } else {
+        format!("extensions\n{}", sources.join("\n"))
+    };
+    output
+        .success(&human, &sources)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
 async fn app_webhook_command(
     command: AppWebhookCommand,
     non_interactive: bool,
@@ -5117,13 +5178,34 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
         )),
         AppCommand::Bulk { command } => app_bulk_command(command, output).await,
         AppCommand::Versions { command } => app_versions_command(command, output).await,
-        AppCommand::Logs { args } => Err(backend_unavailable(
+        AppCommand::Logs {
+            config,
+            auth_alias: _,
+            client_id,
+            path,
+            reset,
+            stores: _,
+            sources: _,
+            status: _,
+            command:
+                Some(AppLogsCommand::Sources {
+                    config: nested_config,
+                    auth_alias: _,
+                    client_id: nested_client_id,
+                    path: nested_path,
+                    reset: nested_reset,
+                }),
+        } => app_log_sources(
+            nested_path.or(path),
+            nested_config.or(config),
+            nested_client_id.or(client_id),
+            nested_reset || reset,
+            output,
+        ),
+        AppCommand::Logs { .. } => Err(backend_unavailable(
             "app logs",
             40,
-            format!(
-                "the streaming app logs backend is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
-                args.len()
-            ),
+            "the streaming app logs subscription backend is pending; `cfy app logs sources` is already native",
         )),
         AppCommand::Webhook { command } => {
             app_webhook_command(command, non_interactive, output).await
@@ -5686,10 +5768,27 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: AppVersionsCommand,
     },
-    /// Show application logs.
+    /// Stream application logs or list available sources.
+    #[command(disable_version_flag = true, subcommand_negates_reqs = true)]
     Logs {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(short = 's', long = "store", env = "SHOPIFY_FLAG_STORE", action = ArgAction::Append)]
+        stores: Vec<String>,
+        #[arg(long = "source", env = "SHOPIFY_FLAG_SOURCE", action = ArgAction::Append)]
+        sources: Vec<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_STATUS")]
+        status: Option<AppLogStatusArg>,
+        #[command(subcommand)]
+        command: Option<AppLogsCommand>,
     },
     /// Work with app webhooks.
     Webhook {
@@ -6216,6 +6315,15 @@ mod tests {
             .is_ok()
         );
         assert!(Cli::try_parse_from(["cfy", "app", "webhook-trigger"]).is_err());
+    }
+
+    #[test]
+    fn app_log_sources_uses_the_upstream_nested_command_path() {
+        assert!(
+            Cli::try_parse_from(["cfy", "app", "logs", "sources", "--config", "development",])
+                .is_ok()
+        );
+        assert!(Cli::try_parse_from(["cfy", "app", "logs-sources"]).is_err());
     }
 
     #[test]
