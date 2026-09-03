@@ -8,6 +8,117 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_extension_commands_match_nested_paths_and_generate_natively() {
+    let generate_help = cfy(&["app", "generate", "extension", "--help"]);
+    assert!(generate_help.status.success());
+    let generate_help = String::from_utf8_lossy(&generate_help.stdout);
+    for flag in [
+        "--auth-alias",
+        "--client-id",
+        "--config",
+        "--flavor",
+        "--name",
+        "--path",
+        "--reset",
+        "--template",
+    ] {
+        assert!(
+            generate_help.contains(flag),
+            "missing generate extension flag {flag}"
+        );
+    }
+    assert!(
+        !cfy(&["app", "generate-extension", "--help"])
+            .status
+            .success()
+    );
+    let import_help = cfy(&["app", "import-extensions", "--help"]);
+    assert!(import_help.status.success());
+
+    let base = std::env::temp_dir().join(format!(
+        "cfy-generate-extension-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let app = base.join("app");
+    let repo = base.join("templates");
+    std::fs::create_dir_all(repo.join("checkout-extension")).unwrap();
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("shopify.app.toml"), "client_id = \"fixture\"\n").unwrap();
+    std::fs::write(
+        repo.join("checkout-extension/shopify.extension.toml.liquid"),
+        "name = \"{{ name }}\"\nhandle = \"{{ handle }}\"\ntype = \"{{ type }}\"\n",
+    )
+    .unwrap();
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["init", "-q"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "."])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.com",
+                "commit",
+                "-qm",
+                "fixture"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .env("CFY_EXTENSION_TEMPLATE_REPO", &repo)
+        .args([
+            "--non-interactive",
+            "app",
+            "generate",
+            "extension",
+            "--path",
+        ])
+        .arg(&app)
+        .args([
+            "--template",
+            "checkout_ui_extension",
+            "--name",
+            "Checkout Helper",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        app.join("extensions/checkout-helper/shopify.extension.toml")
+            .is_file()
+    );
+    std::fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
 fn app_deploy_matches_shopify_flags_and_noninteractive_safety() {
     let help = cfy(&["app", "deploy", "--help"]);
     assert!(help.status.success());

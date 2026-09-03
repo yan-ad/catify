@@ -1,5 +1,8 @@
 //! Native Shopify app-management workflows.
 
+pub mod extension_generate;
+pub mod extension_import;
+
 use base64::{
     Engine as _,
     engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
@@ -24,6 +27,15 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
   appsConnection(query: $query, first: 50) {
     edges { node { id key activeRelease { id version { name } } } }
     pageInfo { hasNextPage }
+  }
+}"#;
+// The dashboard registration schema is unstable and deliberately isolated behind
+// ExtensionRegistrationProvider. Fixtures protect this wire shape from accidental drift.
+const EXTENSION_REGISTRATIONS_QUERY: &str = r#"query ExtensionRegistrations($apiKey: String!) {
+  app: appByKey(key: $apiKey) {
+    extensionRegistrations { uuid title type draftVersion { config } activeVersion { config } }
+    configurationRegistrations { uuid title type draftVersion { config } activeVersion { config } }
+    dashboardManagedExtensionRegistrations { uuid title type draftVersion { config } activeVersion { config } }
   }
 }"#;
 
@@ -262,7 +274,60 @@ pub struct AppManagementClient {
     graphql: GraphQlClient,
 }
 
+#[async_trait::async_trait]
+impl extension_import::ExtensionRegistrationProvider for AppManagementClient {
+    async fn fetch_extension_registrations(
+        &self,
+        client_id: &str,
+        organization_id: &str,
+    ) -> Result<Vec<extension_import::RemoteExtensionRegistration>> {
+        self.extension_registrations(client_id, organization_id)
+            .await
+    }
+}
+
 impl AppManagementClient {
+    /// Fetch extension registrations from the dashboard without invoking Shopify CLI.
+    pub async fn extension_registrations(
+        &self,
+        client_id: &str,
+        organization_id: &str,
+    ) -> Result<Vec<extension_import::RemoteExtensionRegistration>> {
+        #[derive(Deserialize)]
+        struct Data {
+            app: Option<App>,
+        }
+        #[derive(Deserialize)]
+        struct App {
+            #[serde(rename = "extensionRegistrations", default)]
+            registrations: Vec<extension_import::RemoteExtensionRegistration>,
+            #[serde(rename = "configurationRegistrations", default)]
+            configurations: Vec<extension_import::RemoteExtensionRegistration>,
+            #[serde(rename = "dashboardManagedExtensionRegistrations", default)]
+            dashboard: Vec<extension_import::RemoteExtensionRegistration>,
+        }
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                EXTENSION_REGISTRATIONS_QUERY,
+                serde_json::json!({"apiKey": client_id, "organizationId": organization_id}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::api(format!(
+                    "could not fetch extension registrations for `{client_id}`: {error}"
+                ))
+            })?;
+        let app = response.data.app.ok_or_else(|| {
+            Error::api(format!("no Shopify app found for client ID `{client_id}`"))
+        })?;
+        let mut registrations = app.registrations;
+        registrations.extend(app.configurations);
+        registrations.extend(app.dashboard);
+        registrations.sort_by(|left, right| left.uuid.cmp(&right.uuid));
+        Ok(registrations)
+    }
+
     pub async fn app_client_credentials(&self, client_id: &str) -> Result<AppClientCredentials> {
         #[derive(Deserialize)]
         struct Data {
@@ -1439,6 +1504,48 @@ uri = "/webhooks"
         assert_eq!(credentials.client_id, "client-1");
         assert_eq!(credentials.client_secret.expose(), "super-secret");
         assert!(!format!("{credentials:?}").contains("super-secret"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn app_management_backend_decodes_all_extension_registration_families() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = vec![0_u8; 8192];
+            let read = stream.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.contains("organizationId"));
+            assert!(request.contains("organization-7"));
+            assert!(request.contains("dashboardManagedExtensionRegistrations"));
+            let body = r#"{"data":{"app":{"extensionRegistrations":[{"uuid":"a","title":"Theme","type":"theme","draftVersion":{"config":"{\"description\":\"draft\"}"},"activeVersion":null}],"configurationRegistrations":[{"uuid":"b","title":"Flow","type":"flow_action","draftVersion":null,"activeVersion":{"config":"{\"description\":\"active\"}"}}],"dashboardManagedExtensionRegistrations":[{"uuid":"c","title":"Pixel","type":"web_pixel","draftVersion":{"config":"{\"runtime_context\":\"strict\"}"},"activeVersion":null}]}}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        let client = AppManagementClient::new(
+            &format!("http://{address}/app_management/unstable/graphql.json"),
+            "token",
+        )
+        .unwrap();
+        let registrations = client
+            .extension_registrations("client-1", "organization-7")
+            .await
+            .unwrap();
+        assert_eq!(
+            registrations
+                .iter()
+                .map(|item| item.uuid.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b", "c"]
+        );
+        assert_eq!(registrations[0].configuration["description"], "draft");
+        assert_eq!(registrations[1].configuration["description"], "active");
+        assert_eq!(registrations[2].configuration["runtime_context"], "strict");
         server.await.unwrap();
     }
 

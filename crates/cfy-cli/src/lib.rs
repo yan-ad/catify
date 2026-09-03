@@ -5,6 +5,10 @@ use crate::output::Output;
 use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
 use cfy_app::{
     AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
+    extension_generate::{GenerateExtensionOptions, generate_extension},
+    extension_import::{
+        ExistingDirectoryPolicy, ImportExtensionsOptions, ImportSelection, import_extensions,
+    },
     write_linked_config,
 };
 use cfy_auth::{
@@ -92,6 +96,47 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn authenticated_session(identity: &str) -> Result<Session> {
+    let store = Arc::new(NativeCredentialStore::default());
+    let identity_client = Arc::new(IdentityClient::new(
+        HttpIdentityTransport::new()?,
+        IdentityConfig::from_env(|key| env::var(key).ok())?,
+    ));
+    let sessions = cfy_auth::SessionManager::new(store, identity_client);
+    sessions.session(identity).await?.ok_or_else(|| {
+        Error::new(
+            ErrorKind::Api,
+            format!("no authenticated session for `{identity}`; run `cfy auth login --identity {identity}` first"),
+        )
+    })
+}
+
+fn required_interactive_value(
+    value: Option<String>,
+    label: &str,
+    non_interactive: bool,
+) -> Result<String> {
+    if let Some(value) = value.filter(|value| !value.trim().is_empty()) {
+        return Ok(value);
+    }
+    if non_interactive || !io::stdin().is_terminal() {
+        return Err(Error::invalid_input(format!(
+            "{label} is required in non-interactive mode"
+        )));
+    }
+    eprint!("{label}: ");
+    io::stderr().flush().ok();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(|error| {
+        Error::with_source(ErrorKind::Process, format!("could not read {label}"), error)
+    })?;
+    let value = input.trim();
+    if value.is_empty() {
+        return Err(Error::invalid_input(format!("{label} cannot be empty")));
+    }
+    Ok(value.to_owned())
 }
 
 async fn build_app_graph(
@@ -4558,19 +4603,87 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        AppCommand::ImportExtensions => Err(backend_unavailable(
-            "app import-extensions",
-            24,
-            "extension discovery exists, but the import workflow is not wired to the CLI yet",
-        )),
-        AppCommand::GenerateExtension { args } => Err(backend_unavailable(
-            "app generate extension",
-            24,
-            format!(
-                "extension schema discovery exists, but template generation is pending ({} forwarded argument(s))",
-                args.len()
-            ),
-        )),
+        AppCommand::ImportExtensions {
+            config,
+            auth_alias,
+            client_id,
+            path,
+            reset,
+        } => {
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let client_id = selected
+                .document
+                .get("client_id")
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Error::invalid_input("selected app configuration has no client_id")
+                })?;
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let session = authenticated_session(&identity).await?;
+            let organizations = BusinessPlatformClient::from_session(&session)
+                .await?
+                .list_organizations()
+                .await?;
+            let organization = if organizations.len() == 1 {
+                organizations[0].clone()
+            } else if non_interactive {
+                return Err(Error::invalid_input(
+                    "multiple organizations are available; run interactively to select one",
+                ));
+            } else {
+                select_organization(&organizations)?
+            };
+            let backend = AppManagementClient::from_session(&session).await?;
+            let options = ImportExtensionsOptions {
+                app_directory: selected.project.root().to_owned(),
+                client_id: client_id.to_owned(),
+                organization_id: organization.id,
+                selection: ImportSelection::All,
+                existing_directory_policy: ExistingDirectoryPolicy::Skip,
+            };
+            let report = import_extensions(&backend, &options)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            output
+                .success("Extensions imported", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
+        AppCommand::Generate {
+            command:
+                AppGenerateCommand::Extension {
+                    config,
+                    auth_alias: _,
+                    client_id,
+                    path,
+                    reset,
+                    template,
+                    name,
+                    flavor,
+                },
+        } => {
+            let selected = selected_app_environment(path, config, client_id, reset)?;
+            let template =
+                required_interactive_value(template, "Extension template", non_interactive)?;
+            let name = required_interactive_value(name, "Extension name", non_interactive)?;
+            let supervisor = Supervisor::default();
+            let report = generate_extension(
+                &supervisor,
+                &GenerateExtensionOptions {
+                    app_directory: selected.project.root().to_owned(),
+                    name,
+                    template,
+                    flavor,
+                    repository: env::var("CFY_EXTENSION_TEMPLATE_REPO").ok(),
+                },
+            )
+            .await
+            .map_err(|error| Error::process(error.to_string()))?;
+            output
+                .success("Extension generated", &report)
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
         AppCommand::ImportCustomDataDefinitions => Err(backend_unavailable(
             "app import-custom-data-definitions",
             40,
@@ -4733,6 +4846,29 @@ async fn app_versions_command(command: AppVersionsCommand, output: &Output) -> R
 }
 
 #[derive(Debug, Subcommand)]
+pub enum AppGenerateCommand {
+    /// Generate a new app extension.
+    Extension {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+        #[arg(short = 't', long, env = "SHOPIFY_FLAG_EXTENSION_TEMPLATE")]
+        template: Option<String>,
+        #[arg(short = 'n', long, env = "SHOPIFY_FLAG_NAME")]
+        name: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_FLAVOR", value_parser = ["vanilla-js", "react", "typescript", "typescript-react", "wasm", "rust"])]
+        flavor: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum AppCommand {
     /// Build the app, including extensions.
     Build {
@@ -4864,12 +5000,23 @@ pub enum AppCommand {
         #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
         version: String,
     },
-    /// Import app extensions.
-    ImportExtensions,
-    /// Generate an extension.
-    GenerateExtension {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+    /// Import dashboard-managed app extensions.
+    ImportExtensions {
+        #[arg(short = 'c', long, env = "SHOPIFY_FLAG_APP_CONFIG")]
+        config: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_CLIENT_ID", conflicts_with = "config")]
+        client_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(long, env = "SHOPIFY_FLAG_RESET")]
+        reset: bool,
+    },
+    /// Generate app resources.
+    Generate {
+        #[command(subcommand)]
+        command: AppGenerateCommand,
     },
     /// Import custom data definitions.
     ImportCustomDataDefinitions,
