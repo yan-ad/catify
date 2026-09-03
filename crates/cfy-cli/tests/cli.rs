@@ -8,6 +8,29 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 #[test]
+fn app_graphiql_matches_shopify_loopback_ui_flags() {
+    let help = cfy(&[
+        "app",
+        "graphiql",
+        "--store",
+        "shop.myshopify.com",
+        "--port",
+        "9123",
+        "--variables",
+        "{}",
+        "--version",
+        "2026-01",
+        "--help",
+    ]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in ["--store", "--port", "--variables", "--version"] {
+        assert!(help.contains(flag), "missing {flag}");
+    }
+    assert!(!help.contains("-V, --version"));
+}
+
+#[test]
 fn app_execute_matches_shopify_query_variables_and_output_flags() {
     let help = cfy(&[
         "app",

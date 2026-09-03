@@ -3,12 +3,17 @@
 //! This crate deliberately contains no CLI integration. It owns the typed HTTP,
 //! GraphQL, polling, credential-exchange, identifier, and raw JSONL contracts.
 
-use std::{fmt, sync::OnceLock, time::Duration};
+use std::{fmt, net::SocketAddr, sync::OnceLock, time::Duration};
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cfy_core::Cancellation;
 use reqwest::{StatusCode, Url, header::HeaderValue};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 const ACCESS_TOKEN_HEADER: &str = "x-shopify-access-token";
@@ -36,6 +41,8 @@ pub enum BulkError {
     MutationVariablesRequired,
     #[error("request transport failed: {0}")]
     Transport(#[source] reqwest::Error),
+    #[error("local GraphiQL server failed: {0}")]
+    ServerIo(#[source] std::io::Error),
     #[error("Shopify returned HTTP {status} (request ID: {request_id:?})")]
     Http {
         status: StatusCode,
@@ -63,6 +70,196 @@ pub enum BulkError {
     #[error("result is not valid UTF-8 JSONL")]
     InvalidJsonlEncoding,
 }
+
+pub struct GraphiqlServer {
+    listener: TcpListener,
+    client: BulkClient,
+    key: String,
+}
+
+impl GraphiqlServer {
+    pub async fn bind(client: BulkClient, port: u16) -> Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", port))
+            .await
+            .map_err(|error| {
+                BulkError::InvalidStore(format!("could not bind GraphiQL server: {error}"))
+            })?;
+        let mut key = [0_u8; 32];
+        getrandom::fill(&mut key).map_err(|error| {
+            BulkError::InvalidStore(format!("could not create GraphiQL key: {error}"))
+        })?;
+        Ok(Self {
+            listener,
+            client,
+            key: URL_SAFE_NO_PAD.encode(key),
+        })
+    }
+
+    pub fn url(&self, initial_variables: Option<&str>) -> Result<Url> {
+        let mut url = Url::parse(&format!("http://{}/", self.address()?))
+            .map_err(|_| BulkError::InvalidStore("could not build GraphiQL URL".into()))?;
+        url.query_pairs_mut().append_pair("key", &self.key);
+        if let Some(variables) = initial_variables {
+            url.query_pairs_mut().append_pair("variables", variables);
+        }
+        Ok(url)
+    }
+
+    pub fn address(&self) -> Result<SocketAddr> {
+        self.listener.local_addr().map_err(|error| {
+            BulkError::InvalidStore(format!("could not inspect GraphiQL address: {error}"))
+        })
+    }
+
+    pub async fn run(self, cancellation: &Cancellation) -> Result<()> {
+        loop {
+            if cancellation.is_cancelled() {
+                return Ok(());
+            }
+            if let Ok(accepted) =
+                tokio::time::timeout(Duration::from_millis(100), self.listener.accept()).await
+            {
+                let (stream, _) = accepted.map_err(BulkError::ServerIo)?;
+                let client = self.client.clone();
+                let key = self.key.clone();
+                tokio::spawn(async move {
+                    let _ = serve_graphiql_connection(stream, client, key).await;
+                });
+            }
+        }
+    }
+}
+
+async fn serve_graphiql_connection(
+    mut stream: TcpStream,
+    client: BulkClient,
+    key: String,
+) -> Result<()> {
+    const MAX_REQUEST: usize = 1024 * 1024;
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 8192];
+    let header_end = loop {
+        let read = stream.read(&mut chunk).await.map_err(BulkError::ServerIo)?;
+        if read == 0 {
+            return Ok(());
+        }
+        bytes.extend_from_slice(&chunk[..read]);
+        if bytes.len() > MAX_REQUEST {
+            return write_http(&mut stream, 413, "text/plain", b"Request too large").await;
+        }
+        if let Some(position) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+            break position + 4;
+        }
+    };
+    let headers = String::from_utf8_lossy(&bytes[..header_end]);
+    let first_line = headers.lines().next().unwrap_or_default();
+    let mut request = first_line.split_whitespace();
+    let method = request.next().unwrap_or_default().to_owned();
+    let path = request.next().unwrap_or_default().to_owned();
+    let requested_url = Url::parse(&format!("http://127.0.0.1{path}"))
+        .map_err(|_| BulkError::InvalidStore("GraphiQL request URL was invalid".into()))?;
+    let query_key = requested_url
+        .query_pairs()
+        .find_map(|(name, value)| (name == "key").then(|| value.into_owned()));
+    let header_key = headers.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("x-catify-graphiql-key")
+            .then(|| value.trim().to_owned())
+    });
+    if query_key.as_deref() != Some(&key) && header_key.as_deref() != Some(&key) {
+        return write_http(&mut stream, 403, "text/plain", b"Forbidden").await;
+    }
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    if content_length > MAX_REQUEST {
+        return write_http(&mut stream, 413, "text/plain", b"Request too large").await;
+    }
+    while bytes.len() < header_end + content_length {
+        let read = stream.read(&mut chunk).await.map_err(BulkError::ServerIo)?;
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..read]);
+    }
+    match (method.as_str(), requested_url.path()) {
+        ("GET", "/") => {
+            let html = GRAPHIQL_HTML.replace("__CATIFY_KEY__", &key);
+            write_http(
+                &mut stream,
+                200,
+                "text/html; charset=utf-8",
+                html.as_bytes(),
+            )
+            .await
+        }
+        ("POST", "/graphql") => {
+            #[derive(Deserialize)]
+            struct Request {
+                query: String,
+                #[serde(default)]
+                variables: serde_json::Value,
+            }
+            let body = bytes
+                .get(header_end..header_end + content_length)
+                .unwrap_or_default();
+            let request: Request =
+                serde_json::from_slice(body).map_err(|source| BulkError::MalformedJson {
+                    request_id: None,
+                    source,
+                })?;
+            let payload = match client
+                .execute_document(&request.query, request.variables)
+                .await
+            {
+                Ok(data) => serde_json::json!({"data": data}),
+                Err(error) => serde_json::json!({"errors": [{"message": error.to_string()}]}),
+            };
+            let body = serde_json::to_vec(&payload).map_err(|source| BulkError::MalformedJson {
+                request_id: None,
+                source,
+            })?;
+            write_http(&mut stream, 200, "application/json", &body).await
+        }
+        _ => write_http(&mut stream, 404, "text/plain", b"Not found").await,
+    }
+}
+
+async fn write_http(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<()> {
+    let reason = match status {
+        200 => "OK",
+        404 => "Not Found",
+        403 => "Forbidden",
+        413 => "Payload Too Large",
+        _ => "Error",
+    };
+    let response = format!(
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\ncache-control: no-store\r\nconnection: close\r\n\r\n",
+        body.len()
+    );
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .map_err(BulkError::ServerIo)?;
+    stream.write_all(body).await.map_err(BulkError::ServerIo)
+}
+
+const GRAPHIQL_HTML: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Catify GraphiQL</title>
+<style>html,body,#root{height:100%;margin:0}body{font-family:system-ui;background:#0a1314;color:#f1f2f2}textarea{width:95%;height:45%;margin:1rem;background:#132426;color:#fff;padding:1rem}button{margin-left:1rem;padding:.6rem 1rem}pre{margin:1rem;white-space:pre-wrap}</style></head>
+<body><textarea id="query">query { shop { name myshopifyDomain } }</textarea><textarea id="variables">{}</textarea><button id="run">Run</button><pre id="result"></pre>
+<script>const key='__CATIFY_KEY__';const initial=new URLSearchParams(location.search).get('variables');if(initial)document.getElementById('variables').value=initial;document.getElementById('run').onclick=async()=>{const query=document.getElementById('query').value;let variables;try{variables=JSON.parse(document.getElementById('variables').value||'{}')}catch(error){document.getElementById('result').textContent='Invalid variables JSON: '+error;return}const response=await fetch('/graphql',{method:'POST',headers:{'content-type':'application/json','x-catify-graphiql-key':key},body:JSON.stringify({query,variables})});document.getElementById('result').textContent=JSON.stringify(await response.json(),null,2)};</script></body></html>"#;
 #[derive(Deserialize)]
 struct ShopPlanData {
     shop: ShopPlanShop,
@@ -1255,6 +1452,77 @@ mod unit_tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("partner development stores"));
+    }
+
+    #[tokio::test]
+    async fn graphiql_server_requires_key_and_proxies_authenticated_queries() {
+        let backend = MockServer::start(vec![MockResponse {
+            status: 200,
+            body: r#"{"data":{"shop":{"name":"Demo"}}}"#,
+            headers: vec![],
+        }])
+        .await;
+        let client = BulkClient::new_at(
+            backend.base.clone(),
+            &ApiVersion::parse("2026-01").unwrap(),
+            &Secret::new("admin-secret"),
+        )
+        .unwrap();
+        let server = GraphiqlServer::bind(client, 0).await.unwrap();
+        let address = server.address().unwrap();
+        let url = server.url(Some(r#"{"id":"1"}"#)).unwrap();
+        let key = url
+            .query_pairs()
+            .find_map(|(name, value)| (name == "key").then(|| value.into_owned()))
+            .unwrap();
+        let cancellation = Cancellation::default();
+        let signal = cancellation.clone();
+        let task = tokio::spawn(async move { server.run(&signal).await });
+
+        async fn request(address: SocketAddr, request: String) -> String {
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut response = Vec::new();
+            stream.read_to_end(&mut response).await.unwrap();
+            String::from_utf8(response).unwrap()
+        }
+
+        let forbidden = request(
+            address,
+            "GET / HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".into(),
+        )
+        .await;
+        assert!(forbidden.starts_with("HTTP/1.1 403"));
+
+        let page = request(
+            address,
+            format!("GET /?key={key} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n"),
+        )
+        .await;
+        assert!(page.starts_with("HTTP/1.1 200"));
+        assert!(page.contains("Catify GraphiQL"));
+        assert!(!page.contains("admin-secret"));
+
+        let body = r#"{"query":"query { shop { name } }","variables":{}}"#;
+        let response = request(
+            address,
+            format!(
+                "POST /graphql HTTP/1.1\r\nhost: localhost\r\nx-catify-graphiql-key: {key}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            ),
+        )
+        .await;
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response.contains("\"name\":\"Demo\""));
+        assert!(
+            backend
+                .request(0)
+                .await
+                .contains("x-shopify-access-token: admin-secret")
+        );
+
+        cancellation.cancel();
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]

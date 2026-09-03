@@ -19,7 +19,8 @@ use cfy_auth::{
 use cfy_build::{BuildInput, BuildMode, BuildOptions, BuildPipeline};
 use cfy_bulk::{
     AppCredentials as BulkAppCredentials, BulkClient, BulkOperationId, BulkOperationStatus,
-    StoreDomain as BulkStoreDomain, exchange_client_credentials, resolve_api_version,
+    GraphiqlServer, StoreDomain as BulkStoreDomain, exchange_client_credentials,
+    resolve_api_version,
 };
 use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
@@ -4827,11 +4828,56 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
             }
             Ok(0)
         }
-        AppCommand::Graphiql => Err(backend_unavailable(
-            "app graphiql",
-            40,
-            "the app-scoped GraphiQL session backend is pending; use Shopify CLI for this command for now",
-        )),
+        AppCommand::Graphiql {
+            context,
+            port,
+            variables,
+            version,
+        } => {
+            if non_interactive || !io::stdin().is_terminal() {
+                return Err(Error::invalid_input(
+                    "app graphiql requires an interactive terminal; use `cfy app execute` for automation",
+                ));
+            }
+            if let Some(value) = &variables {
+                let parsed: serde_json::Value = serde_json::from_str(value).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        "--variables must contain valid JSON",
+                        error,
+                    )
+                })?;
+                if !parsed.is_object() {
+                    return Err(Error::invalid_input(
+                        "GraphiQL variables must be a JSON object",
+                    ));
+                }
+            }
+            let client = app_bulk_client(context, version.as_deref()).await?;
+            let server = GraphiqlServer::bind(client, port.unwrap_or(3457))
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            let url = server
+                .url(variables.as_deref())
+                .map_err(|error| Error::api(error.to_string()))?;
+            output
+                .success(
+                    &format!("GraphiQL is running at {url}\nPress Ctrl+C to stop."),
+                    &serde_json::json!({"url": url}),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            if !open_browser(url.as_str()) {
+                output
+                    .lifecycle("Browser did not open automatically. Open the URL above manually.")
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            let cancellation = Cancellation::default();
+            tokio::select! {
+                result = server.run(&cancellation) => result.map_err(|error| Error::api(error.to_string()))?,
+                _ = tokio::signal::ctrl_c() => cancellation.cancel(),
+            }
+            Ok(0)
+        }
         AppCommand::Release {
             config,
             auth_alias,
@@ -5294,7 +5340,17 @@ pub enum AppCommand {
         output_file: Option<PathBuf>,
     },
     /// Open GraphiQL for the app.
-    Graphiql,
+    #[command(disable_version_flag = true)]
+    Graphiql {
+        #[command(flatten)]
+        context: AppBulkContext,
+        #[arg(long, env = "SHOPIFY_FLAG_PORT", value_parser = clap::value_parser!(u16).range(1..))]
+        port: Option<u16>,
+        #[arg(short = 'v', long, env = "SHOPIFY_FLAG_VARIABLES")]
+        variables: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
+    },
     /// Release an app version.
     #[command(disable_version_flag = true)]
     Release {

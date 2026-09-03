@@ -200,11 +200,14 @@
       "tested": true
     },
     "app graphiql": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
+      "implementation": "Rust loopback-only GraphiQL UI reuses native app credential exchange and Admin GraphQL execution, protects localhost with a random per-session key, never exposes access tokens to browser content, and shuts down on Ctrl+C.",
       "live_verified": false,
       "owner": 40,
-      "status": "blocked"
+      "status": "native"
     },
     "app import-custom-data-definitions": {
       "evidence": [],

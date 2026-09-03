@@ -5,19 +5,19 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 84,
-    "tested": 97,
+    "implemented": 85,
+    "tested": 98,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 15,
-      "native": 57,
+      "blocked": 14,
+      "native": 58,
       "partial": 12
     },
     "by_domain": {
       "app": {
-        "blocked": 11,
-        "native": 15,
+        "blocked": 10,
+        "native": 16,
         "partial": 5
       },
       "auth": {
@@ -350,11 +350,14 @@
     {
       "command": "app graphiql",
       "domain": "app",
-      "status": "blocked",
+      "status": "native",
       "owner": 40,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust loopback-only GraphiQL UI reuses native app credential exchange and Admin GraphQL execution, protects localhost with a random per-session key, never exposes access tokens to browser content, and shuts down on Ctrl+C.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-bulk/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

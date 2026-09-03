@@ -542,7 +542,9 @@ dependencies = [
 name = "cfy-bulk"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "cfy-core",
+ "getrandom 0.3.4",
  "reqwest",
  "rustls",
  "serde",

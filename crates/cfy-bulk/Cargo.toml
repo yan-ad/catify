@@ -8,6 +8,8 @@ repository.workspace = true
 
 [dependencies]
 cfy-core.workspace = true
+base64.workspace = true
+getrandom.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 serde.workspace = true
