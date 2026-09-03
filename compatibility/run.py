@@ -20,6 +20,19 @@ def run(binary, args, env):
     p = subprocess.run([binary, *args], env=env, text=True, capture_output=True, timeout=30)
     return {"exit": p.returncode, "stdout": normalize(p.stdout), "stderr": normalize(p.stderr), "duration_ms": round((time.monotonic()-started)*1000)}
 
+def command_catalog(binary, env):
+    try:
+        p = subprocess.run([binary, "commands", "--json"], env=env, text=True, capture_output=True, timeout=30)
+        commands = json.loads(p.stdout)
+        names = []
+        for command in commands:
+            name = command.get("name") or command.get("id", "").replace(":", " ")
+            if name:
+                names.append(name)
+        return sorted(names)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, KeyError, TypeError):
+        return []
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cfy", default="./target/debug/cfy")
@@ -43,7 +56,8 @@ def main():
         expected = scenario["name"] in deviations
         if mismatch and not expected: failures.append(scenario["name"])
         rows.append({"name":scenario["name"],"args":scenario["args"],"cfy":cfy,"shopify":shop,"same":same,"expected_deviation":expected})
-    report={"schema_version":1,"generated_at":time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),"upstream":{"version":version(ns.shopify)},"scenarios":rows,"unexpected_mismatches":failures}
+    cfy_commands=command_catalog(ns.cfy,base); shopify_commands=command_catalog(ns.shopify,base)
+    report={"schema_version":1,"generated_at":time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),"catify":{"version":version(ns.cfy)},"upstream":{"version":version(ns.shopify)},"command_catalog":{"catify_count":len(cfy_commands),"shopify_count":len(shopify_commands),"missing_in_catify":sorted(set(shopify_commands)-set(cfy_commands)),"extra_in_catify":sorted(set(cfy_commands)-set(shopify_commands))},"scenarios":rows,"unexpected_mismatches":failures}
     out=Path(ns.output); out.parent.mkdir(parents=True, exist_ok=True); out.write_text(json.dumps(report,indent=2)+"\n")
     print(f"compatibility: {len(rows)} scenarios, {len(failures)} unexpected mismatches; upstream={report['upstream']['version']}")
     return 1 if failures else 0

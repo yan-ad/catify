@@ -16,6 +16,21 @@
 | `native` | 70 | Implemented in Rust and exposed at the upstream command path. |
 | `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
+## Runtime black-box parity
+
+> Last run: `2026-09-03T10:19:46Z` using Catify `cfy 0.1.0` against Shopify CLI `4.7.1`.
+
+- Scenarios: **10**
+- Exact stdout/stderr/exit matches: **0**
+- Documented expected deviations: **10**
+- Unexpected mismatches: **0**
+
+This fixture suite compares observable command contracts. It is separate from authenticated store/app verification and does not change the live-verified command count above.
+
+Live command catalog: Catify **111**, Shopify **111**, missing in Catify **0**, extra in Catify **0**.
+
+Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-help`, `theme-help`, `theme-check-missing`, `app-help`, `app-info-outside-project`, `app-build-outside-project`, `deploy-dry-run`.
+
 ## Commands
 
 | Command | Status | Tested | Live | Owner | Implementation / gap |

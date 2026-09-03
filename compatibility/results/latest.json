@@ -1,8 +1,17 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-18T08:23:51Z",
+  "generated_at": "2026-09-03T10:19:46Z",
+  "catify": {
+    "version": "cfy 0.1.0"
+  },
   "upstream": {
-    "version": "4.6.1"
+    "version": "4.7.1"
+  },
+  "command_catalog": {
+    "catify_count": 111,
+    "shopify_count": 111,
+    "missing_in_catify": [],
+    "extra_in_catify": []
   },
   "scenarios": [
     {
@@ -12,15 +21,15 @@
       ],
       "cfy": {
         "exit": 0,
-        "stdout": "A fast, memory-efficient Shopify CLI alternative\n\nUsage: cfy [OPTIONS] [COMMAND]\n\nCommands:\n  help          Display help for Catify\n  commands      List all public Catify commands\n  app           Manage Shopify apps\n  theme         Manage Shopify themes\n  completion    Generate a shell completion script on standard output\n  version       Print build and runtime version information\n  upgrade       Upgrade Catify through a supported installation channel\n  auth          Authentication operations\n  config        Catify configuration options\n  notification  Show or clear Catify notification state\n  cache         Manage local caches\n  doctor        Diagnose the local Catify environment and project\n  doc           Search and fetch Shopify documentation\n  hydrogen      Build Hydrogen storefronts\n  organization  List Shopify organizations\n  store         Work directly with Shopify stores\n  search        Search Shopify developer documentation\n\nOptions:\n  -v, --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
+        "stdout": "A fast, memory-efficient Shopify CLI alternative\n\nUsage: cfy [OPTIONS] [COMMAND]\n\nCommands:\n  help          Display help for Catify\n  commands      List all public Catify commands\n  app           Manage Shopify apps\n  theme         Manage Shopify themes\n  completion    Generate a shell completion script on standard output\n  version       Print build and runtime version information\n  upgrade       Upgrade Catify through a supported installation channel\n  auth          Authentication operations\n  config        Catify configuration options\n  notification  Show or clear Catify notification state\n  cache         Manage local caches\n  doctor        Diagnose the local Catify environment and project\n  doc           Search and fetch Shopify documentation\n  hydrogen      Build Hydrogen storefronts\n  organization  List Shopify organizations\n  store         Work directly with Shopify stores\n  plugins       Manage CLI plugins\n  search        Search Shopify developer documentation\n\nOptions:\n      --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
         "stderr": "",
-        "duration_ms": 21
+        "duration_ms": 37
       },
       "shopify": {
         "exit": 0,
-        "stdout": "A CLI tool to build for the Shopify platform\n\nVERSION\n  <version> darwin-arm64 node-v22.15.1\n\nUSAGE\n  $ shopify [COMMAND]\n\nTOPICS\n  app           Build Shopify apps.\n  auth          Auth operations.\n  config        CLI configuration options.\n  doc           Search and fetch documentation from shopify.dev.\n  hydrogen      Build Hydrogen storefronts.\n  organization  List Shopify organizations you have access to.\n  store         Work directly with Shopify stores.\n  theme         Build Liquid themes.\n  upgrade       Upgrades Shopify CLI.\n\nCOMMANDS\n  commands  List all shopify commands.\n  help      Display help for Shopify CLI\n  search    Search shopify.dev for the most relevant content matching a query.\n            Best for discovery \u2014 surfacing the relevant pieces of documentation\n            for a topic, rather than retrieving a whole document. To download a\n            full document verbatim, use `doc fetch`.\n  upgrade   Upgrades Shopify CLI.\n  version   Shopify CLI version currently installed.\n\n",
+        "stdout": "A CLI tool to build for the Shopify platform\n\nVERSION\n  <version> darwin-arm64 node-v25.2.1\n\nUSAGE\n  $ shopify [COMMAND]\n\nTOPICS\n  app           Build Shopify apps.\n  auth          Auth operations.\n  config        CLI configuration options.\n  doc           Search and fetch documentation from shopify.dev.\n  hydrogen      Build Hydrogen storefronts.\n  organization  List Shopify organizations you have access to.\n  store         Work directly with Shopify stores.\n  theme         Build Liquid themes.\n  upgrade       Upgrades Shopify CLI.\n\nCOMMANDS\n  commands  List all shopify commands.\n  help      Display help for Shopify CLI\n  search    Search shopify.dev for the most relevant content matching a query.\n            Best for discovery \u2014 surfacing the relevant pieces of documentation\n            for a topic, rather than retrieving a whole document. To download a\n            full document verbatim, use `doc fetch`.\n  upgrade   Upgrades Shopify CLI.\n  version   Shopify CLI version currently installed.\n\n",
         "stderr": "",
-        "duration_ms": 380
+        "duration_ms": 119
       },
       "same": {
         "exit": true,
@@ -39,13 +48,13 @@
         "exit": 0,
         "stdout": "{\"name\":\"cfy\",\"version\":\"0.1.0\"}\n",
         "stderr": "",
-        "duration_ms": 11
+        "duration_ms": 13
       },
       "shopify": {
         "exit": 0,
-        "stdout": "4.6.1\n",
+        "stdout": "4.7.1\n",
         "stderr": "",
-        "duration_ms": 1907
+        "duration_ms": 565
       },
       "same": {
         "exit": true,
@@ -63,13 +72,13 @@
         "exit": 2,
         "stdout": "",
         "stderr": "error: unrecognized subcommand 'not-a-command'\n\nUsage: cfy [OPTIONS] [COMMAND]\n\nFor more information, try '--help'.\n",
-        "duration_ms": 8
+        "duration_ms": 9
       },
       "shopify": {
         "exit": 1,
         "stdout": "",
         "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Failed to prompt:                                                           \u2502\n\u2502                                                                              \u2502\n\u2502  Command not-a-command not found. Did you mean commands?                     \u2502\n\u2502                                                                              \u2502\n\u2502  This usually happens when running a command non-interactively, for example  \u2502\n\u2502   in a CI environment, or when piping to or from another process.            \u2502\n\u2502                                                                              \u2502\n\u2502  To resolve this, specify the option in the command, or run the command in   \u2502\n\u2502  an interactive environment such as your local terminal.                     \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
-        "duration_ms": 293
+        "duration_ms": 282
       },
       "same": {
         "exit": false,
@@ -86,15 +95,15 @@
       ],
       "cfy": {
         "exit": 0,
-        "stdout": "Catify configuration options\n\nUsage: cfy config [OPTIONS] <COMMAND>\n\nCommands:\n  autoupgrade  Enable automatic upgrades\n\nOptions:\n  -v, --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
+        "stdout": "Catify configuration options\n\nUsage: cfy config [OPTIONS] <COMMAND>\n\nCommands:\n  autoupgrade  Enable or disable automatic upgrade checks\n  autocorrect  Manage automatic correction of mistyped commands\n\nOptions:\n      --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
         "stderr": "",
-        "duration_ms": 8
+        "duration_ms": 11
       },
       "shopify": {
         "exit": 0,
         "stdout": "CLI configuration options.\n\nUSAGE\n  $ shopify config COMMAND\n\nTOPICS\n  config autocorrect  Command autocorrection options. If enabled, Shopify CLI\n                      will automatically run a corrected version of your command\n                      if a correction is available. Off by default.\n  config autoupgrade  Disable automatic upgrades for Shopify CLI.\n\n",
         "stderr": "",
-        "duration_ms": 185
+        "duration_ms": 109
       },
       "same": {
         "exit": true,
@@ -111,15 +120,15 @@
       ],
       "cfy": {
         "exit": 0,
-        "stdout": "Manage Shopify themes\n\nUsage: cfy theme [OPTIONS] <COMMAND>\n\nCommands:\n  check            Analyze theme code using the official Shopify Theme Check engine\n  dev              Create or reuse a development theme and continuously sync local changes\n  list             List themes available on a store\n  pull             Download a theme's selected assets into a local directory\n  push             Upload changed and new assets to a theme\n  open             Open the theme in Shopify admin\n  info             Show theme metadata\n  delete           Delete a theme. Requires --confirm\n  duplicate        Duplicate a theme\n  rename           Rename a theme\n  publish          Publish a theme. Requires --confirm\n  share            Create a shareable preview link\n  preview          Preview a theme locally or remotely\n  console          Start the interactive theme console\n  init             Initialize a theme directory with Shopify markers\n  package          Package a theme directory into a zip archive\n  language-server  Run the Theme Language Server adapter\n  metafields-pull  Pull theme metafields\n  profile          Profile theme operations\n\nOptions:\n  -v, --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
+        "stdout": "Manage Shopify themes\n\nUsage: cfy theme [OPTIONS] <COMMAND>\n\nCommands:\n  check            Analyze theme code using the official Shopify Theme Check engine\n  dev              Create or reuse a development theme and continuously sync local changes\n  list             List themes available on a store\n  pull             Download a theme's selected assets into a local directory\n  push             Upload changed and new assets to a theme\n  open             Open the theme in Shopify admin\n  info             Show theme metadata\n  delete           Delete a theme. Requires --confirm\n  duplicate        Duplicate a theme\n  rename           Rename a theme\n  publish          Publish a theme. Requires --confirm\n  share            Create a shareable preview link\n  preview          Preview a theme locally or remotely\n  console          Start the interactive theme console\n  init             Clone a Git repository as a starting point for a theme\n  package          Package a theme directory into a zip archive\n  language-server  Run the Theme Language Server adapter\n  metafields       Manage theme metafields\n  profile          Profile theme operations\n\nOptions:\n      --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
         "stderr": "",
-        "duration_ms": 8
+        "duration_ms": 12
       },
       "shopify": {
         "exit": 0,
         "stdout": "Build Liquid themes.\n\nUSAGE\n  $ shopify theme COMMAND\n\nTOPICS\n  theme metafields  Download metafields definitions from your shop into a local\n                    file.\n\nCOMMANDS\n  theme check            Validate the theme.\n  theme console          Shopify Liquid REPL (read-eval-print loop) tool\n  theme delete           Delete remote themes from the connected store. This\n                         command can't be undone.\n  theme dev              Uploads the current theme as a development theme to the\n                         connected store, then prints theme editor and preview\n                         URLs to your terminal. While running, changes will push\n                         to the store in real time.\n  theme duplicate        Duplicates a theme from your theme library.\n  theme info             Displays information about your theme environment,\n                         including your current store. Can also retrieve\n                         information about a specific theme.\n  theme init             Clones a Git repository to use as a starting point for\n                         building a new theme.\n  theme language-server  Start a Language Server Protocol server.\n  theme list             Lists the themes in your store, along with their IDs\n                         and statuses.\n  theme open             Opens the preview of your remote theme.\n  theme package          Package your theme into a .zip file, ready to upload to\n                         the Online Store.\n  theme preview          Applies JSON overrides to a theme and returns a preview\n                         URL.\n  theme profile          Profile the Liquid rendering of a theme page.\n  theme publish          Set a remote theme as the live theme.\n  theme pull             Download your remote theme files locally.\n  theme push             Uploads your local theme files to the connected store,\n                         overwriting the remote version if specified.\n  theme rename           Renames an existing theme.\n  theme share            Creates a shareable, unpublished, and new theme on your\n                         theme library with a randomized name.\n\n",
         "stderr": "",
-        "duration_ms": 185
+        "duration_ms": 108
       },
       "same": {
         "exit": true,
@@ -138,16 +147,16 @@
         "exit": 1,
         "stdout": "",
         "stderr": "error: external process failed: could not start Theme Check adapter `definitely-missing`: external process failed: could not start definitely-missing. Install Shopify CLI (`npm install -g @shopify/cli @shopify/theme`) or set CFY_THEME_CHECK_BIN to an official executable\n",
-        "duration_ms": 13
+        "duration_ms": 17
       },
       "shopify": {
-        "exit": 1,
+        "exit": 0,
         "stdout": "",
-        "stderr": "Error: ENOENT: no such file or directory, scandir '<path>\n    at async Object.readdir (node:internal/fs/promises:949:18)\n    at async Object.readDirectory (file://<path>\n    at async Qv (file://<path>\n    at async dH (file://<path> {\n  errno: -2,\n  code: 'ENOENT',\n  syscall: 'scandir',\n  path: '<path>\n}\n\u256d\u2500 info \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  crates/cfy-cli/tests/fixtures/theme-check/failing/templates/index.liquid    \u2502\n\u2502                                                                              \u2502\n\u2502                                                                              \u2502\n\u2502  [error]: ImgWidthAndHeight                                                  \u2502\n\u2502  Missing width and height attributes on img tag                              \u2502\n\u2502                                                                              \u2502\n\u2502  1  <img src=\"x\">                                                            \u2502\n\u2502                                                                              \u2502\n\u2502                                                                              \u2502\n\u2502  [warning]: RemoteAsset                                                      \u2502\n\u2502  Use one of the asset_url filters to serve assets for better performance.    \u2502\n\u2502                                                                              \u2502\n\u2502  1  <img src=\"x\">                                                            \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n\u256d\u2500 info \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Theme Check Summary.                                                        \u2502\n\u2502                                                                              \u2502\n\u2502  17 files inspected with 2 total offenses found across 1 files.              \u2502\n\u2502  1 errors.                                                                   \u2502\n\u2502  1 warnings.                                                                 \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
-        "duration_ms": 3047
+        "stderr": "\u256d\u2500 success \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Theme Check Summary.                                                        \u2502\n\u2502                                                                              \u2502\n\u2502  0 files inspected with no offenses found.                                   \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
+        "duration_ms": 606
       },
       "same": {
-        "exit": true,
+        "exit": false,
         "stdout": true,
         "stderr": false
       },
@@ -161,15 +170,15 @@
       ],
       "cfy": {
         "exit": 0,
-        "stdout": "Manage Shopify apps\n\nUsage: cfy app [OPTIONS] <COMMAND>\n\nCommands:\n  info                            Display the currently selected app\n  init                            Initialize a new app project\n  env                             Show app environment variables\n  env-pull                        Pull app environment configuration\n  config-validate                 Validate app configuration\n  config-link                     Link the current project to an app\n  config-pull                     Pull linked app configuration\n  config-use                      Select an app configuration\n  function                        Build app functions\n  versions-list                   List app versions\n  logs                            Show application logs\n  webhook-trigger                 Trigger an app webhook\n  execute                         Execute an Admin API query for the app\n  graphiql                        Open GraphiQL for the app\n  release                         Run a release operation\n  import-extensions               Import app extensions\n  generate-extension              Generate an extension\n  import-custom-data-definitions  Import custom data definitions\n\nOptions:\n  -v, --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
+        "stdout": "Manage Shopify apps\n\nUsage: cfy app [OPTIONS] <COMMAND>\n\nCommands:\n  build                           Build the app, including extensions\n  deploy                          Build, upload, create, and optionally release an app version\n  dev                             Run the app locally and watch its declared web processes\n  info                            Print basic information about the app and its extensions\n  init                            Initialize a new app project\n  env                             Manage app and extension environment variables\n  config                          Manage app configuration\n  function                        Work with Shopify Functions\n  bulk                            Execute and manage Admin API bulk operations\n  versions                        Manage deployed app versions\n  logs                            Stream application logs or list available sources\n  webhook                         Work with app webhooks\n  execute                         Execute an Admin API query for the app\n  graphiql                        Open GraphiQL for the app\n  release                         Release an app version\n  import-extensions               Import dashboard-managed app extensions\n  generate                        Generate app resources\n  import-custom-data-definitions  Import metafield and metaobject definitions\n\nOptions:\n      --verbose...       Increase diagnostic output; repeat for more detail\n      --no-color         Disable ANSI color output\n      --json             Emit machine-readable JSON when supported by the command\n      --non-interactive  Never prompt for interactive input\n  -h, --help             Print help\n  -V, --version          Print version\n",
         "stderr": "",
-        "duration_ms": 12
+        "duration_ms": 11
       },
       "shopify": {
         "exit": 0,
         "stdout": "Build Shopify apps.\n\nUSAGE\n  $ shopify app COMMAND\n\nTOPICS\n  app bulk      Run, check, and cancel bulk Admin API operations for an app on a\n                store.\n  app config    Manage app configuration.\n  app dev       Run the app.\n  app env       Manage environment variables.\n  app function  Manage Shopify Functions.\n  app generate  Generate a new app Extension.\n  app logs      Stream detailed logs for your Shopify app.\n  app versions  List deployed versions of your app.\n  app webhook   Trigger delivery of a sample webhook topic payload to a\n                designated address.\n\nCOMMANDS\n  app build                           Build the app, including extensions.\n  app deploy                          Deploy your Shopify app.\n  app dev                             Run the app.\n  app execute                         Execute GraphQL queries and mutations.\n  app graphiql                        Open a local GraphiQL UI for your app and\n                                      store.\n  app import-custom-data-definitions  Import metafield and metaobject\n                                      definitions.\n  app import-extensions               Import dashboard-managed extensions into\n                                      your app.\n  app info                            Print basic information about your app and\n                                      extensions.\n  app init                            Create a new app project\n  app logs                            Stream detailed logs for your Shopify app.\n  app release                         Release an app version.\n\n",
         "stderr": "",
-        "duration_ms": 193
+        "duration_ms": 96
       },
       "same": {
         "exit": true,
@@ -187,14 +196,14 @@
       "cfy": {
         "exit": 2,
         "stdout": "",
-        "stderr": "error: invalid input: the 'app info requires a discovered app project; app backend is not implemented yet' command group is reserved but not implemented yet\n",
-        "duration_ms": 11
+        "stderr": "error: invalid input: no Shopify app or theme project found from <path> run inside a project or pass an explicit project directory\n",
+        "duration_ms": 12
       },
       "shopify": {
         "exit": 1,
         "stdout": "",
-        "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Could not find a Shopify app configuration file. Looked in                  \u2502\n\u2502  <path> and parent directories.          \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
-        "duration_ms": 891
+        "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Could not find a Shopify app configuration file. Looked in                  \u2502\n\u2502  <path> and parent directories.                 \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
+        "duration_ms": 596
       },
       "same": {
         "exit": false,
@@ -212,14 +221,14 @@
       "cfy": {
         "exit": 2,
         "stdout": "",
-        "stderr": "error: unrecognized subcommand 'build'\n\nUsage: cfy app [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n",
-        "duration_ms": 9
+        "stderr": "error: invalid input: no Shopify app or theme project found from <path> run inside a project or pass an explicit project directory\n",
+        "duration_ms": 11
       },
       "shopify": {
         "exit": 1,
         "stdout": "",
-        "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Could not find a Shopify app configuration file. Looked in                  \u2502\n\u2502  <path> and parent directories.          \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
-        "duration_ms": 969
+        "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Could not find a Shopify app configuration file. Looked in                  \u2502\n\u2502  <path> and parent directories.                 \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
+        "duration_ms": 587
       },
       "same": {
         "exit": false,
@@ -238,14 +247,14 @@
       "cfy": {
         "exit": 2,
         "stdout": "",
-        "stderr": "error: unrecognized subcommand 'deploy'\n\nUsage: cfy app [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n",
-        "duration_ms": 9
+        "stderr": "error: unexpected argument '--dry-run' found\n\nUsage: cfy app deploy [OPTIONS]\n\nFor more information, try '--help'.\n",
+        "duration_ms": 17
       },
       "shopify": {
         "exit": 2,
         "stdout": "",
         "stderr": "\u256d\u2500 error \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                              \u2502\n\u2502  Nonexistent flag: --dry-run                                                 \u2502\n\u2502  See more help with --help                                                   \u2502\n\u2502                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n",
-        "duration_ms": 947
+        "duration_ms": 660
       },
       "same": {
         "exit": true,

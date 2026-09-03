@@ -60,7 +60,37 @@ def validate(runtime: dict[str, Any], status_doc: dict[str, Any]) -> list[str]:
     return errors
 
 
-def report(runtime: dict[str, Any], status_doc: dict[str, Any]) -> dict[str, Any]:
+def compatibility_summary(result: dict[str, Any]) -> dict[str, Any]:
+    exact_matches = []
+    expected_deviations = []
+    unexpected_mismatches = []
+    for scenario in result.get("scenarios", []):
+        if all(scenario.get("same", {}).values()):
+            exact_matches.append(scenario["name"])
+        elif scenario.get("expected_deviation"):
+            expected_deviations.append(scenario["name"])
+        else:
+            unexpected_mismatches.append(scenario["name"])
+
+    summary = {
+        "generated_at": result.get("generated_at"),
+        "catify_version": result.get("catify", {}).get("version", "unknown"),
+        "shopify_version": result.get("upstream", {}).get("version", "unknown"),
+        "scenarios": len(result.get("scenarios", [])),
+        "exact_matches": exact_matches,
+        "expected_deviations": expected_deviations,
+        "unexpected_mismatches": unexpected_mismatches,
+    }
+    if result.get("command_catalog"):
+        summary["command_catalog"] = result["command_catalog"]
+    return summary
+
+
+def report(
+    runtime: dict[str, Any],
+    status_doc: dict[str, Any],
+    compatibility: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     entries = status_doc["commands"]
     rows = []
     for command in runtime["commands"]:
@@ -86,7 +116,7 @@ def report(runtime: dict[str, Any], status_doc: dict[str, Any]) -> dict[str, Any
         counts = domain_counts.setdefault(row["domain"], collections.Counter())
         counts[row["status"]] += 1
 
-    return {
+    data = {
         "schema_version": 1,
         "upstream": {"version": runtime["runtime"]["version"]},
         "summary": {
@@ -102,6 +132,9 @@ def report(runtime: dict[str, Any], status_doc: dict[str, Any]) -> dict[str, Any
         },
         "commands": rows,
     }
+    if compatibility is not None:
+        data["runtime_compatibility"] = compatibility_summary(compatibility)
+    return data
 
 
 def markdown(data: dict[str, Any]) -> str:
@@ -133,6 +166,34 @@ def markdown(data: dict[str, Any]) -> str:
     for status, count in summary["by_status"].items():
         lines.append(f"| `{status}` | {count} | {meanings[status]} |")
 
+    compatibility = data.get("runtime_compatibility")
+    if compatibility:
+        exact = len(compatibility["exact_matches"])
+        expected = len(compatibility["expected_deviations"])
+        unexpected = len(compatibility["unexpected_mismatches"])
+        lines.extend([
+            "",
+            "## Runtime black-box parity",
+            "",
+            f"> Last run: `{compatibility['generated_at']}` using Catify `{compatibility['catify_version']}` against Shopify CLI `{compatibility['shopify_version']}`.",
+            "",
+            f"- Scenarios: **{compatibility['scenarios']}**",
+            f"- Exact stdout/stderr/exit matches: **{exact}**",
+            f"- Documented expected deviations: **{expected}**",
+            f"- Unexpected mismatches: **{unexpected}**",
+            "",
+            "This fixture suite compares observable command contracts. It is separate from authenticated store/app verification and does not change the live-verified command count above.",
+        ])
+        catalog = compatibility.get("command_catalog")
+        if catalog:
+            lines.extend([
+                "",
+                f"Live command catalog: Catify **{catalog['catify_count']}**, Shopify **{catalog['shopify_count']}**, missing in Catify **{len(catalog['missing_in_catify'])}**, extra in Catify **{len(catalog['extra_in_catify'])}**.",
+            ])
+        if compatibility["expected_deviations"]:
+            deviations = ", ".join(f"`{name}`" for name in compatibility["expected_deviations"])
+            lines.extend(["", f"Expected deviations: {deviations}."])
+
     lines.extend([
         "",
         "## Commands",
@@ -162,6 +223,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", type=pathlib.Path, default=pathlib.Path("inventory/runtime-shopify-cli.json"))
     parser.add_argument("--status", type=pathlib.Path, default=pathlib.Path("inventory/cli-command-status.json"))
+    parser.add_argument("--compatibility", type=pathlib.Path, default=pathlib.Path("compatibility/results/latest.json"))
     parser.add_argument("--json-output", type=pathlib.Path, default=pathlib.Path("inventory/CLI-PARITY.json"))
     parser.add_argument("--markdown-output", type=pathlib.Path, default=pathlib.Path("inventory/CLI-PARITY.md"))
     parser.add_argument("--check", action="store_true")
@@ -169,12 +231,13 @@ def main() -> int:
 
     runtime = load(args.runtime)
     status_doc = load(args.status)
+    compatibility = load(args.compatibility) if args.compatibility.exists() else None
     errors = validate(runtime, status_doc)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
 
-    data = report(runtime, status_doc)
+    data = report(runtime, status_doc, compatibility)
     json_text = json.dumps(data, indent=2, sort_keys=False) + "\n"
     markdown_text = markdown(data)
 
