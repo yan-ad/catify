@@ -12,6 +12,34 @@ upstream commands implemented, memory is peak RSS, bundle size compares the
 is median warm startup. See [`inventory/CLI-PARITY.md`](inventory/CLI-PARITY.md)
 and [`benchmarks/results/latest.json`](benchmarks/results/latest.json).
 
+## Installation
+
+### npm (macOS, Linux, and Windows)
+
+```sh
+npm install --global catify-cli
+cfy version
+```
+
+The npm package installs the native binary for the current OS and architecture.
+Node.js is only used during installation and as a small process launcher; Catify
+commands run in the Rust binary.
+
+### Installer script (macOS and Linux)
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/yan-ad/catify/main/install.sh | sh
+```
+
+The script installs to `~/.local/bin` by default and verifies the release archive
+against the published `SHA256SUMS`. Override the destination with
+`CFY_INSTALL_DIR=/usr/local/bin` or install a specific release with
+`CFY_VERSION=0.1.0`.
+
+See the complete [installation guide](docs/installation.md) for manual downloads,
+supported platforms, upgrades, uninstall steps, and npm publishing setup.
+
 ## Development
 
 ```sh

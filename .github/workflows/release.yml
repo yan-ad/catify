@@ -3,43 +3,178 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to release
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.94.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - id: version
+        shell: bash
+        run: echo "version=$(python scripts/check-release-version.py --tag "$RELEASE_TAG")" >> "$GITHUB_OUTPUT"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: python -m unittest discover -s scripts/tests
+      - run: npm test
+      - run: CFY_SKIP_DOWNLOAD=1 npm pack --dry-run
+
   build:
+    needs: verify
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            binary: target/x86_64-unknown-linux-gnu/release/cfy
+            smoke: true
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            binary: target/aarch64-unknown-linux-gnu/release/cfy
+            smoke: true
           - os: macos-14
             target: aarch64-apple-darwin
+            binary: target/aarch64-apple-darwin/release/cfy
+            smoke: true
+          - os: macos-14
+            target: x86_64-apple-darwin
+            binary: target/x86_64-apple-darwin/release/cfy
+            smoke: false
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: target/x86_64-pc-windows-msvc/release/cfy.exe
+            smoke: true
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.94.0
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
       - run: cargo build --release -p cfy-cli --target ${{ matrix.target }} --locked
+      - name: Smoke binary
+        if: matrix.smoke && runner.os != 'Windows'
+        shell: bash
+        run: ${{ matrix.binary }} version
+      - name: Smoke binary
+        if: matrix.smoke && runner.os == 'Windows'
+        shell: pwsh
+        run: '& "${{ matrix.binary }}" version'
       - name: Package artifact
-        env:
-          VERSION: ${{ github.ref_name }}
+        shell: bash
         run: |
-          VERSION=${VERSION#v}
-          python3 scripts/package-release.py \
-            --binary target/${{ matrix.target }}/release/cfy \
-            --version "$VERSION" \
+          python scripts/package-release.py \
+            --binary "${{ matrix.binary }}" \
+            --version "${{ needs.verify.outputs.version }}" \
             --target "${{ matrix.target }}" \
             --output dist
       - uses: actions/upload-artifact@v4
         with:
           name: cfy-${{ matrix.target }}
-          path: dist/*
+          path: dist/cfy-v*
+          if-no-files-found: error
 
-  windows-status:
+  github-release:
+    needs: [verify, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - run: echo "Windows archive publishing is intentionally deferred until signing/install smoke is established."
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - run: python scripts/generate-checksums.py dist/cfy-v* --output dist/SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/cfy-v* dist/SHA256SUMS --clobber
+          else
+            PRERELEASE=()
+            if [[ "${{ needs.verify.outputs.version }}" == *-* ]]; then
+              PRERELEASE=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" \
+              dist/cfy-v* dist/SHA256SUMS \
+              --verify-tag \
+              --generate-notes \
+              "${PRERELEASE[@]}" \
+              --title "Catify v${{ needs.verify.outputs.version }}"
+          fi
+
+  npm:
+    if: vars.NPM_PUBLISH == 'true'
+    needs: [verify, github-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@latest
+      - name: Publish npm package
+        shell: bash
+        run: |
+          DIST_TAG=latest
+          if [[ "${{ needs.verify.outputs.version }}" == *-* ]]; then
+            DIST_TAG=next
+          fi
+          CFY_SKIP_DOWNLOAD=1 npm publish --access public --tag "$DIST_TAG"

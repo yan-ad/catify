@@ -1,0 +1,40 @@
+{
+  "name": "catify-cli",
+  "version": "0.1.0",
+  "description": "Rust-native, memory-efficient Shopify CLI alternative",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yan-ad/catify.git"
+  },
+  "homepage": "https://catify.yan.ad",
+  "bugs": "https://github.com/yan-ad/catify/issues",
+  "keywords": [
+    "shopify",
+    "cli",
+    "rust",
+    "theme",
+    "app-development"
+  ],
+  "bin": {
+    "cfy": "bin/cfy.js"
+  },
+  "files": [
+    "bin/cfy.js",
+    "scripts/npm/install.js",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/npm/install.js",
+    "test": "node --test scripts/npm/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

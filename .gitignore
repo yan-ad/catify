@@ -7,3 +7,6 @@ benchmarks/results/*.json
 !benchmarks/results/.gitkeep
 shopify*.toml
 *.catify
+vendor/
+catify-cli-*.tgz
+dist/

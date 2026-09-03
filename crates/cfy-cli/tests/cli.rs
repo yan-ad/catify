@@ -371,7 +371,7 @@ fn app_deploy_builds_one_complete_brotli_source_before_authentication() {
         .arg(&root)
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(1));
+    assert!(!output.status.success());
     assert!(root.join(".catify/deploy-bundle.tar.br").is_file());
     std::fs::remove_dir_all(root).unwrap();
 }

@@ -32,6 +32,10 @@ def main():
     binary_name='cfy.exe' if 'windows' in ns.target else 'cfy'
     shutil.copy2(ns.binary, stage/binary_name)
     os.chmod(stage/binary_name, 0o755)
+    repository=pathlib.Path(__file__).resolve().parents[1]
+    for notice in ('LICENSE','THIRD_PARTY_NOTICES.md'):
+        source=repository/notice
+        if source.is_file(): shutil.copy2(source, stage/notice)
     (stage/'VERSION').write_text(ns.version+'\n')
     (stage/'README.txt').write_text(f'Catify {ns.version} ({ns.target})\nBinary: {binary_name}\n')
     ns.output.mkdir(parents=True, exist_ok=True)
