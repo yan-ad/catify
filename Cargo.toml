@@ -15,6 +15,7 @@ members = [
   "crates/cfy-tunnel",
   "crates/cfy-upgrade",
   "crates/cfy-extension-adapter",
+  "crates/cfy-functions",
   "crates/cfy-process",
   "crates/cfy-plugins",
   "crates/cfy-docs",
@@ -53,6 +54,7 @@ cfy-upgrade = { version = "0.1.0", path = "crates/cfy-upgrade" }
 cfy-config = { version = "0.1.0", path = "crates/cfy-config" }
 cfy-core = { version = "0.1.0", path = "crates/cfy-core" }
 cfy-extension-adapter = { version = "0.1.0", path = "crates/cfy-extension-adapter" }
+cfy-functions = { version = "0.1.0", path = "crates/cfy-functions" }
 cfy-process = { version = "0.1.0", path = "crates/cfy-process" }
 cfy-plugins = { version = "0.1.0", path = "crates/cfy-plugins" }
 clap = { version = "4.5.45", features = ["derive", "env"] }
