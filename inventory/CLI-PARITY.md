@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **104**
+- Implemented (`native` + `adapter`): **105**
 - Commands with automated evidence: **111**
 - Live-verified commands: **9**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `native` | 77 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 7 | Exact command path exists, but behavior is not yet fully compatible. |
+| `native` | 78 | Implemented in Rust and exposed at the upstream command path. |
+| `partial` | 6 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Runtime black-box parity
 
@@ -118,7 +118,7 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `store bulk cancel` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust validates numeric/full-GID operation IDs and sends the authenticated Admin GraphQL cancellation mutation using the per-store keychain session. Evidence: crates/cfy-bulk/src/lib.rs unit_tests::executes_statuses_and_cancels_with_typed_models_and_secret_header; crates/cfy-cli/src/lib.rs store_command; crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags. |
 | `store bulk execute` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust loads the per-store keychain token, resolves the Admin API version, runs bulk queries or explicitly allowed mutations, stages JSONL variables, polls on --watch, and atomically writes or streams downloaded results. Evidence: crates/cfy-bulk/src/lib.rs unit tests; crates/cfy-cli/src/lib.rs store_command; crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags. |
 | `store bulk status` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust queries a specific typed BulkOperation ID or lists operations created during the last seven days through the authenticated Admin GraphQL API. Evidence: crates/cfy-bulk/src/lib.rs unit_tests::executes_statuses_and_cancels_with_typed_models_and_secret_header; crates/cfy-cli/src/lib.rs store_command; crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags. |
-| `store create preview` | `partial` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | The exact nested command path and name/country flags invoke the native store management boundary. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags. The preview-store endpoint and country payload require live contract verification. |
+| `store create preview` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust sends the unauthenticated preview-store creation request with a stable Catify instance ID, validates and redacts the response, stores the returned Admin API token in the native store-auth keychain registry, and prints Shopify-compatible next steps. Evidence: crates/cfy-store/src/preview_store.rs tests; crates/cfy-store/src/store_auth.rs StoreAuthRegistry::save_preview; crates/cfy-cli/tests/cli.rs store_preview_create_matches_shopify_json_name_and_country_flags. |
 | `store execute` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `store graphiql` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust loads the store-auth keychain session, resolves the Admin API version, starts a CSRF-protected loopback GraphiQL UI, blocks mutations by default, and enables them only with --allow-mutations. Evidence: crates/cfy-bulk/src/lib.rs unit_tests::explicit_graphiql_policy_denies_or_allows_mutations_before_http; crates/cfy-bulk/src/lib.rs unit_tests::graphiql_server_requires_key_and_proxies_authenticated_queries; crates/cfy-cli/tests/cli.rs store_graphiql_matches_shopify_authenticated_ui_flags. |
 | `store info` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |

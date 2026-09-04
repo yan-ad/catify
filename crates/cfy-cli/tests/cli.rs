@@ -91,6 +91,27 @@ export = "run"
     std::fs::remove_dir_all(&fixture).unwrap();
 }
 
+#[test]
+fn store_preview_create_matches_shopify_json_name_and_country_flags() {
+    let help = cfy(&[
+        "store",
+        "create",
+        "preview",
+        "--name",
+        "Lavender Candles",
+        "--country",
+        "US",
+        "--json",
+        "--help",
+    ]);
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    for flag in ["-j, --json", "--name", "--country"] {
+        assert!(help.contains(flag), "missing {flag}");
+    }
+    assert!(!help.contains("-V, --version"));
+}
+
 fn cfy(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_cfy"))
         .args(args)

@@ -247,7 +247,37 @@ pub struct StoreAuthSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token_expires_at: Option<String>,
     pub associated_user: AssociatedUser,
+    #[serde(default)]
+    pub kind: StoreSessionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<PreviewStoreMetadata>,
     credential_identity: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StoreSessionKind {
+    #[default]
+    OAuth,
+    Preview,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct PreviewStoreMetadata {
+    pub shop_id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+}
+
+pub struct PreviewStoreSession<'a> {
+    pub store: &'a str,
+    pub shop_id: &'a str,
+    pub name: &'a str,
+    pub country: Option<&'a str>,
+    pub placeholder_account_uuid: Option<&'a str>,
+    pub scopes: &'a [String],
+    pub access_token: &'a Secret,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -348,6 +378,59 @@ impl StoreAuthRegistry {
                 expires_at: result.expires_at_unix.map(format_unix),
                 refresh_token_expires_at: result.refresh_token_expires_at_unix.map(format_unix),
                 associated_user: result.associated_user.clone(),
+                kind: StoreSessionKind::OAuth,
+                preview: None,
+                credential_identity: identity.clone(),
+            },
+        );
+        if let Err(error) = self.save_index(&index) {
+            let _ = self.credentials.delete(&identity).await;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub async fn save_preview(&self, preview: PreviewStoreSession<'_>) -> Result<()> {
+        let store = crate::StoreTarget::parse(preview.store)?.domain;
+        let user_id = preview
+            .placeholder_account_uuid
+            .unwrap_or(preview.shop_id)
+            .to_owned();
+        let identity = credential_identity(&store, &user_id);
+        let acquired_at_unix = unix_now();
+        let session = Session {
+            identity: identity.clone(),
+            display_name: Some(preview.name.to_owned()),
+            access_token: preview.access_token.clone(),
+            refresh_token: Secret::new(""),
+            expires_at_unix: u64::MAX,
+            scopes: preview.scopes.to_vec(),
+        };
+        self.credentials.save(&session).await?;
+        let associated_id = preview.shop_id.parse::<u64>().unwrap_or_default();
+        let mut index = self.load_index()?;
+        index.sessions.insert(
+            store.clone(),
+            StoreAuthSummary {
+                store,
+                user_id,
+                scopes: preview.scopes.to_vec(),
+                acquired_at: format_unix(acquired_at_unix),
+                expires_at: None,
+                refresh_token_expires_at: None,
+                associated_user: AssociatedUser {
+                    id: associated_id,
+                    email: None,
+                    first_name: None,
+                    last_name: None,
+                    account_owner: None,
+                },
+                kind: StoreSessionKind::Preview,
+                preview: Some(PreviewStoreMetadata {
+                    shop_id: preview.shop_id.to_owned(),
+                    name: preview.name.to_owned(),
+                    country: preview.country.map(str::to_owned),
+                }),
                 credential_identity: identity.clone(),
             },
         );

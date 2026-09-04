@@ -871,14 +871,16 @@
     },
     "store create preview": {
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-store/src/preview_store.rs tests",
+        "crates/cfy-store/src/store_auth.rs StoreAuthRegistry::save_preview",
+        "crates/cfy-cli/tests/cli.rs store_preview_create_matches_shopify_json_name_and_country_flags"
       ],
-      "implementation": "The exact nested command path and name/country flags invoke the native store management boundary.",
+      "implementation": "Rust sends the unauthenticated preview-store creation request with a stable Catify instance ID, validates and redacts the response, stores the returned Admin API token in the native store-auth keychain registry, and prints Shopify-compatible next steps.",
       "live_verified": false,
-      "notes": "The preview-store endpoint and country payload require live contract verification.",
+      "notes": null,
       "owner": 38,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "store execute": {
       "evidence": [

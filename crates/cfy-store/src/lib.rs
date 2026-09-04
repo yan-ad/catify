@@ -1,6 +1,7 @@
 //! Store command contracts: selection, safety, progress, and adapters.
 
 pub mod custom_data;
+pub mod preview_store;
 pub mod store_auth;
 
 use async_trait::async_trait;

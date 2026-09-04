@@ -73,7 +73,11 @@ use cfy_store::{
     AdminStoreBackend, OrganizationStoreClient, StoreBackend, StoreCommand as StoreOperation,
     StoreManagementBackend, StoreTarget, browser_url,
     custom_data::{existing_definitions, import_definitions},
-    store_auth::{StoreAuthBootstrap, StoreAuthCallback, StoreAuthRegistry, exchange_code},
+    preview_store::{PreviewStoreClient, PreviewStoreRequest},
+    store_auth::{
+        PreviewStoreSession, StoreAuthBootstrap, StoreAuthCallback, StoreAuthRegistry,
+        exchange_code,
+    },
 };
 use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
@@ -1585,7 +1589,10 @@ pub enum StoreAuthCommand {
 #[derive(Debug, Subcommand)]
 pub enum StoreCreateCommand {
     /// Create a preview Shopify store.
+    #[command(disable_version_flag = true)]
     Preview {
+        #[arg(short = 'j', long, env = "SHOPIFY_FLAG_JSON")]
+        json: bool,
         #[arg(long, env = "SHOPIFY_FLAG_PREVIEW_STORE_NAME")]
         name: Option<String>,
         #[arg(long, env = "SHOPIFY_FLAG_STORE_COUNTRY")]
@@ -4308,20 +4315,36 @@ async fn store_command(
             return Ok(0);
         }
         StoreCliCommand::Create {
-            command: StoreCreateCommand::Preview { name, country: _ },
+            command:
+                StoreCreateCommand::Preview {
+                    json,
+                    name,
+                    country,
+                },
         } => {
-            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
-                Error::new(
-                    ErrorKind::Api,
-                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
-                )
-            })?;
-            let token = store_token()?;
-            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let store = name.unwrap_or_else(|| "Catify preview store".to_owned());
-            let value = backend.create_preview(&store).await.map_err(Error::from)?;
+            let result = PreviewStoreClient::new()?
+                .create(PreviewStoreRequest { name, country })
+                .await?;
+            StoreAuthRegistry::default()
+                .save_preview(PreviewStoreSession {
+                    store: &result.domain,
+                    shop_id: &result.shop_id,
+                    name: &result.name,
+                    country: result.country.as_deref(),
+                    placeholder_account_uuid: result.placeholder_account_uuid.as_deref(),
+                    scopes: &result.admin_api_scopes,
+                    access_token: &result.admin_api_token,
+                })
+                .await?;
+            let public = result.public();
+            let human = format!(
+                "{}\n\nNext steps\n{}",
+                public.message,
+                public.next_steps.join("\n")
+            );
             output
-                .success("Store created", &value)
+                .with_json(json)
+                .success(&human, &public)
                 .map_err(|error| Error::process(error.to_string()))?;
             return Ok(0);
         }
