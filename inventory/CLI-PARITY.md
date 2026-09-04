@@ -5,15 +5,15 @@
 ## Summary
 
 - Total upstream commands: **111**
-- Implemented (`native` + `adapter`): **98**
+- Implemented (`native` + `adapter`): **99**
 - Commands with automated evidence: **111**
 - Live-verified commands: **9**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `native` | 71 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 13 | Exact command path exists, but behavior is not yet fully compatible. |
+| `native` | 72 | Implemented in Rust and exposed at the upstream command path. |
+| `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Runtime black-box parity
 
@@ -142,6 +142,6 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `theme pull` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme push` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme rename` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
-| `theme share` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. Returns an existing preview URL instead of creating a new randomized unpublished theme. |
+| `theme share` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust scans the local theme, applies optional listing overlays, creates a randomized unpublished theme, uploads all assets, rolls back failed uploads, and returns preview/editor URLs without Shopify CLI delegation. Evidence: crates/cfy-config/src/theme.rs tests; crates/cfy-api/src/theme.rs tests::share_creates_unpublished_theme_and_rolls_back_failed_upload; crates/cfy-cli/src/lib.rs tests::theme_share_matches_upstream_flags_without_legacy_theme_id. |
 | `upgrade` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust detects trusted install provenance and executes the exact Homebrew or Cargo upgrade plan with inherited TTY/signals. Source, unknown, and unverifiable standalone installs fail safely. Evidence: crates/cfy-upgrade/src/lib.rs tests; crates/cfy-upgrade/tests/upgrade.rs; crates/cfy-cli/tests/cli.rs. Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method. |
 | `version` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; compatibility/scenarios.json. |

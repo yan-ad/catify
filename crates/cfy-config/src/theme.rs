@@ -20,6 +20,92 @@ pub fn read_theme_files(root: &Path) -> io::Result<BTreeMap<String, Vec<u8>>> {
     Ok(files)
 }
 
+/// Read uploadable theme files and optionally apply a multi-preset listing overlay.
+pub fn read_theme_files_for_listing(
+    root: &Path,
+    listing: Option<&str>,
+) -> io::Result<BTreeMap<String, Vec<u8>>> {
+    let mut files = read_theme_files(root)?;
+    const THEME_DIRECTORIES: &[&str] = &[
+        "assets/",
+        "blocks/",
+        "config/",
+        "layout/",
+        "locales/",
+        "sections/",
+        "snippets/",
+        "templates/",
+    ];
+    files.retain(|key, _| {
+        THEME_DIRECTORIES
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+    });
+    let Some(listing) = listing else {
+        return Ok(files);
+    };
+    if listing.trim().is_empty()
+        || listing.contains(['/', '\\'])
+        || listing == "."
+        || listing == ".."
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "listing preset must be a single directory name",
+        ));
+    }
+    let listing_root = root.join("listings").join(listing);
+    if !listing_root.is_dir() {
+        let available = root
+            .join("listings")
+            .read_dir()
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .collect::<Vec<_>>();
+        let detail = if available.is_empty() {
+            "No presets found under listings/".to_owned()
+        } else {
+            format!("Available presets: {}", available.join(", "))
+        };
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("listing preset `{listing}` was not found. {detail}"),
+        ));
+    }
+    let overrides = read_theme_files(&listing_root)?;
+    for (key, contents) in overrides {
+        if (key.starts_with("templates/") || key.starts_with("sections/")) && key.ends_with(".json")
+        {
+            files.insert(key, contents);
+        }
+    }
+    if let Some(settings) = files.get_mut("config/settings_data.json")
+        && let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(settings)
+    {
+        value["current"] = serde_json::Value::String(listing_display_name(listing));
+        *settings = serde_json::to_vec_pretty(&value).expect("JSON value always serializes");
+    }
+    Ok(files)
+}
+
+fn listing_display_name(listing: &str) -> String {
+    listing
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn read_theme_directory(
     root: &Path,
     directory: &Path,
@@ -290,6 +376,49 @@ mod tests {
         fs::write(root.join("assets/theme.js"), [0, 159, 255]).unwrap();
         let files = read_theme_files(&root).unwrap();
         assert_eq!(files.get("assets/theme.js"), Some(&vec![0, 159, 255]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn listing_overlay_replaces_json_templates_and_updates_current_preset() {
+        let root = temp_directory("listing");
+        fs::create_dir_all(root.join("templates")).unwrap();
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("listings/modern/templates")).unwrap();
+        fs::write(root.join("templates/index.json"), br#"{"base":true}"#).unwrap();
+        fs::write(
+            root.join("config/settings_data.json"),
+            br#"{"current":"Default","presets":{"Modern":{}}}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("listings/modern/templates/index.json"),
+            br#"{"modern":true}"#,
+        )
+        .unwrap();
+        fs::write(root.join("README.md"), b"not a theme asset").unwrap();
+        fs::write(root.join("README.md"), b"not a theme asset").unwrap();
+
+        let files = read_theme_files_for_listing(&root, Some("modern")).unwrap();
+        assert_eq!(
+            files.get("templates/index.json").unwrap(),
+            br#"{"modern":true}"#
+        );
+        assert!(!files.keys().any(|key| key.starts_with("listings/")));
+        assert!(!files.contains_key("README.md"));
+        assert!(!files.contains_key("README.md"));
+        let settings: serde_json::Value =
+            serde_json::from_slice(files.get("config/settings_data.json").unwrap()).unwrap();
+        assert_eq!(settings["current"], "Modern");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_listing_reports_available_presets() {
+        let root = temp_directory("missing-listing");
+        fs::create_dir_all(root.join("listings/modern")).unwrap();
+        let error = read_theme_files_for_listing(&root, Some("classic")).unwrap_err();
+        assert!(error.to_string().contains("Available presets: modern"));
         fs::remove_dir_all(root).unwrap();
     }
 

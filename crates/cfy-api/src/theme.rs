@@ -27,6 +27,12 @@ pub struct Theme {
     pub processing: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ShareResult {
+    pub theme: Theme,
+    pub summary: PushSummary,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ThemePreview {
     pub url: String,
@@ -336,6 +342,51 @@ impl ThemeClient {
         name: &str,
         cancellation: &Cancellation,
     ) -> Result<Theme, ApiError> {
+        self.create_theme(name, "development", cancellation).await
+    }
+
+    /// Create a new unpublished theme owned by the caller.
+    pub async fn create_unpublished_theme(
+        &self,
+        name: &str,
+        cancellation: &Cancellation,
+    ) -> Result<Theme, ApiError> {
+        self.create_theme(name, "unpublished", cancellation).await
+    }
+
+    /// Create an unpublished theme, upload every asset, and roll it back on failure.
+    pub async fn share(
+        &self,
+        name: &str,
+        changes: &[ThemeChange],
+        cancellation: &Cancellation,
+    ) -> Result<ShareResult, ApiError> {
+        let theme = self.create_unpublished_theme(name, cancellation).await?;
+        let summary = self.push(theme.id, changes, false, cancellation).await;
+        if summary.succeeded() {
+            return Ok(ShareResult { theme, summary });
+        }
+        let cleanup = self.delete_theme(theme.id, &Cancellation::default()).await;
+        let cleanup_note = cleanup
+            .err()
+            .map(|error| format!(" Cleanup also failed: {error}"))
+            .unwrap_or_default();
+        Err(ApiError::GraphQlResponse {
+            request_id: None,
+            message: format!(
+                "theme share failed after creating theme {}: {}.{cleanup_note}",
+                theme.id,
+                summary.failed.join("; ")
+            ),
+        })
+    }
+
+    async fn create_theme(
+        &self,
+        name: &str,
+        role: &str,
+        cancellation: &Cancellation,
+    ) -> Result<Theme, ApiError> {
         check_cancelled(cancellation)?;
         if name.trim().is_empty() {
             return Err(ApiError::Configuration(
@@ -343,7 +394,7 @@ impl ThemeClient {
             ));
         }
         let mut request = HttpRequest::new(Method::POST, format!("{}/themes.json", self.api_root));
-        request.body = Some(serde_json::json!({"theme": {"name": name, "role": "development"}}));
+        request.body = Some(serde_json::json!({"theme": {"name": name, "role": role}}));
         request.retry_safety = crate::RetrySafety::Unsafe;
         let response = self.http.execute(&request).await.map_err(theme_api_error)?;
         #[derive(Deserialize)]
@@ -721,6 +772,65 @@ mod tests {
                 .await
                 .is_err()
         );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn share_creates_unpublished_theme_and_rolls_back_failed_upload() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for index in 0..3 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let (status, body) = match index {
+                    0 => {
+                        assert!(request.contains("POST /themes"));
+                        assert!(request.contains(r#""role":"unpublished""#));
+                        (
+                            "201 Created",
+                            r#"{"theme":{"id":77,"name":"Bright Panda","role":"unpublished"}}"#,
+                        )
+                    }
+                    1 => {
+                        assert!(request.contains("PUT /themes/77/assets.json"));
+                        ("422 Unprocessable Entity", r#"{"errors":"invalid asset"}"#)
+                    }
+                    _ => {
+                        assert!(request.contains("DELETE /themes/77.json"));
+                        ("200 OK", "{}")
+                    }
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let base = format!("http://{address}/");
+        let http = HttpClient::new(&base)
+            .unwrap()
+            .with_retry_policy(RetryPolicy {
+                max_retries: 0,
+                base_delay: Duration::ZERO,
+                max_delay: Duration::ZERO,
+            });
+        let client = ThemeClient::with_http(http, Url::parse(&base).unwrap(), "themes");
+        let error = client
+            .share(
+                "Bright Panda",
+                &[ThemeChange::Upload(ThemeAsset {
+                    key: "assets/theme.js".to_owned(),
+                    contents: b"broken".to_vec(),
+                })],
+                &Cancellation::default(),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("theme share failed"));
         server.await.unwrap();
     }
 

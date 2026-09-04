@@ -1116,14 +1116,14 @@
     },
     "theme share": {
       "evidence": [
-        "crates/cfy-api/src/theme.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-config/src/theme.rs tests",
+        "crates/cfy-api/src/theme.rs tests::share_creates_unpublished_theme_and_rolls_back_failed_upload",
+        "crates/cfy-cli/src/lib.rs tests::theme_share_matches_upstream_flags_without_legacy_theme_id"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust scans the local theme, applies optional listing overlays, creates a randomized unpublished theme, uploads all assets, rolls back failed uploads, and returns preview/editor URLs without Shopify CLI delegation.",
       "live_verified": false,
-      "notes": "Returns an existing preview URL instead of creating a new randomized unpublished theme.",
       "owner": 39,
-      "status": "partial"
+      "status": "native"
     },
     "upgrade": {
       "evidence": [

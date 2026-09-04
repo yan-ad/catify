@@ -38,6 +38,7 @@ cfy-upgrade.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 crossterm.workspace = true
+getrandom.workspace = true
 brotli.workspace = true
 notify.workspace = true
 ratatui.workspace = true

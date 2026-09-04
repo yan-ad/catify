@@ -39,7 +39,8 @@ use cfy_config::project::{
     Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
 };
 use cfy_config::theme::{
-    StagedFile, commit_staged_files_cancellable, read_theme_files, safe_relative_path,
+    StagedFile, commit_staged_files_cancellable, read_theme_files, read_theme_files_for_listing,
+    safe_relative_path,
 };
 use cfy_config::theme_dev::{FileEvent, SyncAction, coalesce};
 use cfy_config::{
@@ -117,6 +118,184 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn theme_environment_path(root: &Path, name: &str) -> Result<Option<PathBuf>> {
+    let path = root.join("shopify.theme.toml");
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(Error::with_source(
+                ErrorKind::Config,
+                format!("could not read {}", path.display()),
+                error,
+            ));
+        }
+    };
+    let document: toml::Value = toml::from_str(&contents).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            format!("could not parse {}", path.display()),
+            error,
+        )
+    })?;
+    Ok(document
+        .get("environments")
+        .and_then(|environments| environments.get(name))
+        .and_then(|environment| environment.get("path"))
+        .and_then(toml::Value::as_str)
+        .map(|value| {
+            let value = PathBuf::from(value);
+            if value.is_absolute() {
+                value
+            } else {
+                root.join(value)
+            }
+        }))
+}
+
+fn random_share_name() -> Result<String> {
+    const ADJECTIVES: &[&str] = &["Brisk", "Bright", "Calm", "Clever", "Vivid", "Warm"];
+    const NOUNS: &[&str] = &["Comet", "Harbor", "Maple", "Orbit", "Panda", "Willow"];
+    let mut bytes = [0_u8; 4];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| Error::process(format!("could not generate theme name: {error}")))?;
+    Ok(format!(
+        "{} {} {:02x}{:02x}",
+        ADJECTIVES[usize::from(bytes[0]) % ADJECTIVES.len()],
+        NOUNS[usize::from(bytes[1]) % NOUNS.len()],
+        bytes[2],
+        bytes[3],
+    ))
+}
+
+struct ShareThemeArgs {
+    auth_alias: Option<String>,
+    environments: Vec<String>,
+    force: bool,
+    listing: Option<String>,
+    explicit_password: Option<String>,
+    explicit_path: Option<PathBuf>,
+    explicit_store: Option<String>,
+}
+
+async fn share_theme(args: ShareThemeArgs, output: &Output) -> Result<u8> {
+    let current = env::current_dir().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not resolve current directory",
+            error,
+        )
+    })?;
+    let base_root = args.explicit_path.as_deref().unwrap_or(&current);
+    let requested = if args.environments.is_empty() {
+        vec![None]
+    } else {
+        args.environments.iter().map(Some).collect()
+    };
+    let cancellation = Cancellation::default();
+    let signal = cancellation.clone();
+    let _signal_task = AbortOnDrop(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal.cancel();
+        }
+    }));
+    let mut results = Vec::new();
+    for environment_name in requested {
+        let environment_values = match environment_name {
+            Some(name) => theme_environment_credentials(base_root, std::slice::from_ref(name))?,
+            None => theme_environment_credentials(base_root, &[])?,
+        };
+        let root = match environment_name {
+            Some(name) => {
+                theme_environment_path(base_root, name)?.unwrap_or_else(|| base_root.to_path_buf())
+            }
+            None => theme_environment_path(base_root, "default")?
+                .unwrap_or_else(|| base_root.to_path_buf()),
+        };
+        let recognized = [
+            "assets",
+            "config",
+            "layout",
+            "locales",
+            "sections",
+            "snippets",
+            "templates",
+        ]
+        .iter()
+        .any(|directory| root.join(directory).is_dir());
+        if !recognized && !args.force {
+            return Err(Error::invalid_input(format!(
+                "{} does not look like a Shopify theme; pass --force to share it anyway",
+                root.display()
+            )));
+        }
+        let store = resolve_store(
+            args.explicit_store
+                .as_deref()
+                .or(environment_values.0.as_deref()),
+        )?;
+        let password = args.explicit_password.clone().or(environment_values.1);
+        let token = if let Some(password) = password {
+            password
+        } else {
+            let identity = args
+                .auth_alias
+                .clone()
+                .unwrap_or_else(|| "default".to_owned());
+            let session = authenticated_session(&identity).await?;
+            exchange_admin_token(&session, &store)
+                .await?
+                .expose()
+                .to_owned()
+        };
+        let local =
+            read_theme_files_for_listing(&root, args.listing.as_deref()).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not read theme files from {}", root.display()),
+                    error,
+                )
+            })?;
+        let changes = local
+            .into_iter()
+            .map(|(key, contents)| ThemeChange::Upload(ThemeAsset { key, contents }))
+            .collect::<Vec<_>>();
+        let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
+        let name = random_share_name()?;
+        let shared = client
+            .share(&name, &changes, &cancellation)
+            .await
+            .map_err(Error::from)?;
+        let theme = shared.theme;
+        let summary = shared.summary;
+        let preview_url = client.preview_url(theme.id);
+        let editor_url = format!("https://{store}/admin/themes/{}/editor", theme.id);
+        results.push(serde_json::json!({
+            "environment": environment_name,
+            "theme": theme,
+            "preview_url": preview_url,
+            "editor_url": editor_url,
+            "uploaded": summary.uploaded,
+        }));
+    }
+    let human = results
+        .iter()
+        .map(|result| {
+            format!(
+                "{}\nPreview: {}\nEditor: {}",
+                result["theme"]["name"].as_str().unwrap_or("Shared theme"),
+                result["preview_url"].as_str().unwrap_or_default(),
+                result["editor_url"].as_str().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    output
+        .success(&human, &results)
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
 }
 
 fn function_replay_event_is_relevant(
@@ -3141,15 +3320,28 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        ThemeCommand::Share { theme, store } => {
-            let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
-            let client =
-                ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
-            let url = client.preview_url(theme);
-            output
-                .success(&url, &serde_json::json!({"url": url, "theme_id": theme}))
-                .map_err(|error| Error::process(error.to_string()))?;
-            Ok(0)
+        ThemeCommand::Share {
+            auth_alias,
+            environment,
+            force,
+            listing,
+            password,
+            path,
+            store,
+        } => {
+            share_theme(
+                ShareThemeArgs {
+                    auth_alias,
+                    environments: environment,
+                    force,
+                    listing,
+                    explicit_password: password,
+                    explicit_path: path,
+                    explicit_store: store,
+                },
+                output,
+            )
+            .await
         }
         ThemeCommand::Rename { theme, store, name } => {
             let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| Error::new(ErrorKind::Api, "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete cfy auth login"))?;
@@ -7060,11 +7252,22 @@ pub enum ThemeCommand {
         confirm: bool,
     },
     /// Create a shareable preview link.
+    #[command(disable_version_flag = true)]
     Share {
-        #[arg(long)]
-        theme: u64,
-        #[arg(long)]
-        store: String,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
+        environment: Vec<String>,
+        #[arg(short = 'f', long, env = "SHOPIFY_FLAG_FORCE", hide = true)]
+        force: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_LISTING")]
+        listing: Option<String>,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
     },
     /// Preview a theme locally or remotely.
     #[command(disable_version_flag = true)]
@@ -7456,6 +7659,27 @@ mod tests {
                 .is_ok()
         );
         assert!(Cli::try_parse_from(["cfy", "app", "logs-sources"]).is_err());
+    }
+
+    #[test]
+    fn theme_share_matches_upstream_flags_without_legacy_theme_id() {
+        assert!(
+            Cli::try_parse_from([
+                "cfy",
+                "theme",
+                "share",
+                "--store",
+                "example.myshopify.com",
+                "--path",
+                "theme",
+                "--listing",
+                "modern",
+                "--environment",
+                "staging",
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["cfy", "theme", "share", "--theme", "42"]).is_err());
     }
 
     #[test]
