@@ -3999,9 +3999,10 @@ pub enum StoreCliCommand {
         #[arg(long)]
         store: String,
     },
-    /// Open the Shopify admin in a browser.
+    /// Open your Shopify storefront in the default browser.
+    #[command(disable_version_flag = true)]
     Open {
-        #[arg(long)]
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE", required = true)]
         store: String,
     },
     /// Open Shopify GraphiQL in a browser.
@@ -4360,15 +4361,24 @@ async fn store_command(
     let (operation, target, destructive, confirm) = match command {
         StoreCliCommand::Open { store } => {
             let target = StoreTarget::parse(&store)?;
-            let url = browser_url(StoreOperation::Open, &target, non_interactive)?;
+            let url = browser_url(StoreOperation::Open, &target)?;
+            let opened = !non_interactive && open_browser(url.as_ref());
             output
-                .success(url.as_ref(), &serde_json::json!({ "url": url }))
+                .success(
+                    url.as_ref(),
+                    &serde_json::json!({ "url": url, "opened": opened }),
+                )
                 .map_err(|error| Error::process(error.to_string()))?;
+            if !opened && !non_interactive {
+                output
+                    .lifecycle("Browser did not open automatically. Open the store URL manually.")
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
             return Ok(0);
         }
         StoreCliCommand::Graphiql { store } => {
             let target = StoreTarget::parse(&store)?;
-            let url = browser_url(StoreOperation::Graphiql, &target, non_interactive)?;
+            let url = browser_url(StoreOperation::Graphiql, &target)?;
             output
                 .success(url.as_ref(), &serde_json::json!({ "url": url }))
                 .map_err(|error| Error::process(error.to_string()))?;
@@ -7680,6 +7690,14 @@ mod tests {
             .is_ok()
         );
         assert!(Cli::try_parse_from(["cfy", "theme", "share", "--theme", "42"]).is_err());
+    }
+
+    #[test]
+    fn store_open_matches_upstream_short_store_flag() {
+        assert!(
+            Cli::try_parse_from(["cfy", "store", "open", "-s", "example.myshopify.com"]).is_ok()
+        );
+        assert!(Cli::try_parse_from(["cfy", "store", "open", "--store", "example"]).is_ok());
     }
 
     #[test]

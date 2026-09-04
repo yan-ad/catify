@@ -5,13 +5,13 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 99,
+    "implemented": 100,
     "tested": 111,
     "live_verified": 9,
     "by_status": {
       "adapter": 27,
-      "native": 72,
-      "partial": 12
+      "native": 73,
+      "partial": 11
     },
     "by_domain": {
       "app": {
@@ -46,8 +46,8 @@
         "native": 1
       },
       "store": {
-        "native": 5,
-        "partial": 6
+        "native": 6,
+        "partial": 5
       },
       "theme": {
         "adapter": 2,
@@ -1322,16 +1322,16 @@
     {
       "command": "store open",
       "domain": "store",
-      "status": "partial",
+      "status": "native",
       "owner": 38,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust validates the store domain, builds the canonical storefront root URL, opens the system browser in interactive mode, and emits the URL for JSON/headless automation without Shopify CLI delegation.",
       "tested": true,
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-store/src/lib.rs tests::browser_commands_use_canonical_store_urls",
+        "crates/cfy-cli/src/lib.rs tests::store_open_matches_upstream_short_store_flag"
       ],
       "live_verified": false,
-      "notes": "Builds the Admin URL but does not yet reproduce the complete browser/auth workflow."
+      "notes": null
     },
     {
       "command": "theme check",

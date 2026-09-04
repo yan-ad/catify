@@ -596,10 +596,7 @@ pub trait StoreBackend: Send + Sync {
     ) -> Result<BulkReport>;
 }
 
-pub fn browser_url(command: StoreCommand, target: &StoreTarget, headless: bool) -> Result<Url> {
-    if headless {
-        return Err(StoreError::HeadlessBrowser);
-    }
+pub fn browser_url(command: StoreCommand, target: &StoreTarget) -> Result<Url> {
     let path = match command {
         StoreCommand::Open => "/",
         StoreCommand::Graphiql => "/admin/api/graphiql",
@@ -662,16 +659,14 @@ mod tests {
     }
 
     #[test]
-    fn browser_commands_degrade_headlessly() {
+    fn browser_commands_use_canonical_store_urls() {
         let target = StoreTarget::parse("demo").unwrap();
-        assert!(matches!(
-            browser_url(StoreCommand::Open, &target, true),
-            Err(StoreError::HeadlessBrowser)
-        ));
         assert_eq!(
-            browser_url(StoreCommand::Graphiql, &target, false)
-                .unwrap()
-                .path(),
+            browser_url(StoreCommand::Open, &target).unwrap().as_str(),
+            "https://demo.myshopify.com/"
+        );
+        assert_eq!(
+            browser_url(StoreCommand::Graphiql, &target).unwrap().path(),
             "/admin/api/graphiql"
         );
     }
