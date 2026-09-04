@@ -38,20 +38,42 @@ pub enum DocsError {
 
 impl From<DocsError> for cfy_core::Error {
     fn from(error: DocsError) -> Self {
-        cfy_core::Error::with_source(
-            cfy_core::ErrorKind::Api,
-            "documentation request failed",
-            error,
-        )
+        let message = format!("documentation request failed: {error}");
+        cfy_core::Error::with_source(cfy_core::ErrorKind::Api, message, error)
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchResult {
     pub title: String,
     pub url: String,
     pub snippet: String,
-    pub score: u32,
+    pub score: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchApiResult {
+    title: String,
+    url: String,
+    #[serde(alias = "snippet")]
+    content: String,
+    score: f64,
+    #[serde(default)]
+    domain: Option<String>,
+}
+
+impl From<SearchApiResult> for SearchResult {
+    fn from(result: SearchApiResult) -> Self {
+        Self {
+            title: result.title,
+            url: result.url,
+            snippet: result.content,
+            score: result.score,
+            domain: result.domain,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -193,7 +215,7 @@ impl<T: DocsTransport> DocsClient<T> {
         let mut results = self.transport.search(query)?;
         results.sort_by(|a, b| {
             b.score
-                .cmp(&a.score)
+                .total_cmp(&a.score)
                 .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
                 .then_with(|| a.url.cmp(&b.url))
         });
@@ -273,7 +295,8 @@ impl DocsTransport for HttpDocsTransport {
             return Err(DocsError::Network(format!("HTTP {}", response.status())));
         }
         response
-            .json()
+            .json::<Vec<SearchApiResult>>()
+            .map(|results| results.into_iter().map(SearchResult::from).collect())
             .map_err(|error| DocsError::InvalidResponse(error.to_string()))
     }
 
@@ -319,13 +342,15 @@ mod tests {
                     title: "Zebra".into(),
                     url: "https://shopify.dev/z".into(),
                     snippet: "z".into(),
-                    score: 1,
+                    score: 1.0,
+                    domain: None,
                 },
                 SearchResult {
                     title: "Alpha".into(),
                     url: "https://shopify.dev/a".into(),
                     snippet: "a".into(),
-                    score: 2,
+                    score: 2.0,
+                    domain: None,
                 },
             ])
         }
@@ -375,5 +400,25 @@ mod tests {
         fs::write(cache.root.join("entry"), "x").expect("write");
         cache.clear().expect("clear");
         assert!(!cache.root.exists());
+    }
+
+    #[test]
+    fn parses_current_shopify_search_schema() {
+        let result: SearchApiResult = serde_json::from_str(
+            r#"{
+                "score": 0.72838116,
+                "content": "Build apps with Shopify CLI.",
+                "url": "https://shopify.dev/docs/apps/tools/cli",
+                "title": "Shopify CLI",
+                "domain": "apps"
+            }"#,
+        )
+        .expect("current search response");
+
+        let result = SearchResult::from(result);
+        assert_eq!(result.title, "Shopify CLI");
+        assert_eq!(result.snippet, "Build apps with Shopify CLI.");
+        assert_eq!(result.domain.as_deref(), Some("apps"));
+        assert!((result.score - 0.72838116).abs() < f64::EPSILON);
     }
 }

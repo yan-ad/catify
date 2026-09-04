@@ -3730,11 +3730,24 @@ fn docs_command(command: DocCommand, output: &Output) -> Result<u8> {
         DocCommand::Search { query } => {
             let query = query.join(" ");
             let results = docs_client()?.with_cache(docs_cache()).search(&query)?;
+            let human = if results.is_empty() {
+                "No documentation results found".to_owned()
+            } else {
+                results
+                    .iter()
+                    .map(|result| {
+                        let snippet = result
+                            .snippet
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        format!("{}\n{}\n{}", result.title, result.url, snippet)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            };
             output
-                .success(
-                    &format!("{} documentation result(s)", results.len()),
-                    &results,
-                )
+                .success(&human, &results)
                 .map_err(|error| Error::process(error.to_string()))?;
         }
         DocCommand::Fetch { url } => {

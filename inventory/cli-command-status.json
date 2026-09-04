@@ -801,10 +801,11 @@
     "search": {
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "crates/cfy-cli/src/lib.rs docs search output",
+        "live search against https://shopify.dev/assistant/search"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "implementation": "Native Rust Shopify developer search using the live /assistant/search API, current content/float-score response schema, deterministic ranking, and human/JSON output.",
+      "live_verified": true,
       "owner": 41,
       "status": "native"
     },

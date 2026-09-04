@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 98,
     "tested": 111,
-    "live_verified": 8,
+    "live_verified": 9,
     "by_status": {
       "adapter": 27,
       "native": 71,
@@ -1169,13 +1169,14 @@
       "domain": "search",
       "status": "native",
       "owner": 41,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust Shopify developer search using the live /assistant/search API, current content/float-score response schema, deterministic ranking, and human/JSON output.",
       "tested": true,
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "crates/cfy-cli/src/lib.rs docs search output",
+        "live search against https://shopify.dev/assistant/search"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {

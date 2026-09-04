@@ -7,7 +7,7 @@
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **98**
 - Commands with automated evidence: **111**
-- Live-verified commands: **8**
+- Live-verified commands: **9**
 
 | Status | Count | Meaning |
 |---|---:|---|
@@ -112,7 +112,7 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `plugins uninstall` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust installed-plugin removal and managed artifact cleanup. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
 | `plugins unlink` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust linked-plugin removal without deleting the linked source directory. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
 | `plugins update` | `native` | yes | no | [#45](https://github.com/yan-ad/catify/issues/45) | Native Rust update orchestration; npm is used only as the intrinsic JavaScript package runtime. Evidence: crates/cfy-plugins/src/lib.rs tests; crates/cfy-plugins/tests/plugins.rs; crates/cfy-cli/tests/cli.rs. |
-| `search` | `native` | yes | no | [#41](https://github.com/yan-ad/catify/issues/41) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-docs/src/lib.rs tests; compatibility/scenarios.json. |
+| `search` | `native` | yes | yes | [#41](https://github.com/yan-ad/catify/issues/41) | Native Rust Shopify developer search using the live /assistant/search API, current content/float-score response schema, deterministic ranking, and human/JSON output. Evidence: crates/cfy-docs/src/lib.rs tests; crates/cfy-cli/src/lib.rs docs search output; live search against https://shopify.dev/assistant/search. |
 | `store auth` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust PKCE S256 browser OAuth with loopback callback validation, code exchange, granted-scope verification, native keychain storage, refresh lifecycle, and exact Shopify command flags. Evidence: crates/cfy-store/src/store_auth.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `store auth list` | `native` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust store-auth credential registry lists current keychain-backed sessions without exposing access or refresh tokens and prunes stale index entries. Evidence: crates/cfy-store/src/store_auth.rs tests; crates/cfy-cli/tests/cli.rs. Execution remains blocked until store-auth sessions can be enumerated safely. |
 | `store bulk cancel` | `partial` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | The exact nested command path invokes the native GraphQL management boundary with explicit operation IDs. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags. Live Shopify schema and credential verification remain pending. |
