@@ -9,7 +9,7 @@ pub use update_check::{
 use crate::output::Output;
 use cfy_api::{
     theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets},
-    theme_profile::ThemeProfiler,
+    theme_profile::{LiquidEvaluation, ThemeProfiler},
 };
 use cfy_app::{
     AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
@@ -2777,6 +2777,191 @@ fn open_profile_viewer(profile: &Path) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+async fn console_theme(client: &ThemeClient) -> Result<Theme> {
+    if let Some(theme) = client
+        .list()
+        .await
+        .map_err(Error::from)?
+        .into_iter()
+        .find(|theme| {
+            theme.role == "development" && theme.name.starts_with("Catify Liquid Console")
+        })
+    {
+        return Ok(theme);
+    }
+    client
+        .create_development_theme(
+            &format!("Catify Liquid Console ({})", env!("CARGO_PKG_VERSION")),
+            &Cancellation::default(),
+        )
+        .await
+        .map_err(Error::from)
+}
+
+async fn prepare_console_theme(client: &ThemeClient, theme_id: u64) -> Result<()> {
+    let assets = [
+        ("config/settings_data.json", "{}"),
+        ("config/settings_schema.json", "[]"),
+        ("snippets/eval.liquid", ""),
+        (
+            "layout/password.liquid",
+            "{{ content_for_header }}{{ content_for_layout }}",
+        ),
+        (
+            "layout/theme.liquid",
+            "{{ content_for_header }}{{ content_for_layout }}",
+        ),
+        ("sections/announcement-bar.liquid", ""),
+        (
+            "templates/index.json",
+            r#"{"sections":{"announcement":{"type":"announcement-bar","settings":{}}},"order":["announcement"]}"#,
+        ),
+    ]
+    .into_iter()
+    .map(|(key, value)| {
+        ThemeChange::Upload(ThemeAsset {
+            key: key.to_owned(),
+            contents: value.as_bytes().to_vec(),
+        })
+    })
+    .collect::<Vec<_>>();
+    let summary = client
+        .push(theme_id, &assets, false, &Cancellation::default())
+        .await;
+    if summary.succeeded() {
+        Ok(())
+    } else {
+        Err(Error::api(format!(
+            "could not prepare Liquid Console theme: {}",
+            summary.failed.join("; ")
+        )))
+    }
+}
+
+fn read_console_line(history: &[String]) -> Result<Option<String>> {
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), cursor::Show);
+        }
+    }
+
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not enable console input mode",
+            error,
+        )
+    })?;
+    let _guard = RawModeGuard;
+    let mut stdout = io::stdout();
+    let mut buffer = String::new();
+    let mut cursor_index = 0_usize;
+    let mut history_index = history.len();
+    execute!(stdout, cursor::Show).ok();
+
+    loop {
+        redraw_console_line(&mut stdout, &buffer, cursor_index)?;
+        let event = event::read().map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not read console input", error)
+        })?;
+        let Event::Key(key) = event else { continue };
+        if key.kind != KeyEventKind::Press {
+            continue;
+        }
+        match key.code {
+            KeyCode::Char('c')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                println!();
+                return Ok(None);
+            }
+            KeyCode::Char('d')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                    && buffer.is_empty() =>
+            {
+                println!();
+                return Ok(None);
+            }
+            KeyCode::Enter => {
+                println!();
+                return Ok(Some(buffer));
+            }
+            KeyCode::Left if cursor_index > 0 => cursor_index -= 1,
+            KeyCode::Right if cursor_index < buffer.chars().count() => cursor_index += 1,
+            KeyCode::Home => cursor_index = 0,
+            KeyCode::End => cursor_index = buffer.chars().count(),
+            KeyCode::Backspace if cursor_index > 0 => {
+                remove_character(&mut buffer, cursor_index - 1);
+                cursor_index -= 1;
+            }
+            KeyCode::Delete if cursor_index < buffer.chars().count() => {
+                remove_character(&mut buffer, cursor_index);
+            }
+            KeyCode::Up if !history.is_empty() => {
+                history_index = history_index.saturating_sub(1);
+                buffer.clone_from(&history[history_index]);
+                cursor_index = buffer.chars().count();
+            }
+            KeyCode::Down if history_index < history.len() => {
+                history_index += 1;
+                buffer = history.get(history_index).cloned().unwrap_or_default();
+                cursor_index = buffer.chars().count();
+            }
+            KeyCode::Char(character)
+                if !key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                insert_character(&mut buffer, cursor_index, character);
+                cursor_index += 1;
+            }
+            _ => {}
+        }
+    }
+}
+
+fn redraw_console_line(stdout: &mut io::Stdout, buffer: &str, cursor_index: usize) -> Result<()> {
+    execute!(
+        stdout,
+        cursor::MoveToColumn(0),
+        Clear(ClearType::CurrentLine)
+    )
+    .map_err(|error| Error::with_source(ErrorKind::Process, "could not redraw console", error))?;
+    write!(stdout, "> {buffer}")
+        .map_err(|error| Error::with_source(ErrorKind::Process, "could not draw console", error))?;
+    execute!(stdout, cursor::MoveToColumn((cursor_index + 2) as u16)).map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not move console cursor", error)
+    })?;
+    stdout
+        .flush()
+        .map_err(|error| Error::with_source(ErrorKind::Process, "could not flush console", error))
+}
+
+fn insert_character(buffer: &mut String, index: usize, character: char) {
+    let byte_index = buffer
+        .char_indices()
+        .nth(index)
+        .map_or(buffer.len(), |(index, _)| index);
+    buffer.insert(byte_index, character);
+}
+
+fn remove_character(buffer: &mut String, index: usize) {
+    let Some((start, _)) = buffer.char_indices().nth(index) else {
+        return;
+    };
+    let end = buffer
+        .char_indices()
+        .nth(index + 1)
+        .map_or(buffer.len(), |(index, _)| index);
+    buffer.replace_range(start..end, "");
+}
+
 fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(current).map_err(|error| Error::api(error.to_string()))? {
         let entry = entry.map_err(|error| Error::api(error.to_string()))?;
@@ -3103,14 +3288,68 @@ async fn theme_parity_command(
             }
             Ok(0)
         }
-        ThemeCommand::Console { args } => Err(backend_unavailable(
-            "theme console",
-            39,
-            format!(
-                "the interactive Liquid console adapter is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
-                args.len()
-            ),
-        )),
+        ThemeCommand::Console {
+            auth_alias,
+            environment,
+            password,
+            path,
+            store,
+            store_password,
+            url,
+        } => {
+            if non_interactive || !io::stdin().is_terminal() {
+                return Err(Error::invalid_input(
+                    "theme console requires an interactive terminal",
+                ));
+            }
+            if password.is_some() {
+                return Err(Error::invalid_input(
+                    "native theme console requires `cfy auth login`; Theme Access --password sessions are not supported",
+                ));
+            }
+            let root = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not resolve current directory",
+                    error,
+                )
+            })?);
+            let (environment_store, _) = theme_environment_credentials(&root, &environment)?;
+            let store = resolve_store(store.or(environment_store).as_deref())?;
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let session = authenticated_session(&identity).await?;
+            let admin_token = exchange_admin_token(&session, &store).await?;
+            let storefront_token = exchange_storefront_renderer_token(&session).await?;
+            let theme_client = ThemeClient::new(&store, admin_token.expose(), SHOPIFY_API_VERSION)
+                .map_err(Error::from)?;
+            let console_theme = console_theme(&theme_client).await?;
+            prepare_console_theme(&theme_client, console_theme.id).await?;
+            let profiler =
+                ThemeProfiler::new(&store, admin_token, storefront_token, SHOPIFY_API_VERSION)
+                    .map_err(|error| Error::api(error.to_string()))?;
+            let mut console = profiler
+                .console(console_theme.id, &url, store_password.as_deref())
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            println!("Liquid Console ready. Enter expressions without Liquid delimiters.");
+            println!("Press Ctrl-D or Ctrl-C to exit.");
+            let mut history = Vec::new();
+            while let Some(input) = read_console_line(&history)? {
+                if input.trim().is_empty() {
+                    continue;
+                }
+                history.push(input.clone());
+                match console.evaluate(&input).await {
+                    Ok(LiquidEvaluation::Display(value)) => println!(
+                        "{}",
+                        serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+                    ),
+                    Ok(LiquidEvaluation::Assigned) => {}
+                    Err(error) => eprintln!("{error}"),
+                }
+            }
+            Ok(0)
+        }
         ThemeCommand::Check(_)
         | ThemeCommand::Dev { .. }
         | ThemeCommand::List { .. }
@@ -6836,10 +7075,23 @@ pub enum ThemeCommand {
         #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
         environment: Vec<String>,
     },
-    /// Start the interactive theme console.
+    /// Start the interactive Shopify Liquid REPL.
+    #[command(disable_version_flag = true)]
     Console {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
+        environment: Vec<String>,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_STORE_PASSWORD")]
+        store_password: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_URL", default_value = "/")]
+        url: String,
     },
     /// Clone a Git repository as a starting point for a theme.
     Init {
@@ -7105,22 +7357,13 @@ fn print_completion(shell: Shell) {
     generate(shell, &mut command, "cfy", &mut io::stdout());
 }
 
-fn backend_unavailable(command: &str, issue: u32, detail: impl AsRef<str>) -> Error {
-    Error::new(
-        ErrorKind::Api,
-        format!(
-            "{command} is not available: {}. Tracking: https://github.com/yan-ad/catify/issues/{issue}",
-            detail.as_ref()
-        ),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         AppCommand, Cli, Command, ThemeCommand, corrected_command_args, filesystem_event,
-        format_themes, live_push_requires_confirmation, reusable_session, select_store,
-        select_theme_for_open, update_auth_selection, update_list_selection,
+        format_themes, insert_character, live_push_requires_confirmation, remove_character,
+        reusable_session, select_store, select_theme_for_open, update_auth_selection,
+        update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -7413,6 +7656,15 @@ mod tests {
             "10\tmain\tDawn\n20\tdevelopment\tDevelopment"
         );
         assert_eq!(format_themes(&[]), "No themes found.");
+    }
+
+    #[test]
+    fn console_editor_handles_unicode_insertion_and_deletion() {
+        let mut buffer = "ac".to_owned();
+        insert_character(&mut buffer, 1, '🙂');
+        assert_eq!(buffer, "a🙂c");
+        remove_character(&mut buffer, 1);
+        assert_eq!(buffer, "ac");
     }
 
     #[test]

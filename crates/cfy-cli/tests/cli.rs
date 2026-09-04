@@ -1607,12 +1607,11 @@ fn runtime_command_error_uses_core_exit_code() {
 }
 
 #[test]
-fn unavailable_backends_have_command_specific_diagnostics() {
-    let theme = cfy(&["theme", "console"]);
-    assert_eq!(theme.status.code(), Some(1));
+fn theme_console_requires_an_interactive_terminal() {
+    let theme = cfy(&["theme", "console", "--store", "example"]);
+    assert_eq!(theme.status.code(), Some(2));
     let theme_stderr = String::from_utf8_lossy(&theme.stderr);
-    assert!(theme_stderr.contains("theme console is not available"));
-    assert!(theme_stderr.contains("issues/39"));
+    assert!(theme_stderr.contains("theme console requires an interactive terminal"));
     assert!(!theme_stderr.contains("reserved but not implemented yet"));
 }
 

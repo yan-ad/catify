@@ -31,6 +31,205 @@ pub enum ThemeProfileError {
     InvalidProfile(String),
 }
 
+impl LiquidConsole {
+    pub async fn evaluate(&mut self, snippet: &str) -> Result<LiquidEvaluation, ThemeProfileError> {
+        let snippet = snippet.trim();
+        if snippet.starts_with("{{") || snippet.starts_with("{%") {
+            return Err(ThemeProfileError::Configuration(
+                "Liquid Console does not accept {{ ... }} or {% ... %} delimiters; enter only the inner expression or tag"
+                    .into(),
+            ));
+        }
+        if snippet.is_empty() {
+            return Ok(LiquidEvaluation::Display(Value::Null));
+        }
+        if let Some(assignment) = assignment_tag(snippet) {
+            let item =
+                serde_json::json!({"type": "context", "value": format!("{{% {assignment} %}}")});
+            let body = self.render(&item).await?;
+            if has_liquid_error(&body) {
+                return Err(ThemeProfileError::Request(strip_liquid_error(&body)));
+            }
+            self.context.push(item);
+            return Ok(LiquidEvaluation::Assigned);
+        }
+
+        let display = format!(r#"{{ "type": "display", "value": {{{{ {snippet} | json }}}} }}"#);
+        let body = self.render_raw(&display).await?;
+        if !has_liquid_error(&body) {
+            let values: Vec<Value> =
+                serde_json::from_str(strip_rendered_body(&body).ok_or_else(|| {
+                    ThemeProfileError::InvalidProfile(
+                        "Liquid response did not contain a JSON payload".into(),
+                    )
+                })?)
+                .map_err(|error| ThemeProfileError::InvalidProfile(error.to_string()))?;
+            if let Some(value) = values
+                .into_iter()
+                .find(|value| value.get("type").and_then(Value::as_str) == Some("display"))
+                .and_then(|value| value.get("value").cloned())
+            {
+                return Ok(LiquidEvaluation::Display(value));
+            }
+        }
+
+        let body = self.render_raw(&format!("{{{{ {snippet} }}}}")).await?;
+        if has_liquid_error(&body) {
+            return Err(ThemeProfileError::Request(strip_liquid_error(&body)));
+        }
+        let body = self.render_raw(&format!("{{% {snippet} %}}")).await?;
+        Err(ThemeProfileError::Request(if has_liquid_error(&body) {
+            strip_liquid_error(&body)
+        } else {
+            format!("Unknown object, property, tag, or filter: '{snippet}'")
+        }))
+    }
+
+    async fn render(&self, item: &Value) -> Result<String, ThemeProfileError> {
+        self.render_raw(&item.to_string()).await
+    }
+
+    async fn render_raw(&self, snippet: &str) -> Result<String, ThemeProfileError> {
+        let items = self
+            .context
+            .iter()
+            .map(Value::to_string)
+            .chain(std::iter::once(snippet.to_owned()))
+            .collect::<Vec<_>>()
+            .join(",")
+            .replace("\\\"", "\"");
+        let mut url = self
+            .profiler
+            .origin
+            .join(self.path.trim_start_matches('/'))
+            .map_err(|error| ThemeProfileError::Configuration(error.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("_fd", "0")
+            .append_pair("pb", "0")
+            .append_pair("section_id", "announcement-bar");
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair(
+                "replace_templates[sections/announcement-bar.liquid]",
+                "{% render 'eval' %}",
+            )
+            .append_pair(
+                "replace_templates[snippets/eval.liquid]",
+                &format!("\n[{items}]\n"),
+            )
+            .append_pair("_method", "GET")
+            .finish();
+        let response = self
+            .profiler
+            .client
+            .post(url)
+            .headers(
+                self.profiler
+                    .storefront_headers(Some(&self.cookies), false)?,
+            )
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .map_err(|error| ThemeProfileError::Request(error.to_string()))?;
+        let status = response.status();
+        let not_found = response
+            .headers()
+            .get("server-timing")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.contains("pageType;desc=\"404\""));
+        let body = response
+            .text()
+            .await
+            .map_err(|error| ThemeProfileError::Request(error.to_string()))?;
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            return Err(ThemeProfileError::Request(
+                "Liquid Console session expired".into(),
+            ));
+        }
+        if matches!(status.as_u16(), 429 | 430) {
+            return Err(ThemeProfileError::Request(
+                "Liquid evaluations limit reached; try again later".into(),
+            ));
+        }
+        if not_found {
+            return Err(ThemeProfileError::Request(
+                "Page not found; provide a valid --url value".into(),
+            ));
+        }
+        if !status.is_success() {
+            return Err(ThemeProfileError::Http {
+                status,
+                message: bounded_message(&body),
+            });
+        }
+        Ok(body)
+    }
+}
+
+fn assignment_tag(snippet: &str) -> Option<String> {
+    let trimmed = snippet.trim();
+    if trimmed.starts_with("assign ") && trimmed.contains('=') {
+        return Some(trimmed.to_owned());
+    }
+    let (name, value) = trimmed.split_once('=')?;
+    let name = name.trim();
+    if !name.is_empty()
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | '[' | ']')
+        })
+        && !value.trim().is_empty()
+    {
+        Some(format!("assign {name} = {}", value.trim()))
+    } else {
+        None
+    }
+}
+
+fn strip_rendered_body(body: &str) -> Option<&str> {
+    let body = body.strip_prefix('\n').unwrap_or(body);
+    body.strip_suffix('\n')
+        .or(Some(body))
+        .filter(|body| !body.is_empty())
+}
+
+fn has_liquid_error(body: &str) -> bool {
+    body.contains("Liquid syntax error")
+}
+
+fn strip_liquid_error(body: &str) -> String {
+    body.replace(" (snippets/eval line 1)", "")
+        .trim()
+        .to_owned()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum LiquidEvaluation {
+    Display(Value),
+    Assigned,
+}
+
+pub struct LiquidConsole {
+    profiler: ThemeProfiler,
+    theme_id: u64,
+    path: String,
+    cookies: BTreeMap<String, String>,
+    context: Vec<Value>,
+}
+
+impl std::fmt::Debug for LiquidConsole {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LiquidConsole")
+            .field("profiler", &self.profiler)
+            .field("theme_id", &self.theme_id)
+            .field("path", &self.path)
+            .field("cookies", &"[REDACTED]")
+            .field("context_items", &self.context.len())
+            .finish()
+    }
+}
+
 #[derive(Clone)]
 pub struct ThemeProfiler {
     client: Client,
@@ -141,6 +340,29 @@ impl ThemeProfiler {
             api_version: api_version.to_owned(),
             admin_token,
             storefront_token,
+        })
+    }
+
+    pub async fn console(
+        &self,
+        theme_id: u64,
+        path: &str,
+        storefront_password: Option<&str>,
+    ) -> Result<LiquidConsole, ThemeProfileError> {
+        let path = normalize_path(path)?;
+        let protected = self.password_protected().await?;
+        let mut cookies = self.session_cookies(theme_id).await?;
+        if protected {
+            let password =
+                storefront_password.ok_or(ThemeProfileError::StorefrontPasswordRequired)?;
+            cookies.extend(self.authenticate_storefront(password, &cookies).await?);
+        }
+        Ok(LiquidConsole {
+            profiler: self.clone(),
+            theme_id,
+            path,
+            cookies,
+            context: Vec::new(),
         })
     }
 
@@ -532,6 +754,101 @@ mod tests {
         assert_eq!(profile.theme_id, 42);
         assert_eq!(profile.path, "/products/example");
         assert_eq!(profile.profile["profiles"], serde_json::json!([]));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn evaluates_liquid_and_persists_assignment_context() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for index in 0..4 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 4096];
+                loop {
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                    let headers_end = request.windows(4).position(|part| part == b"\r\n\r\n");
+                    if let Some(headers_end) = headers_end {
+                        let headers_end = headers_end + 4;
+                        let headers = String::from_utf8_lossy(&request[..headers_end]);
+                        let content_length = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length: ")
+                                    .and_then(|value| value.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if request.len() >= headers_end + content_length {
+                            break;
+                        }
+                    }
+                }
+                let request_text = String::from_utf8_lossy(&request);
+                let lower = request_text.to_ascii_lowercase();
+                let (headers, body) = match index {
+                    0 => (
+                        "content-type: application/json\r\n",
+                        r#"{"data":{"onlineStore":{"passwordProtection":{"enabled":false}}}}"#,
+                    ),
+                    1 => (
+                        "set-cookie: _shopify_essential=session-value; Path=/\r\n",
+                        "",
+                    ),
+                    2 => {
+                        assert!(lower.starts_with(
+                            "post /products/example?_fd=0&pb=0&section_id=announcement-bar"
+                        ));
+                        assert!(request_text.contains("shop.name"));
+                        (
+                            "content-type: text/html\r\n",
+                            "\n[{\"type\":\"display\",\"value\":\"Demo\"}]\n",
+                        )
+                    }
+                    _ => {
+                        assert!(
+                            request_text.contains("assign+x+%3D+1")
+                                || request_text.contains("assign%20x%20%3D%201")
+                        );
+                        (
+                            "content-type: text/html\r\n",
+                            "\n[{\"type\":\"context\",\"value\":\"{% assign x = 1 %}\"}]\n",
+                        )
+                    }
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\n{headers}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let profiler = ThemeProfiler::with_origin(
+            Url::parse(&format!("http://{address}/")).unwrap(),
+            "fixture.myshopify.com".into(),
+            Secret::new("admin-secret"),
+            Secret::new("storefront-secret"),
+            "2025-07",
+        )
+        .unwrap();
+        let mut console = profiler
+            .console(42, "/products/example", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            console.evaluate("shop.name").await.unwrap(),
+            LiquidEvaluation::Display(Value::String("Demo".into()))
+        );
+        assert_eq!(
+            console.evaluate("x = 1").await.unwrap(),
+            LiquidEvaluation::Assigned
+        );
+        assert_eq!(console.context.len(), 1);
         server.await.unwrap();
     }
 }

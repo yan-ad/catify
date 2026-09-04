@@ -6,13 +6,12 @@
   "summary": {
     "total": 111,
     "implemented": 98,
-    "tested": 110,
+    "tested": 111,
     "live_verified": 8,
     "by_status": {
       "adapter": 27,
-      "blocked": 1,
       "native": 71,
-      "partial": 12
+      "partial": 13
     },
     "by_domain": {
       "app": {
@@ -52,9 +51,8 @@
       },
       "theme": {
         "adapter": 2,
-        "blocked": 1,
         "native": 15,
-        "partial": 1
+        "partial": 2
       },
       "upgrade": {
         "native": 1
@@ -1351,11 +1349,16 @@
     {
       "command": "theme console",
       "domain": "theme",
-      "status": "blocked",
+      "status": "partial",
       "owner": 39,
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
-      "tested": false,
-      "evidence": [],
+      "implementation": "Rust-native Liquid REPL creates or reuses a development theme, uploads the required REPL assets, establishes Identity-based Admin/storefront-renderer sessions, evaluates expressions and persistent assignments against real store context, and provides a Crossterm editor with cursor/history navigation. Theme Access --password sessions remain unsupported.",
+      "tested": true,
+      "evidence": [
+        "crates/cfy-api/src/theme_profile.rs tests",
+        "crates/cfy-api/src/theme.rs tests",
+        "crates/cfy-cli/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs"
+      ],
       "live_verified": false,
       "notes": null
     },

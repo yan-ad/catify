@@ -6,15 +6,14 @@
 
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **98**
-- Commands with automated evidence: **110**
+- Commands with automated evidence: **111**
 - Live-verified commands: **8**
 
 | Status | Count | Meaning |
 |---|---:|---|
 | `adapter` | 27 | Implemented through an explicit external runtime adapter. |
-| `blocked` | 1 | Command path exists but required backend behavior is incomplete. |
 | `native` | 71 | Implemented in Rust and exposed at the upstream command path. |
-| `partial` | 12 | Exact command path exists, but behavior is not yet fully compatible. |
+| `partial` | 13 | Exact command path exists, but behavior is not yet fully compatible. |
 
 ## Runtime black-box parity
 
@@ -126,7 +125,7 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `store list` | `native` | yes | yes | [#38](https://github.com/yan-ad/catify/issues/38) | Rust Business Platform organization selection and accessible-shop listing are exposed at the exact Shopify command path with sorting, truncation signalling, human/JSON output, and non-interactive guards. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `store open` | `partial` | yes | no | [#38](https://github.com/yan-ad/catify/issues/38) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-store/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. Builds the Admin URL but does not yet reproduce the complete browser/auth workflow. |
 | `theme check` | `adapter` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; crates/cfy-cli/src/theme_check.rs tests. |
-| `theme console` | `blocked` | no | no | [#39](https://github.com/yan-ad/catify/issues/39) | Command path exists, but execution still returns an actionable backend-unavailable error. |
+| `theme console` | `partial` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust-native Liquid REPL creates or reuses a development theme, uploads the required REPL assets, establishes Identity-based Admin/storefront-renderer sessions, evaluates expressions and persistent assignments against real store context, and provides a Crossterm editor with cursor/history navigation. Theme Access --password sessions remain unsupported. Evidence: crates/cfy-api/src/theme_profile.rs tests; crates/cfy-api/src/theme.rs tests; crates/cfy-cli/src/lib.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme delete` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme dev` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme duplicate` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
