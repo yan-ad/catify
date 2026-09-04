@@ -24,12 +24,13 @@ endif
 
 ARCHIVE := $(DIST_DIR)/cfy-v$(VERSION)-$(RELEASE_TARGET).tar.gz
 
-.PHONY: help release release-check release-build release-package release-smoke clean-release
+.PHONY: help release release-check release-build release-package release-smoke tag-release clean-release
 
 help:
 	@printf '%s\n' \
 	  'make release VERSION=0.0.1-pre.0  Validate, build, package, and smoke-test a local release' \
 	  'make release-check VERSION=...    Validate versions and quality gates' \
+	  'make tag-release VERSION=...      Run release and create an annotated local tag' \
 	  'make clean-release                Remove local release artifacts'
 
 release: release-check release-package release-smoke
@@ -62,11 +63,14 @@ release-package: release-build
 	@$(PYTHON) scripts/generate-checksums.py '$(ARCHIVE)' --output '$(DIST_DIR)/SHA256SUMS'
 
 release-smoke:
-	@CFY_RELEASE_BASE_URL='file://$(abspath $(DIST_DIR))/..' \
-	  CFY_VERSION='$(VERSION)' \
-	  CFY_INSTALL_DIR="$$(mktemp -d)/bin" \
-	  bash scripts/smoke-release-artifact.sh '$(ARCHIVE)'
+	@bash scripts/smoke-release-artifact.sh '$(ARCHIVE)'
 	@bash scripts/test-installers.sh
+
+tag-release: release
+	@git diff --quiet && git diff --cached --quiet || { echo 'working tree must be clean before tagging' >&2; exit 1; }
+	@! git rev-parse '$(TAG)' >/dev/null 2>&1 || { echo 'tag $(TAG) already exists' >&2; exit 1; }
+	@git tag -a '$(TAG)' -m 'Catify $(TAG)'
+	@printf 'Created local tag %s. Push it with: git push origin %s\n' '$(TAG)' '$(TAG)'
 
 clean-release:
 	@rm -rf '$(DIST_DIR)'

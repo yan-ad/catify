@@ -7723,6 +7723,26 @@ pub async fn run(cli: Cli, output: &Output) -> Result<u8> {
 }
 
 /// Shared entry point for the `cfy` and `catify` executable names.
+/// Runs the CLI on a stack large enough for Clap's complete compatibility tree.
+/// Windows executable threads default to a 1 MiB stack, which is too small for
+/// the intentionally broad Shopify-compatible command graph.
+#[must_use]
+pub fn run_main() -> std::process::ExitCode {
+    std::thread::Builder::new()
+        .name("catify-cli".to_owned())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Catify could not initialize its async runtime")
+                .block_on(main_entry())
+        })
+        .expect("Catify could not initialize its CLI thread")
+        .join()
+        .unwrap_or(std::process::ExitCode::FAILURE)
+}
+
 pub async fn main_entry() -> std::process::ExitCode {
     let cli = parse_cli();
     if let Some(Command::Internal { command }) = cli.command.as_ref()
