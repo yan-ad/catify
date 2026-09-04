@@ -43,6 +43,8 @@ pub enum BulkError {
     Transport(#[source] reqwest::Error),
     #[error("local GraphiQL server failed: {0}")]
     ServerIo(#[source] std::io::Error),
+    #[error("GraphQL mutations are disabled for this GraphiQL session")]
+    MutationsDisabled,
     #[error("Shopify returned HTTP {status} (request ID: {request_id:?})")]
     Http {
         status: StatusCode,
@@ -75,10 +77,27 @@ pub struct GraphiqlServer {
     listener: TcpListener,
     client: BulkClient,
     key: String,
+    mutation_policy: MutationPolicy,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MutationPolicy {
+    Deny,
+    Allow,
+    #[default]
+    DevelopmentStoresOnly,
 }
 
 impl GraphiqlServer {
     pub async fn bind(client: BulkClient, port: u16) -> Result<Self> {
+        Self::bind_with_policy(client, port, MutationPolicy::default()).await
+    }
+
+    pub async fn bind_with_policy(
+        client: BulkClient,
+        port: u16,
+        mutation_policy: MutationPolicy,
+    ) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", port))
             .await
             .map_err(|error| {
@@ -92,6 +111,7 @@ impl GraphiqlServer {
             listener,
             client,
             key: URL_SAFE_NO_PAD.encode(key),
+            mutation_policy,
         })
     }
 
@@ -122,8 +142,9 @@ impl GraphiqlServer {
                 let (stream, _) = accepted.map_err(BulkError::ServerIo)?;
                 let client = self.client.clone();
                 let key = self.key.clone();
+                let mutation_policy = self.mutation_policy;
                 tokio::spawn(async move {
-                    let _ = serve_graphiql_connection(stream, client, key).await;
+                    let _ = serve_graphiql_connection(stream, client, key, mutation_policy).await;
                 });
             }
         }
@@ -134,6 +155,7 @@ async fn serve_graphiql_connection(
     mut stream: TcpStream,
     client: BulkClient,
     key: String,
+    mutation_policy: MutationPolicy,
 ) -> Result<()> {
     const MAX_REQUEST: usize = 1024 * 1024;
     let mut bytes = Vec::new();
@@ -215,7 +237,7 @@ async fn serve_graphiql_connection(
                     source,
                 })?;
             let payload = match client
-                .execute_document(&request.query, request.variables)
+                .execute_document_with_policy(&request.query, request.variables, mutation_policy)
                 .await
             {
                 Ok(data) => serde_json::json!({"data": data}),
@@ -656,12 +678,33 @@ impl BulkClient {
         document: &str,
         variables: serde_json::Value,
     ) -> Result<serde_json::Value> {
+        self.execute_document_with_policy(
+            document,
+            variables,
+            MutationPolicy::DevelopmentStoresOnly,
+        )
+        .await
+    }
+
+    pub async fn execute_document_with_policy(
+        &self,
+        document: &str,
+        variables: serde_json::Value,
+        mutation_policy: MutationPolicy,
+    ) -> Result<serde_json::Value> {
         if operation_kind(document)? == OperationKind::Mutation {
-            let shop: ShopPlanData = self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
-            if !shop.shop.plan.partner_development {
-                return Err(BulkError::InvalidStore(
-                    "mutations are only allowed on partner development stores".into(),
-                ));
+            match mutation_policy {
+                MutationPolicy::Deny => return Err(BulkError::MutationsDisabled),
+                MutationPolicy::Allow => {}
+                MutationPolicy::DevelopmentStoresOnly => {
+                    let shop: ShopPlanData =
+                        self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
+                    if !shop.shop.plan.partner_development {
+                        return Err(BulkError::InvalidStore(
+                            "mutations are only allowed on partner development stores".into(),
+                        ));
+                    }
+                }
             }
         }
         self.graphql(document, variables).await
@@ -1452,6 +1495,42 @@ mod unit_tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("partner development stores"));
+    }
+
+    #[tokio::test]
+    async fn explicit_graphiql_policy_denies_or_allows_mutations_before_http() {
+        let server = MockServer::start(vec![MockResponse {
+            status: 200,
+            body: r#"{"data":{"shopUpdate":{"shop":{"name":"Updated"}}}}"#,
+            headers: vec![],
+        }])
+        .await;
+        let client = BulkClient::new_at(
+            server.base.clone(),
+            &ApiVersion::parse("2026-01").unwrap(),
+            &Secret::new("admin-secret"),
+        )
+        .unwrap();
+        let mutation = "mutation { shopUpdate(input: {name: \"Updated\"}) { shop { name } } }";
+
+        assert!(matches!(
+            client
+                .execute_document_with_policy(
+                    mutation,
+                    serde_json::json!({}),
+                    MutationPolicy::Deny,
+                )
+                .await,
+            Err(BulkError::MutationsDisabled)
+        ));
+        assert_eq!(server.count().await, 0);
+
+        let data = client
+            .execute_document_with_policy(mutation, serde_json::json!({}), MutationPolicy::Allow)
+            .await
+            .unwrap();
+        assert_eq!(data["shopUpdate"]["shop"]["name"], "Updated");
+        assert_eq!(server.count().await, 1);
     }
 
     #[tokio::test]

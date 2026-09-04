@@ -886,14 +886,16 @@
     },
     "store graphiql": {
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-bulk/src/lib.rs unit_tests::explicit_graphiql_policy_denies_or_allows_mutations_before_http",
+        "crates/cfy-bulk/src/lib.rs unit_tests::graphiql_server_requires_key_and_proxies_authenticated_queries",
+        "crates/cfy-cli/tests/cli.rs store_graphiql_matches_shopify_authenticated_ui_flags"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust loads the store-auth keychain session, resolves the Admin API version, starts a CSRF-protected loopback GraphiQL UI, blocks mutations by default, and enables them only with --allow-mutations.",
       "live_verified": false,
-      "notes": "Builds a URL but does not yet launch a fully authenticated GraphiQL session.",
+      "notes": null,
       "owner": 38,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "store info": {
       "evidence": [

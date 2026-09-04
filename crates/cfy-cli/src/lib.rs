@@ -32,7 +32,7 @@ use cfy_auth::{
 use cfy_build::{BuildInput, BuildMode, BuildOptions, BuildPipeline};
 use cfy_bulk::{
     AppCredentials as BulkAppCredentials, BulkClient, BulkOperationId, BulkOperationStatus,
-    GraphiqlServer, StoreDomain as BulkStoreDomain, exchange_client_credentials,
+    GraphiqlServer, MutationPolicy, StoreDomain as BulkStoreDomain, exchange_client_credentials,
     resolve_api_version,
 };
 use cfy_config::project::{
@@ -4005,10 +4005,19 @@ pub enum StoreCliCommand {
         #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE", required = true)]
         store: String,
     },
-    /// Open Shopify GraphiQL in a browser.
+    /// Open a local GraphiQL UI for a store.
+    #[command(disable_version_flag = true)]
     Graphiql {
-        #[arg(long)]
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE", required = true)]
         store: String,
+        #[arg(short = 'v', long, env = "SHOPIFY_FLAG_VARIABLES")]
+        variables: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_ALLOW_MUTATIONS")]
+        allow_mutations: bool,
+        #[arg(long, env = "SHOPIFY_FLAG_PORT")]
+        port: Option<u16>,
+        #[arg(long, env = "SHOPIFY_FLAG_VERSION")]
+        version: Option<String>,
     },
     /// Execute an Admin API request.
     Execute {
@@ -4070,6 +4079,76 @@ async fn store_command(
             output
                 .success(&human, &entries)
                 .map_err(|error| Error::process(error.to_string()))?;
+            return Ok(0);
+        }
+        StoreCliCommand::Graphiql {
+            store,
+            variables,
+            allow_mutations,
+            port,
+            version,
+        } => {
+            if non_interactive || !io::stdin().is_terminal() {
+                return Err(Error::invalid_input(
+                    "store graphiql requires an interactive terminal; use `cfy store execute` for automation",
+                ));
+            }
+            if let Some(value) = &variables {
+                let parsed: serde_json::Value = serde_json::from_str(value).map_err(|error| {
+                    Error::with_source(
+                        ErrorKind::Config,
+                        "--variables must contain valid JSON",
+                        error,
+                    )
+                })?;
+                if !parsed.is_object() {
+                    return Err(Error::invalid_input(
+                        "GraphiQL variables must be a JSON object",
+                    ));
+                }
+            }
+            let target = StoreTarget::parse(&store)?;
+            let token = store_access_token(&target.domain).await?;
+            let domain = BulkStoreDomain::parse(&target.domain)
+                .map_err(|error| Error::api(error.to_string()))?;
+            let version = resolve_api_version(&domain, version.as_deref())
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            let secret = cfy_bulk::Secret::new(token);
+            let client = BulkClient::new(&domain, &version, &secret)
+                .map_err(|error| Error::api(error.to_string()))?;
+            let policy = if allow_mutations {
+                MutationPolicy::Allow
+            } else {
+                MutationPolicy::Deny
+            };
+            let server = GraphiqlServer::bind_with_policy(client, port.unwrap_or(3457), policy)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            let url = server
+                .url(variables.as_deref())
+                .map_err(|error| Error::api(error.to_string()))?;
+            output
+                .success(
+                    &format!("GraphiQL is running at {url}\nPress Ctrl+C to stop."),
+                    &serde_json::json!({
+                        "url": url,
+                        "store": target.domain,
+                        "version": version.as_str(),
+                        "mutations_allowed": allow_mutations,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            if !open_browser(url.as_str()) {
+                output
+                    .lifecycle("Browser did not open automatically. Open the URL above manually.")
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
+            let cancellation = Cancellation::default();
+            tokio::select! {
+                result = server.run(&cancellation) => result.map_err(|error| Error::api(error.to_string()))?,
+                _ = tokio::signal::ctrl_c() => cancellation.cancel(),
+            }
             return Ok(0);
         }
         StoreCliCommand::Auth {
@@ -4376,18 +4455,13 @@ async fn store_command(
             }
             return Ok(0);
         }
-        StoreCliCommand::Graphiql { store } => {
-            let target = StoreTarget::parse(&store)?;
-            let url = browser_url(StoreOperation::Graphiql, &target)?;
-            output
-                .success(url.as_ref(), &serde_json::json!({ "url": url }))
-                .map_err(|error| Error::process(error.to_string()))?;
-            return Ok(0);
-        }
         StoreCliCommand::Delete { store, confirm } => {
             (StoreOperation::Delete, store, true, confirm)
         }
         StoreCliCommand::Auth { .. } => unreachable!("store auth returns before fallback dispatch"),
+        StoreCliCommand::Graphiql { .. } => {
+            unreachable!("store graphiql returns before fallback dispatch")
+        }
         StoreCliCommand::Info { store } => (StoreOperation::Info, store, false, false),
         StoreCliCommand::Execute { store, .. } => (StoreOperation::Execute, store, false, false),
         StoreCliCommand::Create {
