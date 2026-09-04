@@ -124,6 +124,19 @@ impl Drop for AbortOnDrop {
     }
 }
 
+fn explicit_theme_tokens(
+    password: Option<String>,
+    environment_password: Option<String>,
+) -> Result<Option<(Secret, Secret)>> {
+    let Some(token) = password.or(environment_password) else {
+        return Ok(None);
+    };
+    if token.is_empty() {
+        return Err(Error::invalid_input("theme password cannot be empty"));
+    }
+    Ok(Some((Secret::new(token.clone()), Secret::new(token))))
+}
+
 fn theme_environment_path(root: &Path, name: &str) -> Result<Option<PathBuf>> {
     let path = root.join("shopify.theme.toml");
     let contents = match std::fs::read_to_string(&path) {
@@ -3512,11 +3525,6 @@ async fn theme_parity_command(
                     "theme console requires an interactive terminal",
                 ));
             }
-            if password.is_some() {
-                return Err(Error::invalid_input(
-                    "native theme console requires `cfy auth login`; Theme Access --password sessions are not supported",
-                ));
-            }
             let root = path.unwrap_or(env::current_dir().map_err(|error| {
                 Error::with_source(
                     ErrorKind::Config,
@@ -3524,12 +3532,21 @@ async fn theme_parity_command(
                     error,
                 )
             })?);
-            let (environment_store, _) = theme_environment_credentials(&root, &environment)?;
+            let (environment_store, environment_password) =
+                theme_environment_credentials(&root, &environment)?;
             let store = resolve_store(store.or(environment_store).as_deref())?;
-            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
-            let session = authenticated_session(&identity).await?;
-            let admin_token = exchange_admin_token(&session, &store).await?;
-            let storefront_token = exchange_storefront_renderer_token(&session).await?;
+            let (admin_token, storefront_token) =
+                match explicit_theme_tokens(password, environment_password)? {
+                    Some(tokens) => tokens,
+                    None => {
+                        let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+                        let session = authenticated_session(&identity).await?;
+                        (
+                            exchange_admin_token(&session, &store).await?,
+                            exchange_storefront_renderer_token(&session).await?,
+                        )
+                    }
+                };
             let theme_client = ThemeClient::new(&store, admin_token.expose(), SHOPIFY_API_VERSION)
                 .map_err(Error::from)?;
             let console_theme = console_theme(&theme_client).await?;
@@ -7795,10 +7812,10 @@ fn print_completion(shell: Shell) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppCommand, Cli, Command, ThemeCommand, corrected_command_args, filesystem_event,
-        format_themes, insert_character, live_push_requires_confirmation, remove_character,
-        reusable_session, select_store, select_theme_for_open, update_auth_selection,
-        update_list_selection,
+        AppCommand, Cli, Command, ThemeCommand, corrected_command_args, explicit_theme_tokens,
+        filesystem_event, format_themes, insert_character, live_push_requires_confirmation,
+        remove_character, reusable_session, select_store, select_theme_for_open,
+        update_auth_selection, update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -7814,6 +7831,17 @@ mod tests {
     #[test]
     fn command_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn theme_access_password_is_reused_for_admin_and_storefront_sessions() {
+        let (admin, storefront) = explicit_theme_tokens(Some("theme-secret".into()), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(admin.expose(), "theme-secret");
+        assert_eq!(storefront.expose(), "theme-secret");
+        assert!(explicit_theme_tokens(None, None).unwrap().is_none());
+        assert!(explicit_theme_tokens(Some(String::new()), None).is_err());
     }
 
     #[test]
