@@ -834,6 +834,17 @@ async fn store_access_token(store: &str) -> Result<String> {
     Ok(token.expose().to_owned())
 }
 
+async fn store_bulk_client(store: &str, version: Option<&str>) -> Result<BulkClient> {
+    let domain =
+        BulkStoreDomain::parse(store).map_err(|error| Error::invalid_input(error.to_string()))?;
+    let token = store_access_token(domain.as_str()).await?;
+    let version = resolve_api_version(&domain, version)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
+    BulkClient::new(&domain, &version, &cfy_bulk::Secret::new(token))
+        .map_err(|error| Error::api(error.to_string()))
+}
+
 async fn authenticated_session(identity: &str) -> Result<Session> {
     let store = Arc::new(NativeCredentialStore::default());
     let identity_client = Arc::new(IdentityClient::new(
@@ -4335,37 +4346,40 @@ async fn store_command(
         StoreCliCommand::Bulk {
             command: StoreBulkCommand::Status { store, id },
         } => {
-            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
-                Error::new(
-                    ErrorKind::Api,
-                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
-                )
-            })?;
-            let token = store_token()?;
-            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let value = backend
-                .bulk_status(id.as_deref().unwrap_or(&store))
-                .await
-                .map_err(Error::from)?;
-            output
-                .success("Bulk operation status", &value)
-                .map_err(|error| Error::process(error.to_string()))?;
+            let client = store_bulk_client(&store, None).await?;
+            if let Some(id) = id {
+                let id = BulkOperationId::parse(&id)
+                    .map_err(|error| Error::invalid_input(error.to_string()))?;
+                let operation = client
+                    .status(&id)
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                output
+                    .success("Bulk operation status", &operation)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            } else {
+                let operations = client
+                    .list_last_seven_days()
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                output
+                    .success("Bulk operations", &operations)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
             return Ok(0);
         }
         StoreCliCommand::Bulk {
-            command: StoreBulkCommand::Cancel { store: _, id },
+            command: StoreBulkCommand::Cancel { store, id },
         } => {
-            let endpoint = env::var("CFY_PARTNER_API_URL").map_err(|_| {
-                Error::new(
-                    ErrorKind::Api,
-                    "store lifecycle API is not configured; set CFY_PARTNER_API_URL",
-                )
-            })?;
-            let token = store_token()?;
-            let backend = StoreManagementBackend::new(&endpoint, &token).map_err(Error::from)?;
-            let value = backend.bulk_cancel(&id).await.map_err(Error::from)?;
+            let client = store_bulk_client(&store, None).await?;
+            let id = BulkOperationId::parse(&id)
+                .map_err(|error| Error::invalid_input(error.to_string()))?;
+            let operation = client
+                .cancel(&id)
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
             output
-                .success("Bulk operation cancelled", &value)
+                .success("Bulk operation cancellation requested", &operation)
                 .map_err(|error| Error::process(error.to_string()))?;
             return Ok(0);
         }
@@ -4398,20 +4412,20 @@ async fn store_command(
                     store,
                     query,
                     query_file,
-                    variables: _,
-                    variable_file: _,
-                    output_file: _,
-                    watch: _,
-                    version: _,
-                    allow_mutations: _,
+                    variables,
+                    variable_file,
+                    output_file,
+                    watch,
+                    version,
+                    allow_mutations,
                 },
         } => {
-            let query = match (query, query_file) {
+            let document = match (query, query_file) {
                 (Some(query), None) => query,
                 (None, Some(path)) => std::fs::read_to_string(&path).map_err(|error| {
                     Error::with_source(
                         ErrorKind::Config,
-                        format!("could not read {}", path.display()),
+                        format!("could not read bulk query {}", path.display()),
                         error,
                     )
                 })?,
@@ -4421,18 +4435,96 @@ async fn store_command(
                     ));
                 }
             };
-            let target = StoreTarget::parse(&store)?;
-            let token = store_access_token(&target.domain).await?;
-            let backend = AdminStoreBackend::new(&target, &token).map_err(Error::from)?;
-            let cancellation = Cancellation::default();
-            let mut progress = |_event| {};
-            let report = backend
-                .bulk_execute(&target, &[query], &mut progress, &cancellation)
-                .await
-                .map_err(Error::from)?;
-            output
-                .success("Store bulk operation completed", &report)
-                .map_err(|error| Error::process(error.to_string()))?;
+            let client = store_bulk_client(&store, version.as_deref()).await?;
+            let operation = match cfy_bulk::operation_kind(&document)
+                .map_err(|error| Error::invalid_input(error.to_string()))?
+            {
+                cfy_bulk::OperationKind::Query => {
+                    if !variables.is_empty() || variable_file.is_some() {
+                        return Err(Error::invalid_input(
+                            "--variables and --variable-file can only be used with mutations",
+                        ));
+                    }
+                    client.execute_query(&document).await
+                }
+                cfy_bulk::OperationKind::Mutation => {
+                    if !allow_mutations {
+                        return Err(Error::invalid_input(
+                            "bulk mutations are disabled by default; pass --allow-mutations",
+                        ));
+                    }
+                    let jsonl = if let Some(path) = variable_file {
+                        std::fs::read(&path).map_err(|error| {
+                            Error::with_source(
+                                ErrorKind::Config,
+                                format!("could not read bulk variables {}", path.display()),
+                                error,
+                            )
+                        })?
+                    } else {
+                        variables.join("\n").into_bytes()
+                    };
+                    client
+                        .execute_mutation_with_policy(&document, &jsonl, MutationPolicy::Allow)
+                        .await
+                }
+            }
+            .map_err(|error| Error::api(error.to_string()))?;
+            let operation = if watch {
+                let cancellation = Cancellation::default();
+                let signal = cancellation.clone();
+                let _ctrl_c = AbortOnDrop(tokio::spawn(async move {
+                    if tokio::signal::ctrl_c().await.is_ok() {
+                        signal.cancel();
+                    }
+                }));
+                client
+                    .poll(
+                        &BulkOperationId::parse(&operation.id)
+                            .map_err(|error| Error::api(error.to_string()))?,
+                        cfy_bulk::PollMode::default(),
+                        &cancellation,
+                    )
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?
+            } else {
+                operation
+            };
+            if watch
+                && operation.status == BulkOperationStatus::Completed
+                && operation.url.is_some()
+            {
+                let results = client
+                    .download_jsonl(&operation)
+                    .await
+                    .map_err(|error| Error::api(error.to_string()))?;
+                if let Some(path) = output_file {
+                    write_atomic(&path, results.as_bytes()).map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Config,
+                            format!("could not write bulk results {}", path.display()),
+                            error,
+                        )
+                    })?;
+                    output
+                        .success(
+                            "Bulk results written",
+                            &serde_json::json!({"operation": operation, "output_file": path}),
+                        )
+                        .map_err(|error| Error::process(error.to_string()))?;
+                } else {
+                    output
+                        .success(
+                            std::str::from_utf8(results.as_bytes()).unwrap_or_default(),
+                            &operation,
+                        )
+                        .map_err(|error| Error::process(error.to_string()))?;
+                }
+            } else {
+                output
+                    .success("Bulk operation", &operation)
+                    .map_err(|error| Error::process(error.to_string()))?;
+            }
             return Ok(0);
         }
         _ => {}

@@ -832,36 +832,42 @@
     },
     "store bulk cancel": {
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-bulk/src/lib.rs unit_tests::executes_statuses_and_cancels_with_typed_models_and_secret_header",
+        "crates/cfy-cli/src/lib.rs store_command",
+        "crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags"
       ],
-      "implementation": "The exact nested command path invokes the native GraphQL management boundary with explicit operation IDs.",
+      "implementation": "Rust validates numeric/full-GID operation IDs and sends the authenticated Admin GraphQL cancellation mutation using the per-store keychain session.",
       "live_verified": false,
-      "notes": "Live Shopify schema and credential verification remain pending.",
+      "notes": null,
       "owner": 38,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "store bulk execute": {
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-bulk/src/lib.rs unit tests",
+        "crates/cfy-cli/src/lib.rs store_command",
+        "crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags"
       ],
-      "implementation": "The exact nested command path runs native Admin GraphQL bulk orchestration with query or query-file input.",
+      "implementation": "Rust loads the per-store keychain token, resolves the Admin API version, runs bulk queries or explicitly allowed mutations, stages JSONL variables, polls on --watch, and atomically writes or streams downloaded results.",
       "live_verified": false,
-      "notes": "Variables, output download, watch mode, and API-version override remain pending.",
+      "notes": null,
       "owner": 38,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "store bulk status": {
       "evidence": [
-        "crates/cfy-store/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs::store_nested_commands_match_shopify_paths_and_flags"
+        "crates/cfy-bulk/src/lib.rs unit_tests::executes_statuses_and_cancels_with_typed_models_and_secret_header",
+        "crates/cfy-cli/src/lib.rs store_command",
+        "crates/cfy-cli/tests/cli.rs store_nested_commands_match_shopify_paths_and_flags"
       ],
-      "implementation": "The exact nested command path invokes the native GraphQL management boundary with optional operation ID.",
+      "implementation": "Rust queries a specific typed BulkOperation ID or lists operations created during the last seven days through the authenticated Admin GraphQL API.",
       "live_verified": false,
-      "notes": "Seven-day listing and live Shopify schema verification remain pending.",
+      "notes": null,
       "owner": 38,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "store create preview": {
       "evidence": [

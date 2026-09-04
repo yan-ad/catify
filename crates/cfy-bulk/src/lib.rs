@@ -740,17 +740,38 @@ impl BulkClient {
         document: &str,
         variables_jsonl: &[u8],
     ) -> Result<BulkOperation> {
+        self.execute_mutation_with_policy(
+            document,
+            variables_jsonl,
+            MutationPolicy::DevelopmentStoresOnly,
+        )
+        .await
+    }
+
+    pub async fn execute_mutation_with_policy(
+        &self,
+        document: &str,
+        variables_jsonl: &[u8],
+        mutation_policy: MutationPolicy,
+    ) -> Result<BulkOperation> {
         if operation_kind(document)? != OperationKind::Mutation {
             return Err(BulkError::QueryRequired);
         }
         if variables_jsonl.is_empty() {
             return Err(BulkError::MutationVariablesRequired);
         }
-        let shop: ShopPlanData = self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
-        if !shop.shop.plan.partner_development {
-            return Err(BulkError::InvalidStore(
-                "bulk mutations are only allowed on partner development stores".into(),
-            ));
+        match mutation_policy {
+            MutationPolicy::Deny => return Err(BulkError::MutationsDisabled),
+            MutationPolicy::Allow => {}
+            MutationPolicy::DevelopmentStoresOnly => {
+                let shop: ShopPlanData =
+                    self.graphql(SHOP_PLAN_QUERY, serde_json::json!({})).await?;
+                if !shop.shop.plan.partner_development {
+                    return Err(BulkError::InvalidStore(
+                        "bulk mutations are only allowed on partner development stores".into(),
+                    ));
+                }
+            }
         }
         let staged: StagedUploadData = self
             .graphql(
