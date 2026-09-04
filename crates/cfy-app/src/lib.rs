@@ -22,6 +22,10 @@ const APP_MANAGEMENT_AUDIENCE: &str =
 const APP_MANAGEMENT_SCOPE: &str = "https://api.shopify.com/auth/organization.apps.manage";
 const BUSINESS_PLATFORM_AUDIENCE: &str = "32ff8ee5-82b8-4d93-9f8a-c6997cefb7dc";
 const BUSINESS_PLATFORM_SCOPE: &str = "https://api.shopify.com/auth/destinations.readonly";
+const ADMIN_AUDIENCE: &str = "7ee65a63608843c577db8b23c4d7316ea0a01bd2f7594f8a9c06ea668c1b775c";
+const ADMIN_SCOPE: &str = "https://api.shopify.com/auth/shop.admin.graphql https://api.shopify.com/auth/shop.admin.themes https://api.shopify.com/auth/partners.collaborator-relationships.readonly";
+const STOREFRONT_RENDERER_AUDIENCE: &str = "ee139b3d-5861-4d45-b387-1bc3ada7811c";
+const STOREFRONT_RENDERER_SCOPE: &str = "https://api.shopify.com/auth/shop.storefront-renderer.devtools https://api.shopify.com/auth/shop.storefront-renderer.graphql";
 const TOKEN_EXCHANGE_GRANT: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 const ACCESS_TOKEN_TYPE: &str = "urn:ietf:params:oauth:token-type:access_token";
 const DEFAULT_IDENTITY_CLIENT_ID: &str = "fbdb2649-e327-4907-8f67-908d24cfd7e3";
@@ -863,11 +867,46 @@ pub async fn exchange_business_platform_token(session: &Session) -> Result<Secre
     .await
 }
 
+/// Exchange an Identity session for a store-scoped Admin API token.
+pub async fn exchange_admin_token(session: &Session, store: &str) -> Result<Secret> {
+    let store = normalize_store_domain(store)?;
+    exchange_application_token_with_destination(
+        session,
+        ADMIN_AUDIENCE,
+        ADMIN_SCOPE,
+        "admin",
+        Some(&store),
+    )
+    .await
+}
+
+/// Exchange an Identity session for a Storefront Renderer token.
+pub async fn exchange_storefront_renderer_token(session: &Session) -> Result<Secret> {
+    exchange_application_token_with_destination(
+        session,
+        STOREFRONT_RENDERER_AUDIENCE,
+        STOREFRONT_RENDERER_SCOPE,
+        "storefront-renderer",
+        None,
+    )
+    .await
+}
+
 async fn exchange_application_token(
     session: &Session,
     audience: &str,
     scope: &str,
     label: &str,
+) -> Result<Secret> {
+    exchange_application_token_with_destination(session, audience, scope, label, None).await
+}
+
+async fn exchange_application_token_with_destination(
+    session: &Session,
+    audience: &str,
+    scope: &str,
+    label: &str,
+    store: Option<&str>,
 ) -> Result<Secret> {
     static TLS: OnceLock<std::result::Result<(), String>> = OnceLock::new();
     TLS.get_or_init(|| {
@@ -886,17 +925,21 @@ async fn exchange_application_token(
                 format!("invalid identity endpoint: {error}"),
             )
         })?;
-    let body = url::form_urlencoded::Serializer::new(String::new())
-        .extend_pairs([
-            ("grant_type", TOKEN_EXCHANGE_GRANT),
-            ("requested_token_type", ACCESS_TOKEN_TYPE),
-            ("subject_token_type", ACCESS_TOKEN_TYPE),
-            ("client_id", DEFAULT_IDENTITY_CLIENT_ID),
-            ("audience", audience),
-            ("scope", scope),
-            ("subject_token", session.access_token.expose()),
-        ])
-        .finish();
+    let mut form = url::form_urlencoded::Serializer::new(String::new());
+    form.extend_pairs([
+        ("grant_type", TOKEN_EXCHANGE_GRANT),
+        ("requested_token_type", ACCESS_TOKEN_TYPE),
+        ("subject_token_type", ACCESS_TOKEN_TYPE),
+        ("client_id", DEFAULT_IDENTITY_CLIENT_ID),
+        ("audience", audience),
+        ("scope", scope),
+        ("subject_token", session.access_token.expose()),
+    ]);
+    if let Some(store) = store {
+        form.append_pair("destination", &format!("https://{store}/admin"));
+        form.append_pair("store", store);
+    }
+    let body = form.finish();
     #[derive(Deserialize)]
     struct Response {
         access_token: String,
@@ -932,6 +975,30 @@ async fn exchange_application_token(
         )
     })?;
     Ok(Secret::new(token.access_token))
+}
+
+fn normalize_store_domain(store: &str) -> Result<String> {
+    let store = store
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+    let store = if store.contains('.') {
+        store.to_owned()
+    } else {
+        format!("{store}.myshopify.com")
+    };
+    if !store.ends_with(".myshopify.com")
+        || store
+            .chars()
+            .any(|character| !(character.is_ascii_alphanumeric() || matches!(character, '-' | '.')))
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("invalid Shopify store domain `{store}`"),
+        ));
+    }
+    Ok(store)
 }
 
 fn decode_organization_id(encoded: &str) -> Result<String> {

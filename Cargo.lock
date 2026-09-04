@@ -473,6 +473,7 @@ name = "cfy-api"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "cfy-auth",
  "cfy-core",
  "reqwest",
  "rustls",

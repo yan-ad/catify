@@ -7,10 +7,13 @@ pub use update_check::{
 };
 
 use crate::output::Output;
-use cfy_api::theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets};
+use cfy_api::{
+    theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets},
+    theme_profile::ThemeProfiler,
+};
 use cfy_app::{
     AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
-    exchange_app_management_token,
+    exchange_admin_token, exchange_app_management_token, exchange_storefront_renderer_token,
     extension_generate::{GenerateExtensionOptions, generate_extension},
     extension_import::{
         ExistingDirectoryPolicy, ImportExtensionsOptions, ImportSelection, import_extensions,
@@ -2764,6 +2767,16 @@ fn open_browser(url: &str) -> bool {
     result.is_ok_and(|status| status.success())
 }
 
+fn open_profile_viewer(profile: &Path) -> bool {
+    let executable = env::var_os("CFY_SPEEDSCOPE_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("speedscope"));
+    std::process::Command::new(executable)
+        .arg(profile)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 fn collect_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(current).map_err(|error| Error::api(error.to_string()))? {
         let entry = entry.map_err(|error| Error::api(error.to_string()))?;
@@ -3214,14 +3227,95 @@ async fn theme_parity_command(
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
-        ThemeCommand::Profile { args } => Err(backend_unavailable(
-            "theme profile",
-            39,
-            format!(
-                "the profiler adapter is pending ({} forwarded argument(s)); use Shopify CLI for this command for now",
-                args.len()
-            ),
-        )),
+        ThemeCommand::Profile {
+            auth_alias,
+            environment,
+            json,
+            password,
+            path,
+            store,
+            store_password,
+            theme,
+            url,
+        } => {
+            if password.is_some() {
+                return Err(Error::invalid_input(
+                    "theme profile cannot use --password; authenticate with `cfy auth login` instead",
+                ));
+            }
+            let root = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not resolve current directory",
+                    error,
+                )
+            })?);
+            let (environment_store, _) = theme_environment_credentials(&root, &environment)?;
+            let store = resolve_store(store.or(environment_store).as_deref())?;
+            let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+            let session = authenticated_session(&identity).await?;
+            let admin_token = exchange_admin_token(&session, &store).await?;
+            let storefront_token = exchange_storefront_renderer_token(&session).await?;
+            let theme_client = ThemeClient::new(&store, admin_token.expose(), SHOPIFY_API_VERSION)
+                .map_err(Error::from)?;
+            let themes = theme_client.list().await.map_err(Error::from)?;
+            let selected = select_theme_for_open(
+                &themes,
+                theme.as_deref(),
+                false,
+                theme.is_none(),
+                non_interactive,
+            )?;
+            let profiler =
+                ThemeProfiler::new(&store, admin_token, storefront_token, SHOPIFY_API_VERSION)
+                    .map_err(|error| Error::api(error.to_string()))?;
+            let profile = profiler
+                .profile(selected.id, &url, store_password.as_deref())
+                .await
+                .map_err(|error| Error::api(error.to_string()))?;
+            if json {
+                use std::io::Write as _;
+                let mut stdout = io::stdout().lock();
+                stdout
+                    .write_all(profile.raw_json().as_bytes())
+                    .map_err(|error| {
+                        Error::with_source(
+                            ErrorKind::Process,
+                            "could not write profile JSON",
+                            error,
+                        )
+                    })?;
+                stdout.write_all(b"\n").map_err(|error| {
+                    Error::with_source(ErrorKind::Process, "could not write profile JSON", error)
+                })?;
+                return Ok(0);
+            }
+            let destination = env::temp_dir().join(format!(
+                "catify-liquid-profile-{}-{}.json",
+                selected.id,
+                std::process::id()
+            ));
+            write_atomic(&destination, profile.raw_json().as_bytes()).map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    format!("could not write profile file {}", destination.display()),
+                    error,
+                )
+            })?;
+            let opened = !non_interactive && open_profile_viewer(&destination);
+            output
+                .success(
+                    &format!("Liquid profile saved to {}", destination.display()),
+                    &serde_json::json!({
+                        "theme": selected,
+                        "url": url,
+                        "profile_path": destination,
+                        "opened": opened,
+                    }),
+                )
+                .map_err(|error| Error::process(error.to_string()))?;
+            Ok(0)
+        }
     }
 }
 
@@ -6774,10 +6868,27 @@ pub enum ThemeCommand {
         #[command(subcommand)]
         command: ThemeMetafieldsCommand,
     },
-    /// Profile theme operations.
+    /// Profile the Liquid rendering of a theme page.
+    #[command(disable_version_flag = true)]
     Profile {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(short = 'e', long, env = "SHOPIFY_FLAG_ENVIRONMENT", action = ArgAction::Append)]
+        environment: Vec<String>,
+        #[arg(short = 'j', long, env = "SHOPIFY_FLAG_JSON")]
+        json: bool,
+        #[arg(long, env = "SHOPIFY_CLI_THEME_TOKEN")]
+        password: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_PATH")]
+        path: Option<PathBuf>,
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
+        store: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_STORE_PASSWORD")]
+        store_password: Option<String>,
+        #[arg(short = 't', long, env = "SHOPIFY_FLAG_THEME_ID")]
+        theme: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_URL", default_value = "/")]
+        url: String,
     },
 }
 
@@ -7302,6 +7413,47 @@ mod tests {
             "10\tmain\tDawn\n20\tdevelopment\tDevelopment"
         );
         assert_eq!(format_themes(&[]), "No themes found.");
+    }
+
+    #[test]
+    fn theme_profile_uses_shopify_compatible_flags() {
+        let cli = Cli::try_parse_from([
+            "cfy",
+            "theme",
+            "profile",
+            "--auth-alias",
+            "work",
+            "--environment",
+            "staging",
+            "--json",
+            "--path",
+            ".",
+            "--store",
+            "example",
+            "--store-password",
+            "password",
+            "--theme",
+            "123",
+            "--url",
+            "/products/example",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Theme {
+                command: ThemeCommand::Profile {
+                    auth_alias: Some(_),
+                    environment,
+                    json: true,
+                    password: None,
+                    path: Some(_),
+                    store: Some(_),
+                    store_password: Some(_),
+                    theme: Some(_),
+                    url,
+                }
+            }) if environment == ["staging"] && url == "/products/example"
+        ));
     }
 
     #[test]

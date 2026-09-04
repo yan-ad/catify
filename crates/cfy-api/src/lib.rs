@@ -1,6 +1,7 @@
 //! Reusable HTTP and GraphQL clients for Shopify APIs.
 
 pub mod theme;
+pub mod theme_profile;
 
 use std::{
     fmt,
