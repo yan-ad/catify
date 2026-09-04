@@ -1058,11 +1058,15 @@
       "status": "native"
     },
     "theme profile": {
-      "evidence": [],
-      "implementation": "Command path exists, but execution still returns an actionable backend-unavailable error.",
+      "evidence": [
+        "crates/cfy-api/src/theme_profile.rs tests",
+        "crates/cfy-app/src/lib.rs tests",
+        "crates/cfy-cli/src/lib.rs tests"
+      ],
+      "implementation": "Rust-native Identity token exchange, Admin/storefront-renderer sessions, storefront password handling, theme selection, Speedscope JSON retrieval, raw JSON output, and local profile viewer handoff are exposed at the exact upstream command path.",
       "live_verified": false,
       "owner": 39,
-      "status": "blocked"
+      "status": "native"
     },
     "theme publish": {
       "evidence": [
