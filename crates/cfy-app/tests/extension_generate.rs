@@ -101,7 +101,9 @@ async fn clones_and_renders_official_style_template() {
     assert!(config.contains("typescript = true"));
     assert!(!config.contains("{{"));
     assert_eq!(
-        fs::read_to_string(report.directory.join("src/index.ts")).unwrap(),
+        fs::read_to_string(report.directory.join("src/index.ts"))
+            .unwrap()
+            .replace("\r\n", "\n"),
         "export const name = 'Checkout Helper';\n"
     );
     assert!(!report.directory.join(".git").exists());

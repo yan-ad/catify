@@ -1,6 +1,6 @@
 {
   "name": "catify-cli",
-  "version": "0.0.1",
+  "version": "0.0.1-pre.0",
   "description": "Rust-native, memory-efficient Shopify CLI alternative",
   "license": "MIT",
   "repository": {

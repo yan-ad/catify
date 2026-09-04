@@ -43,7 +43,7 @@ jobs:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --locked
-      - run: cargo run -p cfy-cli --locked -- --help
+      - run: cargo run -p cfy-cli --bin cfy --locked -- --help
       - run: cargo build --release -p cfy-cli --locked
       - name: Benchmark cfy smoke
         if: runner.os == 'Linux'
@@ -72,7 +72,7 @@ jobs:
       - run: npm test
       - name: Smoke shell and npm installers
         shell: bash
-        run: ./scripts/test-installers.sh
+        run: bash ./scripts/test-installers.sh
 
   licenses:
     runs-on: ubuntu-latest
