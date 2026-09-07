@@ -1185,15 +1185,9 @@ fn app_dev_runs_declared_web_command_and_clean_requires_remote_context() {
         .args(["app", "dev", "--use-localhost"])
         .output()
         .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        std::fs::read_to_string(web.join("dev-ready.txt")).unwrap(),
-        "ready"
-    );
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--store"));
+    assert!(!web.join("dev-ready.txt").exists());
 
     let state = fixture.join(".catify/dev");
     std::fs::create_dir_all(&state).unwrap();
@@ -1242,11 +1236,8 @@ fn app_dev_requires_explicit_localhost_until_tunnel_is_wired() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("must use HTTPS"));
 }
 
-#[cfg(unix)]
 #[test]
-fn app_dev_starts_and_cleans_up_cloudflared_tunnel() {
-    use std::os::unix::fs::PermissionsExt;
-
+fn app_dev_exposes_tunnel_and_remote_preview_flags() {
     let fixture = std::env::temp_dir().join(format!(
         "cfy-dev-tunnel-fixture-{}-{}",
         std::process::id(),
@@ -1267,27 +1258,23 @@ fn app_dev_starts_and_cleans_up_cloudflared_tunnel() {
         "name='web'\nroles=['frontend']\n[commands]\ndev='exit 0'\n",
     )
     .unwrap();
-    let cloudflared = fixture.join("cloudflared");
-    std::fs::write(
-        &cloudflared,
-        "#!/bin/sh\necho 'ready https://fixture.trycloudflare.com' >&2\nsleep 30\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&cloudflared, std::fs::Permissions::from_mode(0o755)).unwrap();
-
     let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
         .current_dir(&fixture)
-        .env("CFY_CLOUDFLARED_BIN", &cloudflared)
-        .args(["app", "dev"])
+        .args([
+            "app",
+            "dev",
+            "--store",
+            "demo.myshopify.com",
+            "--auth-alias",
+            "missing-app-dev-test-session",
+            "--tunnel-url",
+            "https://fixture.example.test",
+        ])
         .output()
         .unwrap();
     std::fs::remove_dir_all(&fixture).unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("https://fixture.trycloudflare.com/"));
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("authenticated session"));
 }
 
 #[test]

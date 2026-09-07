@@ -939,6 +939,16 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             )
             .map_err(|error| Error::process(error.to_string()))?;
     }
+    let tunnel_url = tunnel_url
+        .map(|value| {
+            let url = url::Url::parse(&value)
+                .map_err(|error| Error::invalid_input(format!("invalid --tunnel-url: {error}")))?;
+            if url.scheme() != "https" {
+                return Err(Error::invalid_input("--tunnel-url must use HTTPS"));
+            }
+            Ok(url)
+        })
+        .transpose()?;
 
     let selected = selected_app_environment(path, config, client_id, reset)?;
     let client_id = selected
@@ -1069,11 +1079,6 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             .expect("localhost URL is valid"),
         )
     } else if let Some(url) = tunnel_url {
-        let url = url::Url::parse(&url)
-            .map_err(|error| Error::invalid_input(format!("invalid --tunnel-url: {error}")))?;
-        if url.scheme() != "https" {
-            return Err(Error::invalid_input("--tunnel-url must use HTTPS"));
-        }
         Some(url)
     } else {
         let mut session = TunnelSession::new(
