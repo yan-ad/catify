@@ -832,6 +832,36 @@ mod tests {
         repo
     }
 
+    fn fake_package_manager(parent: &Path, name: &str, exit_code: Option<i32>) -> PathBuf {
+        #[cfg(windows)]
+        let (path, contents) = {
+            let path = parent.join(format!("{name}.cmd"));
+            let contents = match exit_code {
+                Some(code) => format!("@echo off\r\nexit /b {code}\r\n"),
+                None => "@echo off\r\n(for %%A in (%*) do @echo %%A)> package-manager.args\r\n"
+                    .to_owned(),
+            };
+            (path, contents)
+        };
+        #[cfg(not(windows))]
+        let (path, contents) = {
+            let path = parent.join(format!("{name}.sh"));
+            let contents = match exit_code {
+                Some(code) => format!("#!/bin/sh\nexit {code}\n"),
+                None => "#!/bin/sh\nprintf '%s\\n' \"$@\" > package-manager.args\n".to_owned(),
+            };
+            (path, contents)
+        };
+
+        fs::write(&path, contents).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
     #[test]
     fn predefined_mapping_is_exact() {
         assert_eq!(
@@ -875,17 +905,7 @@ mod tests {
     async fn scaffolds_local_git_subpath_renders_and_uses_fake_pnpm() {
         let repository = fixture_repo();
         let parent = tempfile::tempdir().unwrap();
-        let fake = parent.path().join("fake-pnpm.sh");
-        fs::write(
-            &fake,
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > package-manager.args\n",
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        let fake = fake_package_manager(parent.path(), "fake-pnpm", None);
         let mut request = AppInitRequest::new(
             parent.path(),
             "My Cool App",
@@ -924,7 +944,9 @@ mod tests {
                 .any(|value| value == "extensions/*")
         );
         assert_eq!(
-            fs::read_to_string(destination.join("package-manager.args")).unwrap(),
+            fs::read_to_string(destination.join("package-manager.args"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "install\n"
         );
         assert!(destination.join(".git").is_dir());
@@ -964,13 +986,7 @@ mod tests {
     async fn package_manager_failure_rolls_back() {
         let repository = fixture_repo();
         let parent = tempfile::tempdir().unwrap();
-        let fake = parent.path().join("false.sh");
-        fs::write(&fake, "#!/bin/sh\nexit 17\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        let fake = fake_package_manager(parent.path(), "false", Some(17));
         let mut request = AppInitRequest::new(
             parent.path(),
             "app",
