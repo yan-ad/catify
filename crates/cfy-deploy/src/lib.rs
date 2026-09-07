@@ -306,7 +306,10 @@ fn normalized_json(value: Option<&serde_json::Value>) -> serde_json::Value {
         match value {
             serde_json::Value::Object(map) => serde_json::Value::Object(
                 map.iter()
-                    .map(|(key, value)| (key.clone(), normalize(value)))
+                    .filter_map(|(key, value)| {
+                        let value = normalize(value);
+                        (value != serde_json::Value::Null).then(|| (key.clone(), value))
+                    })
                     .collect(),
             ),
             serde_json::Value::Array(values) => {

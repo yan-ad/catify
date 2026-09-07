@@ -134,13 +134,17 @@ fn local_deploy_modules(
                 .clone()
                 .or_else(|| extension.name.clone())
                 .unwrap_or_else(|| module_type.clone());
+            let mut configuration = extension.raw.clone();
+            for key in ["name", "type", "handle", "uid", "api_version", "build"] {
+                configuration.remove(key);
+            }
             Some(LocalModuleDescriptor {
                 uid: extension.uid.clone(),
                 user_identifier: extension.uid.clone(),
                 module_type,
                 handle,
                 kind: ModuleKind::Extension,
-                configuration: serde_json::to_value(&extension.raw).ok(),
+                configuration: serde_json::to_value(&configuration).ok(),
             })
         })
         .collect::<Vec<_>>();
@@ -249,6 +253,7 @@ fn append_webhook_modules(modules: &mut Vec<LocalModuleDescriptor>, raw: &toml::
     else {
         return;
     };
+    let mut privacy = serde_json::Map::new();
     for subscription in subscriptions.iter().filter_map(toml::Value::as_table) {
         let uri = subscription
             .get("uri")
@@ -277,19 +282,23 @@ fn append_webhook_modules(modules: &mut Vec<LocalModuleDescriptor>, raw: &toml::
             .get("compliance_topics")
             .and_then(toml::Value::as_array)
         {
-            let handle = format!("privacy:{uri}");
-            modules.push(LocalModuleDescriptor {
-                uid: Some(handle.clone()),
-                user_identifier: Some(handle.clone()),
-                module_type: "privacy_compliance_webhooks".into(),
-                handle,
-                kind: ModuleKind::Configuration,
-                configuration: Some(serde_json::json!({
-                    "uri": uri,
-                    "compliance_topics": topics,
-                })),
-            });
+            for topic in topics.iter().filter_map(toml::Value::as_str) {
+                let key = match topic {
+                    "customers/data_request" => "customers_data_request_url",
+                    "customers/redact" => "customers_redact_url",
+                    "shop/redact" => "shop_redact_url",
+                    _ => continue,
+                };
+                privacy.insert(key.into(), serde_json::Value::String(uri.into()));
+            }
         }
+    }
+    if !privacy.is_empty() {
+        push_configuration_module(
+            modules,
+            "privacy_compliance_webhooks",
+            serde_json::Value::Object(privacy),
+        );
     }
 }
 
@@ -298,10 +307,7 @@ fn remote_deploy_modules(modules: Vec<cfy_app::ActiveAppModule>) -> Vec<RemoteMo
         .into_iter()
         .map(|module| {
             let external_identifier = module.external_identifier.clone();
-            let module_type = module
-                .identifier
-                .clone()
-                .unwrap_or_else(|| external_identifier.clone());
+            let module_type = external_identifier.clone();
             let kind = if module
                 .experience
                 .as_deref()
@@ -326,20 +332,11 @@ fn remote_deploy_modules(modules: Vec<cfy_app::ActiveAppModule>) -> Vec<RemoteMo
                     })
                     .or(module.handle)
                     .unwrap_or_else(|| module_type.clone())
-            } else if external_identifier == "privacy_compliance_webhooks" {
-                module
-                    .configuration
-                    .as_ref()
-                    .and_then(serde_json::Value::as_object)
-                    .and_then(|config| config.get("uri").and_then(serde_json::Value::as_str))
-                    .map(|uri| format!("privacy:{uri}"))
-                    .or(module.handle)
-                    .unwrap_or_else(|| module_type.clone())
             } else {
                 module.handle.unwrap_or_else(|| module_type.clone())
             };
             RemoteModuleDescriptor {
-                uid: module.uuid,
+                uid: module.user_identifier.clone().or(module.uuid),
                 user_identifier: module.user_identifier,
                 handle,
                 module_type,

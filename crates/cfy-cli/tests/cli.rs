@@ -522,12 +522,21 @@ fn app_deploy_matches_shopify_flags_and_noninteractive_safety() {
     )
     .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_cfy"))
-        .args(["--non-interactive", "app", "deploy", "--path"])
+        .args([
+            "--non-interactive",
+            "app",
+            "deploy",
+            "--auth-alias",
+            "cfy-test-missing-session",
+            "--path",
+        ])
         .arg(&root)
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--allow-updates"));
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no authenticated session"));
+    assert!(!stderr.contains("--allow-updates"));
     std::fs::remove_dir_all(root).unwrap();
 }
 

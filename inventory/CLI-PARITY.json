@@ -5,18 +5,18 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 109,
+    "implemented": 110,
     "tested": 111,
     "live_verified": 9,
     "by_status": {
       "adapter": 27,
-      "native": 82,
-      "partial": 2
+      "native": 83,
+      "partial": 1
     },
     "by_domain": {
       "app": {
-        "native": 29,
-        "partial": 2
+        "native": 30,
+        "partial": 1
       },
       "auth": {
         "native": 2
@@ -179,17 +179,17 @@
     {
       "command": "app deploy",
       "domain": "app",
-      "status": "partial",
+      "status": "native",
       "owner": 27,
-      "implementation": "Rust builds a complete Brotli source bundle, requests a signed App Management upload URL, performs bounded PUT upload, creates an app version, and optionally releases it at the exact upstream command path.",
+      "implementation": "Rust builds and uploads a complete Brotli source bundle, fetches the active App Management module inventory, reconciles created/updated/deleted modules, enforces --allow-updates/--allow-deletes before network mutation, creates the app version, and optionally releases it.",
       "tested": true,
       "evidence": [
-        "crates/cfy-deploy/src/lib.rs tests",
-        "crates/cfy-cli/src/lib.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-deploy/src/lib.rs reconciliation tests",
+        "crates/cfy-app/tests/active_modules.rs",
+        "crates/cfy-cli/src/commands/app.rs"
       ],
       "live_verified": false,
-      "notes": "Remote active-version module reconciliation and allow-updates/allow-deletes diff policy are not yet at full Shopify CLI parity."
+      "notes": "Native active-version reconciliation uses stable UID/userIdentifier matching with deterministic type/handle fallback and normalized configuration comparison."
     },
     {
       "command": "app dev",
