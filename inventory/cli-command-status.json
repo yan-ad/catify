@@ -56,30 +56,33 @@
     "app config pull": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 live App Management fetch into an isolated temporary project"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },
     "app config use": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 isolated config-selection state smoke"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 24,
       "status": "native"
     },
     "app config validate": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 validation smoke against an isolated app copy"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 24,
       "status": "native"
     },
@@ -124,20 +127,22 @@
     "app env pull": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-config/src/app_env.rs tests"
+        "crates/cfy-config/src/app_env.rs tests",
+        "installed cfy 0.0.1-pre.2 atomic dotenv write in an isolated app copy"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },
     "app env show": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-config/src/app_env.rs tests"
+        "crates/cfy-config/src/app_env.rs tests",
+        "installed cfy 0.0.1-pre.2 environment rendering smoke against an existing app project"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },
@@ -271,10 +276,11 @@
     "app info": {
       "evidence": [
         "crates/cfy-cli/src/lib.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 smoke against an existing Shopify app project"
       ],
       "implementation": "Rust implementation reports the selected app configuration, requested scopes, extensions, web components, package manager, system metadata, diagnostics, and web runtime environment at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "notes": "Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state.",
       "owner": 40,
       "status": "native"
@@ -306,10 +312,11 @@
       "evidence": [
         "crates/cfy-cli/src/lib.rs::app_log_sources",
         "crates/cfy-cli/src/lib.rs app log sources parser test",
-        "isolated CLI fixture smoke"
+        "isolated CLI fixture smoke",
+        "installed cfy 0.0.1-pre.2 local extension source discovery smoke"
       ],
       "implementation": "Rust-native project graph inspection lists function extension log sources at the exact nested command path without Shopify API or Shopify CLI subprocesses.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },
@@ -326,10 +333,11 @@
     "app versions list": {
       "evidence": [
         "crates/cfy-app/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 live App Management version listing"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },
@@ -368,10 +376,11 @@
       "evidence": [
         "crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory",
         "crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree",
-        "inventory/runtime-shopify-cli.json"
+        "inventory/runtime-shopify-cli.json",
+        "installed cfy 0.0.1-pre.2 command catalog smoke (111 entries)"
       ],
       "implementation": "Native Rust listing embeds the pinned 111-command Shopify runtime inventory and supports JSON, columns, sorting, tree, hidden, deprecated, and extended output without invoking Shopify CLI.",
-      "live_verified": false,
+      "live_verified": true,
       "notes": "Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow.",
       "owner": 36,
       "status": "native"
@@ -432,40 +441,44 @@
     "config autoupgrade status": {
       "evidence": [
         "crates/cfy-config/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 local settings smoke"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 42,
       "status": "native"
     },
     "doc fetch": {
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 live request to shopify.dev"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 41,
       "status": "native"
     },
     "doc search": {
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 live request to shopify.dev assistant search"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 41,
       "status": "native"
     },
     "help": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 help smoke"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 36,
       "status": "native"
     },
@@ -828,11 +841,12 @@
     "store auth list": {
       "evidence": [
         "crates/cfy-store/src/store_auth.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 native credential registry smoke"
       ],
       "implementation": "Rust store-auth credential registry lists current keychain-backed sessions without exposing access or refresh tokens and prunes stale index entries.",
-      "live_verified": false,
-      "notes": "Execution remains blocked until store-auth sessions can be enumerated safely.",
+      "live_verified": true,
+      "notes": "Lists keychain-backed store OAuth and preview-store sessions without exposing credentials.",
       "owner": 38,
       "status": "native"
     },
@@ -1061,10 +1075,11 @@
     "theme package": {
       "evidence": [
         "crates/cfy-api/src/theme.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 archive smoke against an isolated theme fixture"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 39,
       "status": "native"
     },
@@ -1155,10 +1170,11 @@
     "version": {
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 version smoke"
       ],
       "implementation": "Rust implementation is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 36,
       "status": "native"
     }

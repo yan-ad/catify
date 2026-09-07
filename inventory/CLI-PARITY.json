@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 111,
     "tested": 111,
-    "live_verified": 9,
+    "live_verified": 25,
     "by_status": {
       "adapter": 27,
       "native": 84
@@ -141,9 +141,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 live App Management fetch into an isolated temporary project"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -155,9 +156,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 isolated config-selection state smoke"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -169,9 +171,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "installed cfy 0.0.1-pre.2 validation smoke against an isolated app copy"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -230,9 +233,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-config/src/app_env.rs tests"
+        "crates/cfy-config/src/app_env.rs tests",
+        "installed cfy 0.0.1-pre.2 atomic dotenv write in an isolated app copy"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -244,9 +248,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-config/src/app_env.rs tests"
+        "crates/cfy-config/src/app_env.rs tests",
+        "installed cfy 0.0.1-pre.2 environment rendering smoke against an existing app project"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -426,9 +431,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/src/lib.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 smoke against an existing Shopify app project"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": "Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state."
     },
     {
@@ -471,9 +477,10 @@
       "evidence": [
         "crates/cfy-cli/src/lib.rs::app_log_sources",
         "crates/cfy-cli/src/lib.rs app log sources parser test",
-        "isolated CLI fixture smoke"
+        "isolated CLI fixture smoke",
+        "installed cfy 0.0.1-pre.2 local extension source discovery smoke"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -499,9 +506,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-app/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 live App Management version listing"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -556,9 +564,10 @@
       "evidence": [
         "crates/cfy-cli/tests/cli.rs::commands_lists_the_complete_embedded_runtime_inventory",
         "crates/cfy-cli/tests/cli.rs::commands_supports_shopify_compatible_columns_sort_and_tree",
-        "inventory/runtime-shopify-cli.json"
+        "inventory/runtime-shopify-cli.json",
+        "installed cfy 0.0.1-pre.2 command catalog smoke (111 entries)"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": "Complete standalone command catalog; the embedded snapshot is refreshed by the runtime inventory workflow."
     },
     {
@@ -643,9 +652,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-config/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 local settings smoke"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -657,9 +667,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 live request to shopify.dev"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -671,9 +682,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-docs/src/lib.rs tests",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 live request to shopify.dev assistant search"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -685,9 +697,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 help smoke"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -1203,10 +1216,11 @@
       "tested": true,
       "evidence": [
         "crates/cfy-store/src/store_auth.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 native credential registry smoke"
       ],
-      "live_verified": false,
-      "notes": "Execution remains blocked until store-auth sessions can be enumerated safely."
+      "live_verified": true,
+      "notes": "Lists keychain-backed store OAuth and preview-store sessions without exposing credentials."
     },
     {
       "command": "store bulk cancel",
@@ -1506,9 +1520,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-api/src/theme.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "installed cfy 0.0.1-pre.2 archive smoke against an isolated theme fixture"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {
@@ -1635,9 +1650,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
-        "compatibility/scenarios.json"
+        "compatibility/scenarios.json",
+        "installed cfy 0.0.1-pre.2 version smoke"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     }
   ],
