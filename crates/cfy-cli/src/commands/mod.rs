@@ -1,9 +1,17 @@
+mod app;
 mod auth;
 mod catalog;
 mod docs;
 mod plugins;
 mod settings;
 mod store;
+
+pub(crate) use app::app_command;
+pub use app::{
+    AppBulkCommand, AppBulkContext, AppCommand, AppConfigCommand, AppDevArgs, AppDevCommand,
+    AppEnvCommand, AppFunctionCommand, AppFunctionContext, AppGenerateCommand, AppLogStatusArg,
+    AppLogsCommand, AppVersionsCommand, AppWebhookCommand, WebhookDeliveryMethodArg,
+};
 
 pub use auth::{AuthCommand, OrganizationCommand};
 pub(crate) use auth::{auth_command, organization_command};
