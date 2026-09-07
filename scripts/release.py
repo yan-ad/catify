@@ -138,6 +138,11 @@ def replace_versions(root: pathlib.Path, old: Version, new: Version) -> None:
     package_path.write_text(json.dumps(package, indent=2) + "\n")
 
 
+def sync_lockfile(root: pathlib.Path = ROOT) -> None:
+    """Refresh workspace package versions before any --locked release gate."""
+    run("cargo", "update", "--workspace", "--offline", root=root)
+
+
 def run(*args: str, root: pathlib.Path = ROOT, capture: bool = False) -> str:
     result = subprocess.run(
         args,
@@ -196,7 +201,7 @@ def release(args: argparse.Namespace) -> None:
     tagged = False
     try:
         replace_versions(ROOT, current, selected)
-        run("cargo", "metadata", "--format-version", "1", "--no-deps")
+        sync_lockfile()
         run("make", "_release-candidate", f"VERSION={selected}")
         run("git", "add", "Cargo.toml", "Cargo.lock", "package.json")
         run("git", "commit", "-m", f"chore(release): {tag}")

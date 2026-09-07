@@ -39,6 +39,21 @@ class ReleaseToolsTest(unittest.TestCase):
         self.assertIn("scripts/release.py", release_block)
         self.assertNotIn("release-check release-package release-smoke", release_block)
 
+    def test_release_syncs_lockfile_before_locked_candidate(self):
+        source = (ROOT / "scripts/release.py").read_text()
+        replace_offset = source.index("replace_versions(ROOT, current, selected)")
+        lock_offset = source.index("sync_lockfile()", replace_offset)
+        candidate_offset = source.index(
+            'run("make", "_release-candidate", f"VERSION={selected}")',
+            lock_offset,
+        )
+        self.assertLess(replace_offset, lock_offset)
+        self.assertLess(lock_offset, candidate_offset)
+        self.assertIn(
+            'run("cargo", "update", "--workspace", "--offline", root=root)',
+            source,
+        )
+
     def test_package_release_builds_unix_and_windows_archives(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
