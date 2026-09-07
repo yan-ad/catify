@@ -33,11 +33,11 @@ Node.js is not required by the native Rust command core. It can still be require
 ### npm
 
 ```sh
-npm install --global catify-cli
+npm install --global catify-cli@next
 cfy version
 ```
 
-The npm package downloads the native binary for the current platform. `catify version` is equivalent to `cfy version`.
+Catify prereleases use npm's `next` tag. The `0.0.1-pre.0` package still needs to be published; use the shell installer below until `catify-cli@next` is available. The npm package downloads the native binary for the current platform. `catify version` is equivalent to `cfy version`.
 
 ### Shell installer
 
@@ -47,6 +47,8 @@ On macOS or Linux:
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yan-ad/catify/main/install.sh | sh
 ```
+
+The shell installer selects the latest stable release when one exists, otherwise it installs the newest prerelease. Pin a release with `CFY_VERSION=0.0.1-pre.0`.
 
 ### Cargo
 

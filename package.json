@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/npm/install.js",
+    "prepublishOnly": "node scripts/check-release-assets.js",
     "test": "node --test scripts/npm/*.test.js"
   },
   "engines": {

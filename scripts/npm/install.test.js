@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { checksumFromManifest, targetFor } = require('./install');
+const { requiredAssets, validateRelease } = require('../check-release-assets');
 
 test('maps supported npm platforms to Rust targets', () => {
   assert.equal(targetFor('darwin', 'arm64'), 'aarch64-apple-darwin');
@@ -11,6 +12,16 @@ test('maps supported npm platforms to Rust targets', () => {
   assert.equal(targetFor('linux', 'x64'), 'x86_64-unknown-linux-gnu');
   assert.equal(targetFor('win32', 'x64'), 'x86_64-pc-windows-msvc');
   assert.throws(() => targetFor('linux', 'arm'), /unsupported platform/);
+});
+
+test('npm publish preflight requires every platform asset', () => {
+  const version = '0.0.1-pre.0';
+  const assets = requiredAssets(version).map((name) => ({ name }));
+  assert.doesNotThrow(() => validateRelease({ assets }, version));
+  assert.throws(
+    () => validateRelease({ assets: assets.slice(1) }, version),
+    /missing assets/,
+  );
 });
 
 test('npm package exposes both Catify command names', () => {

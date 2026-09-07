@@ -17,10 +17,14 @@ the shorter `cfy` command; both execute the same native Rust binary. Official re
 ## Install with npm
 
 ```sh
-npm install --global catify-cli
+npm install --global catify-cli@next
 cfy version
 catify version
 ```
+
+Catify prereleases are published under npm's `next` dist-tag. The existing
+`catify-cli@0.0.1` package predates the matching GitHub release and cannot install;
+use the shell installer until `0.0.1-pre.0` is published.
 
 The package downloads the matching GitHub Release archive and verifies its SHA-256
 checksum before installing it. Node.js 18 or newer is required for installation.
@@ -29,7 +33,7 @@ The command implementation remains the native Rust binary.
 Upgrade or remove it with:
 
 ```sh
-npm update --global catify-cli
+npm update --global catify-cli@next
 npm uninstall --global catify-cli
 ```
 
@@ -50,7 +54,7 @@ is not already in `PATH`, add it to your shell profile. Common overrides are:
 CFY_INSTALL_DIR=/usr/local/bin sh install.sh
 
 # Install an exact version.
-CFY_VERSION=0.1.0 sh install.sh
+CFY_VERSION=0.0.1-pre.0 sh install.sh
 ```
 
 The CLI checks GitHub Releases in the background at most once every 24 hours and
@@ -74,7 +78,7 @@ rm ~/.local/bin/catify
 
 ## Manual installation
 
-1. Open the [latest GitHub Release](https://github.com/yan-ad/catify/releases/latest).
+1. Open the [GitHub Releases page](https://github.com/yan-ad/catify/releases) and select the newest release or prerelease.
 2. Download the archive matching the target table above and `SHA256SUMS`.
 3. Verify the archive checksum.
 4. Extract `cfy`/`catify` (`.exe` on Windows) and place them in a directory on `PATH`.
@@ -105,15 +109,13 @@ workspace, and pushing the tag:
 
 ```sh
 # Update workspace.package.version in Cargo.toml and version in package.json.
-cargo test --workspace --locked
-npm test
-python3 scripts/check-release-version.py --tag v0.1.0
-git tag v0.1.0
-git push origin v0.1.0
+make tag-release VERSION=0.0.1-pre.0
+git push origin v0.0.1-pre.0
 ```
 
 The tag builds all supported archives and creates the GitHub Release first. npm
-publishing is intentionally gated by the repository variable `NPM_PUBLISH=true`.
+publishing verifies those exact assets before upload and is intentionally gated by
+the repository variable `NPM_PUBLISH=true`.
 
 For the first npm publication:
 

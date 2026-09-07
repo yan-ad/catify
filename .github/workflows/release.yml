@@ -179,4 +179,5 @@ jobs:
           if [[ "${{ needs.verify.outputs.version }}" == *-* ]]; then
             DIST_TAG=next
           fi
+          node scripts/check-release-assets.js
           CFY_SKIP_DOWNLOAD=1 npm publish --access public --tag "$DIST_TAG"

@@ -24,13 +24,31 @@ download() {
   esac
 }
 
+latest_version() {
+  latest_url=$(curl --proto '=https' --tlsv1.2 -fsSL -o /dev/null -w '%{url_effective}' \
+    "https://github.com/${REPOSITORY}/releases/latest" 2>/dev/null || true)
+  case "$latest_url" in
+    */releases/tag/v*) printf '%s\n' "${latest_url##*/}" | sed 's/^v//' ; return ;;
+  esac
+
+  releases_json=$(curl --proto '=https' --tlsv1.2 -fsSL \
+    -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/${REPOSITORY}/releases?per_page=20")
+  version=$(printf '%s' "$releases_json" | awk '
+    BEGIN { RS="\"tag_name\"[[:space:]]*:[[:space:]]*\""; FS="\"" }
+    NR > 1 && $1 ~ /^v[0-9]/ { sub(/^v/, "", $1); print $1; exit }
+  ')
+  [ -n "$version" ] || {
+    echo "error: ${REPOSITORY} has no published GitHub release" >&2
+    exit 1
+  }
+  printf '%s\n' "$version"
+}
+
 if [ -n "${CFY_VERSION:-}" ]; then
   VERSION=${CFY_VERSION#v}
 else
-  LATEST_URL=$(curl --proto '=https' --tlsv1.2 -fsSL -o /dev/null -w '%{url_effective}' \
-    "https://github.com/${REPOSITORY}/releases/latest")
-  VERSION=${LATEST_URL##*/}
-  VERSION=${VERSION#v}
+  VERSION=$(latest_version)
 fi
 
 case "$(uname -s)-$(uname -m)" in

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -91,6 +92,74 @@ class ReleaseToolsTest(unittest.TestCase):
                     f"{hashlib.sha256(b'b').hexdigest()}  b.zip",
                 ],
             )
+
+
+    def test_shell_installer_falls_back_to_prerelease(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            version = "1.2.3-pre.0"
+            target = "aarch64-apple-darwin"
+            release = root / "releases" / f"v{version}"
+            release.mkdir(parents=True)
+            binary = root / "cfy"
+            binary.write_text("#!/bin/sh\necho fixture\n")
+            binary.chmod(0o755)
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/package-release.py"),
+                    "--binary", str(binary),
+                    "--version", version,
+                    "--target", target,
+                    "--output", str(release),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/generate-checksums.py"),
+                    str(release / f"cfy-v{version}-{target}.tar.gz"),
+                    "--output", str(release / "SHA256SUMS"),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            tools = root / "tools"
+            tools.mkdir()
+            curl = tools / "curl"
+            curl.write_text(
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *releases/latest*) exit 22 ;;\n"
+                f"  *api.github.com*) printf '%s' '[{{\"tag_name\":\"v{version}\"}}]' ;;\n"
+                "  *) exec /usr/bin/curl \"$@\" ;;\n"
+                "esac\n"
+            )
+            curl.chmod(0o755)
+            install = root / "install.sh"
+            install.write_text((ROOT / "install.sh").read_text())
+            install.chmod(0o755)
+            destination = root / "bin"
+            env = dict(os.environ)
+            env.update({
+                "PATH": f"{tools}:{env['PATH']}",
+                "CFY_RELEASE_BASE_URL": f"file://{root / 'releases'}",
+                "CFY_INSTALL_DIR": str(destination),
+            })
+            uname = tools / "uname"
+            uname.write_text(
+                "#!/bin/sh\n"
+                "case \"$1\" in -s) echo Darwin ;; -m) echo arm64 ;; *) echo Darwin ;; esac\n"
+            )
+            uname.chmod(0o755)
+            subprocess.run(["sh", str(install)], check=True, env=env, capture_output=True, text=True)
+            self.assertTrue((destination / "cfy").is_file())
 
     def test_release_version_matches_workspace_and_npm(self):
         package_version = json.loads((ROOT / "package.json").read_text())["version"]
