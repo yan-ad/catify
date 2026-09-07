@@ -11,8 +11,8 @@ use super::super::{
     select_organization, select_text_choice,
 };
 use cfy_app::{
-    AppDevClient, AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteOrganization,
-    exchange_app_management_token,
+    AppDevClient, AppDevCreateSessionRequest, AppDevUpdateSessionRequest, AppManagementClient,
+    BusinessPlatformClient, LinkOptions, RemoteOrganization, exchange_app_management_token,
     extension_generate::{GenerateExtensionOptions, generate_extension},
     extension_import::{
         ExistingDirectoryPolicy, ExtensionRegistrationProvider, ImportExtensionsOptions,
@@ -36,7 +36,7 @@ use cfy_auth::{
 use cfy_build::{BuildInput, BuildMode, BuildOptions, BuildPipeline};
 use cfy_bulk::{
     AppCredentials as BulkAppCredentials, BulkClient, BulkOperationId, BulkOperationStatus,
-    GraphiqlServer, StoreDomain as BulkStoreDomain, exchange_client_credentials,
+    GraphiqlServer, MutationPolicy, StoreDomain as BulkStoreDomain, exchange_client_credentials,
     resolve_api_version,
 };
 use cfy_config::{
@@ -47,26 +47,31 @@ use cfy_config::{
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_deploy::{
-    AppManagementBackend as DeployBackend, DeployOptions, DeployReconciliation, DeploySelection,
-    LocalModuleDescriptor, ModuleChangeKind, ModuleKind, ModuleReconciliationPolicy,
-    RemoteModuleDescriptor, VersionMetadata, deploy as deploy_app, reconcile_modules,
+    AppManagementBackend as DeployBackend, DeployBackend as DeployBackendProtocol, DeployOptions,
+    DeployReconciliation, DeploySelection, LocalModuleDescriptor, ModuleChangeKind, ModuleKind,
+    ModuleReconciliationPolicy, RemoteModuleDescriptor, SourceUploadPolicy, VersionMetadata,
+    complete_source_from_build, deploy as deploy_app, reconcile_modules,
 };
-use cfy_dev::{ComponentSpec, DevOptions, DevSession};
+use cfy_dev::{ComponentSpec, DevOptions, DevSession, TlsProxy};
 use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
-use cfy_process::{OutputMode, ProcessSpec, Supervisor};
+use cfy_process::{OutputMode, ProcessSpec, RunningProcess, Supervisor};
 use cfy_store::{
     AdminStoreBackend, OrganizationStoreClient, StoreTarget,
     custom_data::{existing_definitions, import_definitions},
 };
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
 use clap::{ArgAction, Args, Subcommand, ValueEnum};
+use notify::{RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
+    hash::{DefaultHasher, Hash, Hasher},
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 fn select_extension_imports(
@@ -589,6 +594,20 @@ fn create_deploy_bundle(
     graph: &cfy_config::graph::AppConfigGraph,
     build: &cfy_build::BuildReport,
 ) -> Result<cfy_build::BuildReport> {
+    create_source_bundle(
+        graph,
+        build,
+        &deploy_manifest(graph)?,
+        "deploy-bundle.tar.br",
+    )
+}
+
+fn create_source_bundle(
+    graph: &cfy_config::graph::AppConfigGraph,
+    build: &cfy_build::BuildReport,
+    manifest: &serde_json::Value,
+    file_name: &str,
+) -> Result<cfy_build::BuildReport> {
     let directory = graph.root.join(".catify");
     std::fs::create_dir_all(&directory).map_err(|error| {
         Error::with_source(
@@ -597,21 +616,24 @@ fn create_deploy_bundle(
             error,
         )
     })?;
-    let path = directory.join("deploy-bundle.tar.br");
+    let path = directory.join(file_name);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            Error::with_source(
+                ErrorKind::Config,
+                format!(
+                    "could not create source bundle directory {}",
+                    parent.display()
+                ),
+                error,
+            )
+        })?;
+    }
     let file = std::fs::File::create(&path).map_err(|error| {
         Error::with_source(ErrorKind::Config, "could not create deploy bundle", error)
     })?;
     let encoder = brotli::CompressorWriter::new(file, 4096, 6, 22);
     let mut archive = tar::Builder::new(encoder);
-    let app = graph
-        .apps
-        .first()
-        .ok_or_else(|| Error::config("selected app graph has no app node"))?;
-    let manifest = serde_json::json!({
-        "name": app.config.name,
-        "handle": app.config.raw.get("handle").and_then(toml::Value::as_str),
-        "modules": local_deploy_modules(graph)?,
-    });
     let manifest = serde_json::to_vec_pretty(&manifest)
         .map_err(|error| Error::config(format!("could not encode deploy manifest: {error}")))?;
     let mut header = tar::Header::new_gnu();
@@ -655,6 +677,173 @@ fn create_deploy_bundle(
         }],
         diagnostics: build.diagnostics.clone(),
     })
+}
+
+fn deploy_manifest(graph: &cfy_config::graph::AppConfigGraph) -> Result<serde_json::Value> {
+    let app = graph
+        .apps
+        .first()
+        .ok_or_else(|| Error::config("selected app graph has no app node"))?;
+    Ok(serde_json::json!({
+        "name": app.config.name,
+        "handle": app.config.raw.get("handle").and_then(toml::Value::as_str),
+        "modules": local_deploy_modules(graph)?,
+    }))
+}
+
+fn dev_manifest(
+    graph: &cfy_config::graph::AppConfigGraph,
+    public_url: Option<&url::Url>,
+    update_urls: bool,
+    subscription_product_url: Option<&str>,
+    checkout_cart_url: Option<&str>,
+) -> Result<serde_json::Value> {
+    let mut manifest = deploy_manifest(graph)?;
+    if update_urls && let Some(public_url) = public_url {
+        let modules = manifest["modules"]
+            .as_array_mut()
+            .ok_or_else(|| Error::config("App Dev manifest modules must be an array"))?;
+        let app_home = modules
+            .iter_mut()
+            .find(|module| module["type"] == "app_home")
+            .ok_or_else(|| Error::config("App Dev manifest has no app_home module"))?;
+        app_home["configuration"]["app_url"] = public_url.to_string().into();
+    }
+    let mut metadata = serde_json::Map::new();
+    for (flag, key, prefix, value) in [
+        (
+            "--subscription-product-url",
+            "subscriptionProductUrl",
+            "/products/",
+            subscription_product_url,
+        ),
+        (
+            "--checkout-cart-url",
+            "checkoutCartUrl",
+            "/cart/",
+            checkout_cart_url,
+        ),
+    ] {
+        if let Some(value) = value {
+            if !value.starts_with(prefix) || value.contains("//") {
+                return Err(Error::invalid_input(format!(
+                    "{flag} must be a store-relative resource URL beginning with `{prefix}`"
+                )));
+            }
+            metadata.insert(key.into(), value.into());
+        }
+    }
+    if !metadata.is_empty() {
+        manifest["metadata"] = metadata.into();
+    }
+    Ok(manifest)
+}
+
+async fn find_remote_app(
+    session: &cfy_auth::Session,
+    app_management: &AppManagementClient,
+    client_id: &str,
+) -> Result<cfy_app::RemoteApp> {
+    let organizations = BusinessPlatformClient::from_session(session)
+        .await?
+        .list_organizations()
+        .await?;
+    for organization in organizations {
+        if app_management
+            .list_apps(&organization.id)
+            .await?
+            .iter()
+            .any(|app| app.client_id == client_id)
+        {
+            return app_management
+                .app_by_client_id_in_organization(&organization.id, client_id)
+                .await;
+        }
+    }
+    Err(Error::invalid_input(format!(
+        "no app with client ID `{client_id}` is available to this account"
+    )))
+}
+
+async fn prepare_mkcert(root: &Path, supervisor: &Supervisor) -> Result<(PathBuf, PathBuf)> {
+    let executable = env::var("CFY_MKCERT_BIN").unwrap_or_else(|_| "mkcert".into());
+    let directory = root.join(".catify/dev/tls");
+    std::fs::create_dir_all(&directory).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            format!("could not create {}", directory.display()),
+            error,
+        )
+    })?;
+    let certificate = directory.join("localhost.pem");
+    let private_key = directory.join("localhost-key.pem");
+    for arguments in [
+        vec!["-install".to_owned()],
+        vec![
+            "-cert-file".to_owned(),
+            certificate.display().to_string(),
+            "-key-file".to_owned(),
+            private_key.display().to_string(),
+            "localhost".to_owned(),
+            "127.0.0.1".to_owned(),
+            "::1".to_owned(),
+        ],
+    ] {
+        let result = supervisor
+            .spawn(
+                ProcessSpec::new(&executable)
+                    .args(arguments)
+                    .current_dir(root)
+                    .output(OutputMode::Capture),
+            )?
+            .wait()
+            .await?;
+        if !result.status.success() {
+            return Err(Error::process(format!(
+                "mkcert failed with exit code {}; install mkcert or set CFY_MKCERT_BIN",
+                result.exit_code().unwrap_or(1)
+            )));
+        }
+    }
+    Ok((certificate, private_key))
+}
+
+#[derive(Serialize)]
+struct ThemePreviewAdapterRequest<'a> {
+    protocol_version: u8,
+    project_root: &'a Path,
+    store: &'a str,
+    theme: Option<&'a str>,
+    port: Option<u16>,
+    store_password: Option<&'a str>,
+}
+
+fn start_theme_preview_adapter(
+    root: &Path,
+    store: &str,
+    theme: Option<&str>,
+    port: Option<u16>,
+    store_password: Option<&str>,
+    supervisor: &Supervisor,
+) -> Result<RunningProcess> {
+    let request = serde_json::to_vec(&ThemePreviewAdapterRequest {
+        protocol_version: 1,
+        project_root: root,
+        store,
+        theme,
+        port,
+        store_password,
+    })
+    .map_err(|error| Error::config(format!("could not encode theme preview request: {error}")))?;
+    let executable =
+        env::var("CFY_THEME_PREVIEW_BIN").unwrap_or_else(|_| "catify-theme-preview".into());
+    supervisor.spawn(
+        ProcessSpec::new(executable)
+            .args(["serve", "--protocol", "1"])
+            .stdin(request)
+            .current_dir(root)
+            .output(OutputMode::Inherit),
+    )
 }
 
 #[derive(Debug, Args)]
@@ -723,13 +912,13 @@ pub enum AppBulkCommand {
 async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
     let AppDevArgs {
         config,
-        auth_alias: _,
+        auth_alias,
         client_id,
         path,
         reset,
-        store: _,
+        store,
         skip_dependencies_installation,
-        no_update: _,
+        no_update,
         subscription_product_url,
         checkout_cart_url,
         install_mkcert,
@@ -740,19 +929,9 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         theme_app_extension_port,
         store_password,
         notify,
+        graphiql_port,
+        graphiql_key,
     } = args;
-    if subscription_product_url.is_some()
-        || checkout_cart_url.is_some()
-        || install_mkcert
-        || theme.is_some()
-        || theme_app_extension_port.is_some()
-        || store_password.is_some()
-        || notify.is_some()
-    {
-        return Err(Error::api(
-            "this app dev invocation requires preview features that are not wired to the native runtime yet; remove preview/theme/notify flags or track issue #29",
-        ));
-    }
     if skip_dependencies_installation {
         output
             .lifecycle(
@@ -762,28 +941,133 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
     }
 
     let selected = selected_app_environment(path, config, client_id, reset)?;
+    let client_id = selected
+        .document
+        .get("client_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?
+        .to_owned();
+    let store_domain = store.or(selected.store.clone()).ok_or_else(|| {
+        Error::invalid_input("app dev requires --store or a store in the selected app config")
+    })?;
     let graph =
         cfy_config::graph::AppConfigGraph::load_selected(&selected.project, &selected.config_path)?;
     let app = graph
         .apps
         .first()
         .ok_or_else(|| Error::config("selected app configuration was not loaded"))?;
+    let public_port = localhost_port.unwrap_or(3000);
+    let web_base_port = if install_mkcert {
+        public_port.checked_add(1).ok_or_else(|| {
+            Error::invalid_input("--localhost-port must be below 65535 when using --install-mkcert")
+        })?
+    } else {
+        public_port
+    };
     let specs = app
         .webs
         .iter()
-        .filter_map(web_dev_component)
+        .enumerate()
+        .filter_map(|(index, web)| {
+            let port = web_base_port.checked_add(u16::try_from(index).ok()?)?;
+            web_dev_component(web, port)
+        })
         .collect::<Vec<_>>();
-    if specs.is_empty() {
+    if specs.is_empty() && app.extensions.is_empty() {
         return Err(Error::config(
-            "no [commands].dev entries were found in shopify.web.toml files",
+            "the selected app has no web components or extensions to run",
         ));
     }
 
+    let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
+    let authenticated = authenticated_session(&identity).await?;
+    let app_management = AppManagementClient::from_session(&authenticated).await?;
+    let remote_app = find_remote_app(&authenticated, &app_management, &client_id).await?;
+    let inherited_module_uids = inherited_dev_module_uids(
+        &local_deploy_modules(&graph)?,
+        &remote_deploy_modules(app_management.active_app_modules(&remote_app.id).await?),
+    );
+    let token = exchange_app_management_token(&authenticated).await?;
+    let credentials = app_management.app_client_credentials(&client_id).await?;
+    let store_for_admin = BulkStoreDomain::parse(&store_domain)
+        .map_err(|error| Error::invalid_input(error.to_string()))?;
+    let admin_credentials = BulkAppCredentials::new(
+        credentials.client_id,
+        credentials.client_secret.expose().to_owned(),
+    );
+    let admin_token = exchange_client_credentials(&store_for_admin, &admin_credentials)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
+    let admin_version = resolve_api_version(&store_for_admin, None)
+        .await
+        .map_err(|error| Error::api(error.to_string()))?;
+    let graphiql_key = graphiql_key.unwrap_or_else(|| {
+        let digest = Sha256::digest(admin_credentials.client_secret.expose().as_bytes());
+        format!("{digest:x}")
+    });
+    let graphiql_server = GraphiqlServer::bind_with_key(
+        BulkClient::new(&store_for_admin, &admin_version, admin_token.secret())
+            .map_err(|error| Error::api(error.to_string()))?,
+        graphiql_port.unwrap_or(3457),
+        MutationPolicy::DevelopmentStoresOnly,
+        Some(graphiql_key),
+    )
+    .await
+    .map_err(|error| Error::process(error.to_string()))?;
+    let graphiql_url = graphiql_server
+        .url(None)
+        .map_err(|error| Error::process(error.to_string()))?;
+    let app_dev_client = AppDevClient::new(&store_domain, token.expose())?;
+    let endpoint = env::var("CFY_APP_MANAGEMENT_URL")
+        .unwrap_or_else(|_| "https://app.shopify.com/app_management/unstable/graphql.json".into());
+    let deploy_backend = DeployBackend::new(&endpoint, token.expose())?;
+    let selection = DeploySelection {
+        app: remote_app.id.clone(),
+        environment: remote_app.organization_id.clone(),
+    };
+
     let supervisor = Supervisor::default();
     let cancellation = Cancellation::default();
+    let mut tls_proxy = None;
+    if install_mkcert {
+        if !use_localhost {
+            return Err(Error::invalid_input(
+                "--install-mkcert requires --use-localhost",
+            ));
+        }
+        let (certificate, private_key) = prepare_mkcert(&graph.root, &supervisor).await?;
+        let proxy = TlsProxy::start(
+            ([127, 0, 0, 1], public_port).into(),
+            ([127, 0, 0, 1], web_base_port).into(),
+            &certificate,
+            &private_key,
+        )
+        .await
+        .map_err(|error| Error::process(format!("could not start localhost TLS proxy: {error}")))?;
+        tls_proxy = Some(proxy);
+    }
+    let mut theme_preview_process = None;
+    if theme.is_some() || theme_app_extension_port.is_some() || store_password.is_some() {
+        theme_preview_process = Some(start_theme_preview_adapter(
+            &graph.root,
+            &store_domain,
+            theme.as_deref(),
+            theme_app_extension_port,
+            store_password.as_deref(),
+            &supervisor,
+        )?);
+    }
     let mut tunnel = None;
-    let public_url = if use_localhost {
+    let public_url = if specs.is_empty() {
         None
+    } else if use_localhost {
+        Some(
+            url::Url::parse(&format!(
+                "{}://localhost:{public_port}",
+                if install_mkcert { "https" } else { "http" }
+            ))
+            .expect("localhost URL is valid"),
+        )
     } else if let Some(url) = tunnel_url {
         let url = url::Url::parse(&url)
             .map_err(|error| Error::invalid_input(format!("invalid --tunnel-url: {error}")))?;
@@ -797,7 +1081,7 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             CloudflaredAdapter,
             TunnelConfig {
                 local_host: "127.0.0.1".into(),
-                local_port: localhost_port.unwrap_or(3000),
+                local_port: public_port,
                 public_url: None,
                 provider: TunnelProvider::Cloudflared {
                     executable: env::var("CFY_CLOUDFLARED_BIN")
@@ -811,6 +1095,126 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         tunnel = Some(session);
         Some(url)
     };
+    let manifest = match dev_manifest(
+        &graph,
+        public_url.as_ref(),
+        !no_update,
+        subscription_product_url.as_deref(),
+        checkout_cart_url.as_deref(),
+    ) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error);
+        }
+    };
+    let assets_url = match upload_dev_source(
+        &deploy_backend,
+        &selection,
+        &graph,
+        &manifest,
+        &cancellation,
+    )
+    .await
+    {
+        Ok(url) => url,
+        Err(error) => {
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error);
+        }
+    };
+    let created = match app_dev_client
+        .create_session(&AppDevCreateSessionRequest {
+            app_id: remote_app.id.clone(),
+            assets_url: Some(assets_url),
+            websocket_url: None,
+        })
+        .await
+    {
+        Ok(created) => created,
+        Err(error) => {
+            let _ = app_dev_client.delete_session(&remote_app.id).await;
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error);
+        }
+    };
+    if let Err(error) = reject_app_dev_errors("create", &created.user_errors) {
+        let _ = app_dev_client.delete_session(&remote_app.id).await;
+        if let Some(mut tunnel) = tunnel {
+            let _ = tunnel.stop().await;
+        }
+        return Err(error);
+    }
+    if created.session.is_none() {
+        let _ = app_dev_client.delete_session(&remote_app.id).await;
+        if let Some(mut tunnel) = tunnel {
+            let _ = tunnel.stop().await;
+        }
+        return Err(Error::api(
+            "Shopify accepted the App Dev create request but returned no development session",
+        ));
+    }
+    let initialized = app_dev_client
+        .update_session(&AppDevUpdateSessionRequest {
+            app_id: remote_app.id.clone(),
+            assets_url: None,
+            manifest: manifest.clone(),
+            inherited_module_uids: inherited_module_uids.clone(),
+        })
+        .await;
+    match initialized {
+        Ok(response) => {
+            if let Err(error) = reject_app_dev_errors("initialize", &response.user_errors) {
+                let _ = app_dev_client.delete_session(&remote_app.id).await;
+                if let Some(mut tunnel) = tunnel {
+                    let _ = tunnel.stop().await;
+                }
+                return Err(error);
+            }
+        }
+        Err(error) => {
+            let _ = app_dev_client.delete_session(&remote_app.id).await;
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error);
+        }
+    }
+    let source_digest = match complete_source_digest(&graph) {
+        Ok(digest) => digest,
+        Err(error) => {
+            let _ = app_dev_client.delete_session(&remote_app.id).await;
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error);
+        }
+    };
+    if let Err(error) = persist_dev_state(
+        &graph.root,
+        &DevState {
+            app_id: remote_app.id.clone(),
+            organization_id: remote_app.organization_id.clone(),
+            client_id: client_id.clone(),
+            store: store_domain.clone(),
+            public_url: public_url.as_ref().map(ToString::to_string),
+            source_digest,
+            updated_at_ms: unix_time_ms(),
+        },
+        &manifest,
+    ) {
+        let _ = app_dev_client.delete_session(&remote_app.id).await;
+        if let Some(mut tunnel) = tunnel {
+            let _ = tunnel.stop().await;
+        }
+        return Err(error);
+    }
     let signal = cancellation.clone();
     let signal_supervisor = supervisor.clone();
     let _signal_task = AbortOnDrop(tokio::spawn(async move {
@@ -819,38 +1223,442 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             let _ = signal_supervisor.shutdown().await;
         }
     }));
-    let mut session = DevSession::new(supervisor, &specs, DevOptions::default())?;
-    session.start(&specs, &cancellation).await?;
+    let mut session = if specs.is_empty() {
+        None
+    } else {
+        let mut session = match DevSession::new(supervisor.clone(), &specs, DevOptions::default()) {
+            Ok(session) => session,
+            Err(error) => {
+                let _ = app_dev_client.delete_session(&remote_app.id).await;
+                if let Some(mut tunnel) = tunnel {
+                    let _ = tunnel.stop().await;
+                }
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = session.start(&specs, &cancellation).await {
+            let _ = app_dev_client.delete_session(&remote_app.id).await;
+            if let Some(mut tunnel) = tunnel {
+                let _ = tunnel.stop().await;
+            }
+            return Err(error.into());
+        }
+        Some(session)
+    };
     output
         .lifecycle(&match public_url {
             Some(ref url) => format!(
-                "Running {} app component(s); public URL: {url}",
+                "Running {} app component(s); public URL: {url}; GraphiQL: {graphiql_url}",
                 specs.len()
             ),
-            None => format!("Running {} app component(s) on localhost", specs.len()),
+            None => format!(
+                "Running {} app component(s) on localhost; GraphiQL: {graphiql_url}",
+                specs.len()
+            ),
         })
         .map_err(|error| Error::process(error.to_string()))?;
-    let result = match session.wait(&cancellation).await {
-        Ok(()) => Ok(0),
-        Err(cfy_dev::DevError::Cancelled) if cancellation.is_cancelled() => Ok(0),
-        Err(error) => Err(error.into()),
+    let local_cancellation = cancellation.clone();
+    let mut local_task = tokio::spawn(async move {
+        if let Some(ref mut session) = session {
+            session.wait(&local_cancellation).await
+        } else {
+            while !local_cancellation.is_cancelled() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Err(cfy_dev::DevError::Cancelled)
+        }
+    });
+    let mut theme_task = theme_preview_process
+        .take()
+        .map(|process| tokio::spawn(async move { process.wait().await }));
+    let mut theme_task_completed = false;
+    let (events_tx, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut watcher = match notify::recommended_watcher(move |event| {
+        let _ = events_tx.send(event);
+    })
+    .map_err(|error| Error::process(format!("could not create App Dev watcher: {error}")))
+    {
+        Ok(watcher) => watcher,
+        Err(error) => {
+            cancellation.cancel();
+            let _ = supervisor.shutdown().await;
+            let _ = local_task.await;
+            let _ = app_dev_client.delete_session(&remote_app.id).await;
+            return Err(error);
+        }
     };
-    if let Some(mut tunnel) = tunnel {
-        tunnel.stop().await?;
+    if let Err(error) = watcher.watch(&graph.root, RecursiveMode::Recursive) {
+        cancellation.cancel();
+        let _ = supervisor.shutdown().await;
+        let _ = local_task.await;
+        let _ = app_dev_client.delete_session(&remote_app.id).await;
+        return Err(Error::process(format!(
+            "could not watch app project: {error}"
+        )));
+    }
+    let graphiql_cancellation = cancellation.clone();
+    let mut graphiql_task = tokio::spawn(async move {
+        graphiql_server
+            .run(&graphiql_cancellation)
+            .await
+            .map_err(|error| Error::process(error.to_string()))
+    });
+    let mut graphiql_task_completed = false;
+    let mut result = Ok(0);
+    loop {
+        tokio::select! {
+            local = &mut local_task => {
+                result = match local {
+                    Ok(Ok(())) => Ok(0),
+                    Ok(Err(cfy_dev::DevError::Cancelled)) if cancellation.is_cancelled() => Ok(0),
+                    Ok(Err(error)) => Err(error.into()),
+                    Err(error) => Err(Error::process(format!("local App Dev task failed: {error}"))),
+                };
+                break;
+            }
+            graphiql = &mut graphiql_task => {
+                graphiql_task_completed = true;
+                let message = match graphiql {
+                    Ok(Ok(())) => "GraphiQL server stopped unexpectedly".into(),
+                    Ok(Err(error)) => format!("GraphiQL server failed: {error}"),
+                    Err(error) => format!("GraphiQL task failed: {error}"),
+                };
+                result = Err(Error::process(message));
+                cancellation.cancel();
+                let _ = supervisor.shutdown().await;
+                let _ = (&mut local_task).await;
+                break;
+            }
+            theme = async {
+                match theme_task.as_mut() {
+                    Some(task) => Some(task.await),
+                    None => std::future::pending().await,
+                }
+            } => {
+                theme_task_completed = true;
+                let message = match theme {
+                    Some(Ok(Ok(output))) => format!(
+                        "theme preview engine exited unexpectedly with code {}",
+                        output.exit_code().unwrap_or(1)
+                    ),
+                    Some(Ok(Err(error))) => format!("theme preview engine failed: {error}"),
+                    Some(Err(error)) => format!("theme preview task failed: {error}"),
+                    None => "theme preview engine stopped unexpectedly".into(),
+                };
+                result = Err(Error::process(message));
+                cancellation.cancel();
+                let _ = supervisor.shutdown().await;
+                let _ = (&mut local_task).await;
+                break;
+            }
+            event = next_debounced_project_change(&mut events_rx, &graph.root) => {
+                let Some(_) = event else { break; };
+                let refreshed = match cfy_config::graph::AppConfigGraph::load_selected(
+                    &selected.project,
+                    &selected.config_path,
+                ) {
+                    Ok(refreshed) => refreshed,
+                    Err(error) => {
+                        result = Err(error);
+                        cancellation.cancel();
+                        let _ = supervisor.shutdown().await;
+                        let _ = (&mut local_task).await;
+                        break;
+                    }
+                };
+                let manifest = match dev_manifest(
+                    &refreshed,
+                    public_url.as_ref(),
+                    !no_update,
+                    subscription_product_url.as_deref(),
+                    checkout_cart_url.as_deref(),
+                ) {
+                    Ok(manifest) => manifest,
+                    Err(error) => {
+                        result = Err(error);
+                        cancellation.cancel();
+                        let _ = supervisor.shutdown().await;
+                        let _ = (&mut local_task).await;
+                        break;
+                    }
+                };
+                let update = async {
+                    let assets_url = upload_dev_source(
+                        &deploy_backend,
+                        &selection,
+                        &refreshed,
+                        &manifest,
+                        &cancellation,
+                    ).await?;
+                    let response = app_dev_client.update_session(&AppDevUpdateSessionRequest {
+                        app_id: remote_app.id.clone(),
+                        assets_url: Some(assets_url),
+                        manifest: manifest.clone(),
+                        inherited_module_uids: inherited_module_uids.clone(),
+                    }).await?;
+                    reject_app_dev_errors("update", &response.user_errors)?;
+                    if response.session.is_none() {
+                        return Err(Error::api("Shopify accepted the App Dev update but returned no development session"));
+                    }
+                    persist_dev_state(&refreshed.root, &DevState {
+                        app_id: remote_app.id.clone(),
+                        organization_id: remote_app.organization_id.clone(),
+                        client_id: selected.document.get("client_id").and_then(toml::Value::as_str).unwrap_or_default().to_owned(),
+                        store: store_domain.clone(),
+                        public_url: public_url.as_ref().map(ToString::to_string),
+                        source_digest: complete_source_digest(&refreshed)?,
+                        updated_at_ms: unix_time_ms(),
+                    }, &manifest)?;
+                    send_dev_notification(notify.as_deref(), &refreshed.root).await
+                }.await;
+                if let Err(error) = update {
+                    result = Err(error);
+                    cancellation.cancel();
+                    let _ = supervisor.shutdown().await;
+                    let _ = (&mut local_task).await;
+                    break;
+                }
+            }
+        }
+    }
+    drop(watcher);
+    cancellation.cancel();
+    let _ = supervisor.shutdown().await;
+    if !graphiql_task_completed {
+        let _ = graphiql_task.await;
+    }
+    if !theme_task_completed && let Some(task) = theme_task {
+        let _ = task.await;
+    }
+    if let Some(mut proxy) = tls_proxy {
+        let _ = proxy.stop().await;
+    }
+    let cleanup = app_dev_client.delete_session(&remote_app.id).await;
+    if let Some(mut tunnel) = tunnel
+        && let Err(error) = tunnel.stop().await
+        && result.is_ok()
+    {
+        result = Err(error.into());
+    }
+    if let Err(error) = cleanup
+        && result.is_ok()
+    {
+        result = Err(Error::api(format!(
+            "App Dev stopped locally, but remote session cleanup failed: {error}"
+        )));
     }
     result
 }
 
-fn web_dev_component(web: &cfy_config::graph::WebConfig) -> Option<ComponentSpec> {
+#[derive(Debug, Serialize, Deserialize)]
+struct DevState {
+    app_id: String,
+    organization_id: String,
+    client_id: String,
+    store: String,
+    public_url: Option<String>,
+    source_digest: String,
+    updated_at_ms: u128,
+}
+
+async fn upload_dev_source<B: DeployBackendProtocol>(
+    backend: &B,
+    selection: &DeploySelection,
+    graph: &cfy_config::graph::AppConfigGraph,
+    manifest: &serde_json::Value,
+    cancellation: &Cancellation,
+) -> Result<String> {
+    let build = build_app_graph(graph).await?;
+    let bundled = create_source_bundle(graph, &build, manifest, "dev/source.tar.br")?;
+    let source = complete_source_from_build(&bundled)?;
+    let upload = backend
+        .request_source_upload(selection)
+        .await
+        .map_err(|error| Error::api(format!("could not request App Dev source upload: {error}")))?;
+    backend
+        .put_complete_source(
+            &upload,
+            &source,
+            &SourceUploadPolicy::default(),
+            &mut |_| {},
+            cancellation,
+        )
+        .await
+        .map_err(|error| Error::api(format!("could not upload App Dev source: {error}")))?;
+    Ok(upload.source_url().to_owned())
+}
+
+fn inherited_dev_module_uids(
+    local: &[LocalModuleDescriptor],
+    remote: &[RemoteModuleDescriptor],
+) -> Vec<String> {
+    let local = local
+        .iter()
+        .filter_map(|module| module.uid.as_deref().or(module.user_identifier.as_deref()))
+        .collect::<BTreeSet<_>>();
+    remote
+        .iter()
+        .filter(|module| {
+            !local.contains(
+                module
+                    .uid
+                    .as_deref()
+                    .or(module.user_identifier.as_deref())
+                    .unwrap_or_default(),
+            )
+        })
+        .filter_map(|module| module.uid.clone().or(module.user_identifier.clone()))
+        .collect()
+}
+
+fn reject_app_dev_errors(action: &str, errors: &[cfy_app::AppDevUserError]) -> Result<()> {
+    if errors.is_empty() {
+        return Ok(());
+    }
+    Err(Error::api(format!(
+        "Shopify rejected App Dev {action}: {}",
+        errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ")
+    )))
+}
+
+fn persist_dev_state(root: &Path, state: &DevState, manifest: &serde_json::Value) -> Result<()> {
+    let directory = root.join(".catify/dev");
+    std::fs::create_dir_all(&directory).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            format!("could not create {}", directory.display()),
+            error,
+        )
+    })?;
+    let state = serde_json::to_vec_pretty(state)
+        .map_err(|error| Error::config(format!("could not encode App Dev state: {error}")))?;
+    let manifest = serde_json::to_vec_pretty(manifest)
+        .map_err(|error| Error::config(format!("could not encode App Dev manifest: {error}")))?;
+    write_atomic(&directory.join("session.json"), &state)
+        .and_then(|_| write_atomic(&directory.join("manifest.json"), &manifest))
+        .map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not persist App Dev state", error)
+        })
+}
+
+fn complete_source_digest(graph: &cfy_config::graph::AppConfigGraph) -> Result<String> {
+    let path = graph.root.join(".catify/dev/source.tar.br");
+    let bytes = std::fs::read(&path).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            format!("could not read {}", path.display()),
+            error,
+        )
+    })?;
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Ok(format!("hash:{:016x}", hasher.finish()))
+}
+
+fn unix_time_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn app_dev_path_is_relevant(root: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    !relative.components().any(|component| {
+        matches!(
+            component.as_os_str().to_string_lossy().as_ref(),
+            ".git" | ".catify" | "node_modules" | "target"
+        )
+    })
+}
+
+fn app_dev_event_is_relevant(root: &Path, event: &notify::Event) -> bool {
+    event
+        .paths
+        .iter()
+        .any(|path| app_dev_path_is_relevant(root, path))
+}
+
+async fn next_debounced_project_change(
+    receiver: &mut tokio::sync::mpsc::UnboundedReceiver<notify::Result<notify::Event>>,
+    root: &Path,
+) -> Option<()> {
+    loop {
+        let event = receiver.recv().await?;
+        if !event
+            .ok()
+            .is_some_and(|event| app_dev_event_is_relevant(root, &event))
+        {
+            continue;
+        }
+        loop {
+            match tokio::time::timeout(Duration::from_millis(250), receiver.recv()).await {
+                Ok(Some(Ok(event))) if app_dev_event_is_relevant(root, &event) => continue,
+                Ok(Some(_)) => continue,
+                Ok(None) | Err(_) => return Some(()),
+            }
+        }
+    }
+}
+
+async fn send_dev_notification(destination: Option<&str>, root: &Path) -> Result<()> {
+    let Some(destination) = destination else {
+        return Ok(());
+    };
+    let payload = serde_json::json!({"type": "APP_DEV_IDLE", "path": root});
+    if destination.starts_with("https://") || destination.starts_with("http://") {
+        let url = url::Url::parse(destination)
+            .map_err(|error| Error::invalid_input(format!("invalid --notify URL: {error}")))?;
+        if url.scheme() != "https"
+            && !matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
+        {
+            return Err(Error::invalid_input(
+                "--notify webhook URLs must use HTTPS unless they are loopback URLs",
+            ));
+        }
+        reqwest::Client::new()
+            .post(url)
+            .json(&payload)
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|error| Error::api(format!("App Dev notify webhook failed: {error}")))?;
+    } else {
+        let path = if Path::new(destination).is_absolute() {
+            PathBuf::from(destination)
+        } else {
+            root.join(destination)
+        };
+        let bytes = serde_json::to_vec(&payload).map_err(|error| {
+            Error::config(format!("could not encode App Dev notification: {error}"))
+        })?;
+        write_atomic(&path, &bytes).map_err(|error| {
+            Error::with_source(
+                ErrorKind::Process,
+                format!("could not update notify file {}", path.display()),
+                error,
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn web_dev_component(web: &cfy_config::graph::WebConfig, port: u16) -> Option<ComponentSpec> {
     let command = web.raw.get("commands")?.as_table()?.get("dev")?.as_str()?;
     #[cfg(windows)]
     let process = ProcessSpec::new("cmd")
         .args(["/C", command])
+        .env("PORT", port.to_string())
         .current_dir(&web.directory)
         .output(OutputMode::Inherit);
     #[cfg(not(windows))]
     let process = ProcessSpec::new("sh")
         .args(["-c", command])
+        .env("PORT", port.to_string())
         .current_dir(&web.directory)
         .output(OutputMode::Inherit);
     Some(ComponentSpec {
@@ -902,6 +1710,10 @@ pub struct AppDevArgs {
     store_password: Option<String>,
     #[arg(long, env = "SHOPIFY_FLAG_NOTIFY")]
     notify: Option<String>,
+    #[arg(long, env = "SHOPIFY_FLAG_GRAPHIQL_PORT", hide = true, value_parser = clap::value_parser!(u16).range(1..))]
+    graphiql_port: Option<u16>,
+    #[arg(long, env = "SHOPIFY_FLAG_GRAPHIQL_KEY", hide = true)]
+    graphiql_key: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -3073,4 +3885,60 @@ pub enum AppCommand {
         #[arg(long, env = "SHOPIFY_FLAG_INCLUDE_EXISTING")]
         include_existing: bool,
     },
+}
+
+#[cfg(test)]
+mod app_dev_tests {
+    use super::*;
+    use notify::{Event, EventKind};
+
+    #[test]
+    fn watcher_filters_generated_and_dependency_paths() {
+        let root = Path::new("/project");
+        for ignored in [
+            "/project/.git/index",
+            "/project/.catify/dev/source.tar.br",
+            "/project/node_modules/pkg/index.js",
+            "/project/target/debug/cfy",
+        ] {
+            assert!(!app_dev_path_is_relevant(root, Path::new(ignored)));
+        }
+        assert!(app_dev_path_is_relevant(
+            root,
+            Path::new("/project/extensions/example/src/index.js")
+        ));
+    }
+
+    #[tokio::test]
+    async fn watcher_debounces_relevant_changes() {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let event = |path: &str| Event {
+            kind: EventKind::Any,
+            paths: vec![PathBuf::from(path)],
+            attrs: Default::default(),
+        };
+        sender.send(Ok(event("/project/src/one.rs"))).unwrap();
+        sender.send(Ok(event("/project/src/two.rs"))).unwrap();
+        assert_eq!(
+            next_debounced_project_change(&mut receiver, Path::new("/project")).await,
+            Some(())
+        );
+    }
+
+    #[test]
+    fn persisted_dev_state_contains_no_secret_material() {
+        let state = DevState {
+            app_id: "gid://shopify/App/42".into(),
+            organization_id: "gid://shopify/Organization/7".into(),
+            client_id: "client".into(),
+            store: "demo.myshopify.com".into(),
+            public_url: Some("https://example.test".into()),
+            source_digest: "hash:123".into(),
+            updated_at_ms: 1,
+        };
+        let rendered = serde_json::to_string(&state).unwrap();
+        assert!(!rendered.contains("X-Goog-Signature"));
+        assert!(!rendered.contains("token"));
+        assert!(!rendered.contains("secret"));
+    }
 }

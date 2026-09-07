@@ -21,7 +21,7 @@ use tokio::{
 
 const DEFAULT_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProcessSpec {
     pub program: String,
     pub args: Vec<String>,
@@ -29,6 +29,42 @@ pub struct ProcessSpec {
     pub current_dir: Option<PathBuf>,
     pub output: OutputMode,
     pub stdin: Option<Vec<u8>>,
+}
+
+#[cfg(test)]
+mod process_spec_tests {
+    use super::*;
+
+    #[test]
+    fn debug_redacts_environment_and_stdin_values() {
+        let spec = ProcessSpec::new("preview")
+            .env("TOKEN", "environment-secret")
+            .stdin(br#"{\"password\":\"store-secret\"}"#.to_vec());
+        let debug = format!("{spec:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("environment-secret"));
+        assert!(!debug.contains("store-secret"));
+    }
+}
+impl std::fmt::Debug for ProcessSpec {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProcessSpec")
+            .field("program", &self.program)
+            .field("args", &self.args)
+            .field(
+                "environment",
+                &self
+                    .environment
+                    .iter()
+                    .map(|(key, _)| (key, "[REDACTED]"))
+                    .collect::<Vec<_>>(),
+            )
+            .field("current_dir", &self.current_dir)
+            .field("output", &self.output)
+            .field("stdin", &self.stdin.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl ProcessSpec {
@@ -167,9 +203,13 @@ impl Supervisor {
             command.current_dir(current_dir);
         }
 
-        if spec.output == OutputMode::Inherit && spec.stdin.is_none() {
+        if spec.output == OutputMode::Inherit {
             command
-                .stdin(Stdio::inherit())
+                .stdin(if spec.stdin.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::inherit()
+                })
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
         } else {

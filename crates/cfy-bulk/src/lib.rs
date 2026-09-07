@@ -98,19 +98,39 @@ impl GraphiqlServer {
         port: u16,
         mutation_policy: MutationPolicy,
     ) -> Result<Self> {
+        Self::bind_with_key(client, port, mutation_policy, None).await
+    }
+
+    pub async fn bind_with_key(
+        client: BulkClient,
+        port: u16,
+        mutation_policy: MutationPolicy,
+        key: Option<String>,
+    ) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", port))
             .await
             .map_err(|error| {
                 BulkError::InvalidStore(format!("could not bind GraphiQL server: {error}"))
             })?;
-        let mut key = [0_u8; 32];
-        getrandom::fill(&mut key).map_err(|error| {
-            BulkError::InvalidStore(format!("could not create GraphiQL key: {error}"))
-        })?;
+        let key = match key {
+            Some(key) if !key.trim().is_empty() => key,
+            Some(_) => {
+                return Err(BulkError::InvalidStore(
+                    "GraphiQL key cannot be empty".into(),
+                ));
+            }
+            None => {
+                let mut key = [0_u8; 32];
+                getrandom::fill(&mut key).map_err(|error| {
+                    BulkError::InvalidStore(format!("could not create GraphiQL key: {error}"))
+                })?;
+                URL_SAFE_NO_PAD.encode(key)
+            }
+        };
         Ok(Self {
             listener,
             client,
-            key: URL_SAFE_NO_PAD.encode(key),
+            key,
             mutation_policy,
         })
     }

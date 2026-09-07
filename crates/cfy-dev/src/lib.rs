@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use thiserror::Error as ThisError;
 
+mod tls_proxy;
+
+pub use tls_proxy::{TlsProxy, TlsProxyError};
+
 type Result<T> = std::result::Result<T, DevError>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
