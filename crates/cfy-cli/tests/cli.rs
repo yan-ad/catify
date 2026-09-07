@@ -1137,7 +1137,7 @@ fn organization_list_uses_shopify_compatible_command_and_flags() {
 }
 
 #[test]
-fn app_dev_runs_declared_web_command_natively_and_cleans_state() {
+fn app_dev_runs_declared_web_command_and_clean_requires_remote_context() {
     let fixture = std::env::temp_dir().join(format!(
         "cfy-dev-fixture-{}-{}",
         std::process::id(),
@@ -1182,8 +1182,9 @@ fn app_dev_runs_declared_web_command_natively_and_cleans_state() {
         .args(["app", "dev", "clean"])
         .output()
         .unwrap();
-    assert!(clean.status.success());
-    assert!(!state.exists());
+    assert_eq!(clean.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&clean.stderr).contains("--store"));
+    assert!(state.exists());
 
     std::fs::remove_dir_all(&fixture).unwrap();
 }

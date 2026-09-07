@@ -5,18 +5,18 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 108,
+    "implemented": 109,
     "tested": 111,
     "live_verified": 9,
     "by_status": {
       "adapter": 27,
-      "native": 81,
-      "partial": 3
+      "native": 82,
+      "partial": 2
     },
     "by_domain": {
       "app": {
-        "native": 28,
-        "partial": 3
+        "native": 29,
+        "partial": 2
       },
       "auth": {
         "native": 2
@@ -209,12 +209,14 @@
     {
       "command": "app dev clean",
       "domain": "app",
-      "status": "partial",
+      "status": "native",
       "owner": 29,
-      "implementation": "Native local dev-state cleanup is exposed at the exact command path. Restoring remote dev-store preview state remains pending.",
+      "implementation": "Rust-native selected app/store resolution, authenticated App Dev `devSessionDelete` mutation, active-version restoration, typed user errors, and local stale-state cleanup are exposed at the exact public command path.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs::app_dev_runs_declared_web_command_natively_and_cleans_state"
+        "crates/cfy-app/src/lib.rs AppDevClient",
+        "crates/cfy-app/tests/app_dev.rs",
+        "crates/cfy-cli/tests/cli.rs app dev clean fixture"
       ],
       "live_verified": false,
       "notes": null

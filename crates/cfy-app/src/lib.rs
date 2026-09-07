@@ -35,6 +35,112 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+const DEV_SESSION_DELETE_MUTATION: &str = r#"mutation DevSessionDelete($appId: String!) {
+  devSessionDelete(appId: $appId) { userErrors { message } }
+}"#;
+
+pub struct AppDevClient {
+    graphql: GraphQlClient,
+}
+
+impl AppDevClient {
+    pub fn new(store: &str, token: &str) -> Result<Self> {
+        let store = store.trim().trim_end_matches('/');
+        let store = if store.starts_with("https://") || store.starts_with("http://") {
+            store.to_owned()
+        } else {
+            format!("https://{store}")
+        };
+        if url_scheme_is_insecure_non_loopback(&store) {
+            return Err(Error::invalid_input(
+                "development store App Dev endpoint must use HTTPS",
+            ));
+        }
+        let url = Url::parse(&store)
+            .map_err(|error| Error::invalid_input(format!("invalid development store: {error}")))?;
+        let host = url.host_str().ok_or_else(|| {
+            Error::invalid_input("development store must contain a valid hostname")
+        })?;
+        if !host.ends_with(".myshopify.com") && host != "localhost" && host != "127.0.0.1" {
+            return Err(Error::invalid_input(
+                "development store must be a myshopify.com domain",
+            ));
+        }
+        let base = format!(
+            "{}://{}{}",
+            url.scheme(),
+            host,
+            url.port()
+                .map(|port| format!(":{port}"))
+                .unwrap_or_default()
+        );
+        let mut auth = HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|error| Error::config(format!("invalid app development token: {error}")))?;
+        auth.set_sensitive(true);
+        let http = HttpClient::new(&base)
+            .map_err(|error| Error::api(error.to_string()))?
+            .with_sensitive_header(HeaderName::from_static("authorization"), auth);
+        Ok(Self {
+            graphql: GraphQlClient::new(http, "/app_dev/unstable/graphql.json"),
+        })
+    }
+
+    pub async fn delete_session(&self, app_id: &str) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Data {
+            #[serde(rename = "devSessionDelete")]
+            deletion: Option<Deletion>,
+        }
+        #[derive(Deserialize)]
+        struct Deletion {
+            #[serde(rename = "userErrors", default)]
+            user_errors: Vec<UserError>,
+        }
+        #[derive(Deserialize)]
+        struct UserError {
+            message: String,
+        }
+        let app_id = app_id.rsplit('/').next().unwrap_or(app_id);
+        if app_id.is_empty() || !app_id.chars().all(|character| character.is_ascii_digit()) {
+            return Err(Error::invalid_input(format!(
+                "app ID must end in a numeric identifier, got `{app_id}`"
+            )));
+        }
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::mutation(
+                DEV_SESSION_DELETE_MUTATION,
+                serde_json::json!({"appId": app_id}),
+            ))
+            .await
+            .map_err(|error| Error::api(format!("could not stop dev preview: {error}")))?;
+        let errors = response
+            .data
+            .deletion
+            .map(|deletion| deletion.user_errors)
+            .unwrap_or_default();
+        if !errors.is_empty() {
+            return Err(Error::api(format!(
+                "failed to stop the dev preview: {}",
+                errors
+                    .into_iter()
+                    .map(|error| error.message)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+        Ok(())
+    }
+}
+
+fn url_scheme_is_insecure_non_loopback(value: &str) -> bool {
+    if !value.starts_with("http://") {
+        return false;
+    }
+    Url::parse(value)
+        .ok()
+        .is_none_or(|url| !matches!(url.host_str(), Some("localhost" | "127.0.0.1")))
+}
 
 fn organization_gid(id: &str) -> Result<String> {
     if let Some(number) = id.rsplit('/').next().filter(|value| !value.is_empty())

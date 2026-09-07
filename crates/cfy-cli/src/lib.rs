@@ -16,8 +16,9 @@ use cfy_api::{
     theme_profile::{LiquidEvaluation, ThemeProfiler},
 };
 use cfy_app::{
-    AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
-    exchange_admin_token, exchange_app_management_token, exchange_storefront_renderer_token,
+    AppDevClient, AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary,
+    RemoteOrganization, exchange_admin_token, exchange_app_management_token,
+    exchange_storefront_renderer_token,
     extension_generate::{GenerateExtensionOptions, generate_extension},
     extension_import::{
         ExistingDirectoryPolicy, ExtensionRegistrationProvider, ImportExtensionsOptions,
@@ -6909,13 +6910,33 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
         AppCommand::Dev { args, command } => match command {
             Some(AppDevCommand::Clean {
                 config,
-                auth_alias: _,
+                auth_alias,
                 client_id,
                 path,
                 reset,
-                store: _,
+                store,
             }) => {
                 let selected = selected_app_environment(path, config, client_id, reset)?;
+                let client_id = selected
+                    .document
+                    .get("client_id")
+                    .and_then(toml::Value::as_str)
+                    .ok_or_else(|| {
+                        Error::invalid_input("selected app configuration has no client_id")
+                    })?;
+                let store_domain = store.or(selected.store.clone()).ok_or_else(|| {
+                    Error::invalid_input(
+                        "app dev clean requires --store or a store in the selected app config",
+                    )
+                })?;
+                let identity = auth_alias.unwrap_or_else(|| "default".into());
+                let session = authenticated_session(&identity).await?;
+                let app_management = AppManagementClient::from_session(&session).await?;
+                let app = app_management.app_by_client_id(client_id).await?;
+                let token = exchange_app_management_token(&session).await?;
+                AppDevClient::new(&store_domain, token.expose())?
+                    .delete_session(&app.id)
+                    .await?;
                 let state = selected.project.root().join(".catify/dev");
                 if state.exists() {
                     std::fs::remove_dir_all(&state).map_err(|error| {
