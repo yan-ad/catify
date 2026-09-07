@@ -47,8 +47,9 @@ use cfy_config::{
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
 use cfy_deploy::{
-    AppManagementBackend as DeployBackend, DeployOptions, DeploySelection, VersionMetadata,
-    deploy as deploy_app,
+    AppManagementBackend as DeployBackend, DeployOptions, DeployReconciliation, DeploySelection,
+    LocalModuleDescriptor, ModuleChangeKind, ModuleKind, ModuleReconciliationPolicy,
+    RemoteModuleDescriptor, VersionMetadata, deploy as deploy_app, reconcile_modules,
 };
 use cfy_dev::{ComponentSpec, DevOptions, DevSession};
 use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
@@ -78,6 +79,7 @@ fn select_extension_imports(
             .or_default()
             .push(registration);
     }
+
     let family_names = families.keys().cloned().collect::<Vec<_>>();
     let family_index = if family_names.len() == 1 {
         0
@@ -113,6 +115,302 @@ fn select_extension_imports(
         [selected - 1]
         .uuid
         .clone()])))
+}
+
+fn local_deploy_modules(
+    graph: &cfy_config::graph::AppConfigGraph,
+) -> Result<Vec<LocalModuleDescriptor>> {
+    let app = graph
+        .apps
+        .first()
+        .ok_or_else(|| Error::config("selected app graph has no app node"))?;
+    let mut modules = app
+        .extensions
+        .iter()
+        .filter_map(|extension| {
+            let module_type = extension.extension_type.clone()?;
+            let handle = extension
+                .handle
+                .clone()
+                .or_else(|| extension.name.clone())
+                .unwrap_or_else(|| module_type.clone());
+            Some(LocalModuleDescriptor {
+                uid: extension.uid.clone(),
+                user_identifier: extension.uid.clone(),
+                module_type,
+                handle,
+                kind: ModuleKind::Extension,
+                configuration: serde_json::to_value(&extension.raw).ok(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let raw = &app.config.raw;
+    let application_url = raw.get("application_url").cloned();
+    let embedded = raw.get("embedded").cloned();
+    let preferences_url = raw
+        .get("app_preferences")
+        .and_then(toml::Value::as_table)
+        .and_then(|table| table.get("url"))
+        .cloned();
+    push_configuration_module(
+        &mut modules,
+        "app_home",
+        serde_json::json!({
+            "app_url": application_url,
+            "embedded": embedded,
+            "preferences_url": preferences_url,
+        }),
+    );
+    push_configuration_module(
+        &mut modules,
+        "branding",
+        serde_json::json!({"name": app.config.name}),
+    );
+    if raw.contains_key("auth") || raw.contains_key("access") || raw.contains_key("access_scopes") {
+        let redirects = raw
+            .get("auth")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("redirect_urls"))
+            .cloned();
+        let scopes = raw
+            .get("access_scopes")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("scopes"))
+            .cloned();
+        let optional_scopes = raw
+            .get("access_scopes")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("optional_scopes"))
+            .cloned();
+        let legacy = raw
+            .get("access_scopes")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("use_legacy_install_flow"))
+            .cloned();
+        push_configuration_module(
+            &mut modules,
+            "app_access",
+            serde_json::json!({
+                "redirect_url_allowlist": redirects,
+                "scopes": scopes,
+                "optional_scopes": optional_scopes,
+                "use_legacy_install_flow": legacy,
+                "access": raw.get("access"),
+            }),
+        );
+    }
+    for (section, module_type) in [("app_proxy", "app_proxy"), ("pos", "point_of_sale")] {
+        if let Some(configuration) = raw.get(section) {
+            push_configuration_module(
+                &mut modules,
+                module_type,
+                serde_json::to_value(configuration).unwrap_or(serde_json::Value::Null),
+            );
+        }
+    }
+    append_webhook_modules(&mut modules, raw);
+    modules.sort_by(|left, right| {
+        left.module_type
+            .cmp(&right.module_type)
+            .then_with(|| left.handle.cmp(&right.handle))
+    });
+    Ok(modules)
+}
+
+fn push_configuration_module(
+    modules: &mut Vec<LocalModuleDescriptor>,
+    module_type: &str,
+    configuration: serde_json::Value,
+) {
+    modules.push(LocalModuleDescriptor {
+        uid: Some(module_type.into()),
+        user_identifier: Some(module_type.into()),
+        module_type: module_type.into(),
+        handle: module_type.into(),
+        kind: ModuleKind::Configuration,
+        configuration: Some(configuration),
+    });
+}
+
+fn append_webhook_modules(modules: &mut Vec<LocalModuleDescriptor>, raw: &toml::Table) {
+    let Some(webhooks) = raw.get("webhooks").and_then(toml::Value::as_table) else {
+        return;
+    };
+    if let Some(api_version) = webhooks.get("api_version") {
+        push_configuration_module(
+            modules,
+            "webhooks",
+            serde_json::json!({"api_version": api_version}),
+        );
+    }
+    let Some(subscriptions) = webhooks
+        .get("subscriptions")
+        .and_then(toml::Value::as_array)
+    else {
+        return;
+    };
+    for subscription in subscriptions.iter().filter_map(toml::Value::as_table) {
+        let uri = subscription
+            .get("uri")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default();
+        if let Some(topics) = subscription.get("topics").and_then(toml::Value::as_array) {
+            for topic in topics.iter().filter_map(toml::Value::as_str) {
+                let handle = format!("{topic}:{uri}");
+                modules.push(LocalModuleDescriptor {
+                    uid: Some(handle.clone()),
+                    user_identifier: Some(handle.clone()),
+                    module_type: "webhook_subscription".into(),
+                    handle,
+                    kind: ModuleKind::Configuration,
+                    configuration: Some(serde_json::json!({
+                        "topic": topic,
+                        "uri": uri,
+                        "include_fields": subscription.get("include_fields"),
+                        "filter": subscription.get("filter"),
+                        "payload_query": subscription.get("payload_query"),
+                    })),
+                });
+            }
+        }
+        if let Some(topics) = subscription
+            .get("compliance_topics")
+            .and_then(toml::Value::as_array)
+        {
+            let handle = format!("privacy:{uri}");
+            modules.push(LocalModuleDescriptor {
+                uid: Some(handle.clone()),
+                user_identifier: Some(handle.clone()),
+                module_type: "privacy_compliance_webhooks".into(),
+                handle,
+                kind: ModuleKind::Configuration,
+                configuration: Some(serde_json::json!({
+                    "uri": uri,
+                    "compliance_topics": topics,
+                })),
+            });
+        }
+    }
+}
+
+fn remote_deploy_modules(modules: Vec<cfy_app::ActiveAppModule>) -> Vec<RemoteModuleDescriptor> {
+    let mut modules = modules
+        .into_iter()
+        .map(|module| {
+            let external_identifier = module.external_identifier.clone();
+            let module_type = module
+                .identifier
+                .clone()
+                .unwrap_or_else(|| external_identifier.clone());
+            let kind = if module
+                .experience
+                .as_deref()
+                .is_some_and(|experience| experience.eq_ignore_ascii_case("configuration"))
+                || module.uuid.is_none()
+            {
+                ModuleKind::Configuration
+            } else {
+                ModuleKind::Extension
+            };
+            let handle = if external_identifier == "webhook_subscription" {
+                module
+                    .configuration
+                    .as_ref()
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|config| {
+                        Some(format!(
+                            "{}:{}",
+                            config.get("topic")?.as_str()?,
+                            config.get("uri")?.as_str()?
+                        ))
+                    })
+                    .or(module.handle)
+                    .unwrap_or_else(|| module_type.clone())
+            } else if external_identifier == "privacy_compliance_webhooks" {
+                module
+                    .configuration
+                    .as_ref()
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|config| config.get("uri").and_then(serde_json::Value::as_str))
+                    .map(|uri| format!("privacy:{uri}"))
+                    .or(module.handle)
+                    .unwrap_or_else(|| module_type.clone())
+            } else {
+                module.handle.unwrap_or_else(|| module_type.clone())
+            };
+            RemoteModuleDescriptor {
+                uid: module.uuid,
+                user_identifier: module.user_identifier,
+                handle,
+                module_type,
+                kind,
+                configuration: module.configuration,
+            }
+        })
+        .collect::<Vec<_>>();
+    modules.sort_by(|left, right| {
+        left.module_type
+            .cmp(&right.module_type)
+            .then_with(|| left.handle.cmp(&right.handle))
+    });
+    modules
+}
+
+fn confirm_deploy_changes(
+    changes: &[cfy_deploy::ModuleChange],
+    allow_updates: bool,
+    allow_deletes: bool,
+    non_interactive: bool,
+) -> Result<ModuleReconciliationPolicy> {
+    let updates = changes
+        .iter()
+        .filter(|change| change.change == ModuleChangeKind::Updated)
+        .count();
+    let deletes = changes
+        .iter()
+        .filter(|change| change.change == ModuleChangeKind::Deleted)
+        .count();
+    let mut policy = ModuleReconciliationPolicy {
+        allow_updates,
+        allow_deletes,
+    };
+    if non_interactive {
+        if updates > 0 && !allow_updates {
+            return Err(Error::invalid_input(format!(
+                "deploy updates {updates} existing module(s); pass --allow-updates"
+            )));
+        }
+        if deletes > 0 && !allow_deletes {
+            return Err(Error::invalid_input(format!(
+                "deploy deletes {deletes} existing module(s); pass --allow-deletes"
+            )));
+        }
+        return Ok(policy);
+    }
+    if updates > 0 && !policy.allow_updates {
+        policy.allow_updates = confirm(&format!(
+            "Deploy will update {updates} existing module(s). Continue?"
+        ))?;
+    }
+    if deletes > 0 && !policy.allow_deletes {
+        policy.allow_deletes = confirm(&format!(
+            "Deploy will delete {deletes} remote module(s). Continue?"
+        ))?;
+    }
+    Ok(policy)
+}
+
+fn confirm(prompt: &str) -> Result<bool> {
+    eprint!("{prompt} [y/N] ");
+    io::stderr().flush().ok();
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer).map_err(|error| {
+        Error::with_source(ErrorKind::Process, "could not read confirmation", error)
+    })?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -315,12 +613,7 @@ fn create_deploy_bundle(
     let manifest = serde_json::json!({
         "name": app.config.name,
         "handle": app.config.raw.get("handle").and_then(toml::Value::as_str),
-        "modules": app.extensions.iter().map(|extension| serde_json::json!({
-            "type": extension.extension_type,
-            "handle": extension.handle,
-            "uid": extension.uid,
-            "config": extension.raw,
-        })).collect::<Vec<_>>(),
+        "modules": local_deploy_modules(graph)?,
     });
     let manifest = serde_json::to_vec_pretty(&manifest)
         .map_err(|error| Error::config(format!("could not encode deploy manifest: {error}")))?;
@@ -1746,11 +2039,6 @@ pub(crate) async fn app_command(
             version,
             source_control_url,
         } => {
-            if non_interactive && !no_release && !allow_updates && !allow_deletes {
-                return Err(Error::invalid_input(
-                    "non-interactive deploy requires --allow-updates, --allow-deletes, or --no-release",
-                ));
-            }
             let selected = selected_app_environment(path, config, client_id, reset)?;
             let client_id = selected
                 .document
@@ -1797,11 +2085,25 @@ pub(crate) async fn app_command(
             })?;
             let app_management = AppManagementClient::from_session(&session).await?;
             let app = app_management.app_by_client_id(client_id).await?;
+            let local_modules = local_deploy_modules(&graph)?;
+            let remote_modules =
+                remote_deploy_modules(app_management.active_app_modules(&app.id).await?);
+            let changes = reconcile_modules(&local_modules, &remote_modules);
+            let policy =
+                confirm_deploy_changes(&changes, allow_updates, allow_deletes, non_interactive)?;
             let token = cfy_app::exchange_app_management_token(&session).await?;
             let endpoint = env::var("CFY_APP_MANAGEMENT_URL").unwrap_or_else(|_| {
                 "https://app.shopify.com/app_management/unstable/graphql.json".into()
             });
             let backend = DeployBackend::new(&endpoint, token.expose())?;
+            let upload_policy = cfy_deploy::SourceUploadPolicy {
+                reconciliation: DeployReconciliation {
+                    local_modules,
+                    remote_modules,
+                    policy,
+                },
+                ..Default::default()
+            };
             let report = deploy_app(
                 &backend,
                 &DeployOptions {
@@ -1817,7 +2119,7 @@ pub(crate) async fn app_command(
                         message,
                         source_control_url,
                     },
-                    upload_policy: Default::default(),
+                    upload_policy,
                 },
                 &build,
                 &Cancellation::default(),

@@ -14,6 +14,7 @@ use reqwest::{StatusCode, header};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::hash_map::DefaultHasher,
+    collections::{BTreeMap, BTreeSet},
     fs,
     hash::{Hash, Hasher},
     path::PathBuf,
@@ -82,6 +83,8 @@ pub struct SourceUploadPolicy {
     pub max_retries: u32,
     pub base_delay_millis: u64,
     pub max_delay_millis: u64,
+    #[serde(default)]
+    pub reconciliation: DeployReconciliation,
 }
 
 impl Default for SourceUploadPolicy {
@@ -91,6 +94,7 @@ impl Default for SourceUploadPolicy {
             max_retries: 3,
             base_delay_millis: 200,
             max_delay_millis: 5_000,
+            reconciliation: DeployReconciliation::default(),
         }
     }
 }
@@ -115,6 +119,255 @@ pub struct DeployOptions {
     pub metadata: VersionMetadata,
     #[serde(default)]
     pub upload_policy: SourceUploadPolicy,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleKind {
+    Configuration,
+    #[default]
+    Extension,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalModuleDescriptor {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_identifier: Option<String>,
+    #[serde(rename = "type")]
+    pub module_type: String,
+    pub handle: String,
+    #[serde(default)]
+    pub kind: ModuleKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RemoteModuleDescriptor {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_identifier: Option<String>,
+    #[serde(rename = "type")]
+    pub module_type: String,
+    pub handle: String,
+    #[serde(default)]
+    pub kind: ModuleKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleChangeKind {
+    Created,
+    Updated,
+    Deleted,
+    Unchanged,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ModuleChange {
+    pub change: ModuleChangeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<LocalModuleDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<RemoteModuleDescriptor>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ModuleReconciliationPolicy {
+    #[serde(default)]
+    pub allow_updates: bool,
+    #[serde(default)]
+    pub allow_deletes: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DeployReconciliation {
+    #[serde(default)]
+    pub local_modules: Vec<LocalModuleDescriptor>,
+    #[serde(default)]
+    pub remote_modules: Vec<RemoteModuleDescriptor>,
+    #[serde(default)]
+    pub policy: ModuleReconciliationPolicy,
+}
+
+pub fn reconcile_modules(
+    local: &[LocalModuleDescriptor],
+    remote: &[RemoteModuleDescriptor],
+) -> Vec<ModuleChange> {
+    let mut local_unmatched: BTreeSet<usize> = (0..local.len()).collect();
+    let mut remote_unmatched: BTreeSet<usize> = (0..remote.len()).collect();
+    let mut matches = Vec::new();
+    let local_ids = unique_identities(local.iter().enumerate().filter_map(|(index, module)| {
+        stable_identity(module.uid.as_deref(), module.user_identifier.as_deref())
+            .map(|identity| (identity, index))
+    }));
+    let remote_ids = unique_identities(remote.iter().enumerate().filter_map(|(index, module)| {
+        stable_identity(module.uid.as_deref(), module.user_identifier.as_deref())
+            .map(|identity| (identity, index))
+    }));
+    for (identity, local_index) in local_ids {
+        if let Some(remote_index) = remote_ids.get(&identity) {
+            matches.push((local_index, *remote_index));
+            local_unmatched.remove(&local_index);
+            remote_unmatched.remove(remote_index);
+        }
+    }
+    let mut local_fallback: BTreeMap<(&str, &str), Vec<usize>> = BTreeMap::new();
+    let mut remote_fallback: BTreeMap<(&str, &str), Vec<usize>> = BTreeMap::new();
+    for index in &local_unmatched {
+        local_fallback
+            .entry((&local[*index].module_type, &local[*index].handle))
+            .or_default()
+            .push(*index);
+    }
+    for index in &remote_unmatched {
+        remote_fallback
+            .entry((&remote[*index].module_type, &remote[*index].handle))
+            .or_default()
+            .push(*index);
+    }
+    for (key, local_indexes) in local_fallback {
+        if local_indexes.len() == 1
+            && let Some(remote_indexes) = remote_fallback.get(&key)
+            && remote_indexes.len() == 1
+        {
+            let (local_index, remote_index) = (local_indexes[0], remote_indexes[0]);
+            matches.push((local_index, remote_index));
+            local_unmatched.remove(&local_index);
+            remote_unmatched.remove(&remote_index);
+        }
+    }
+    let mut changes = matches
+        .into_iter()
+        .map(|(local_index, remote_index)| ModuleChange {
+            change: if modules_equal(&local[local_index], &remote[remote_index]) {
+                ModuleChangeKind::Unchanged
+            } else {
+                ModuleChangeKind::Updated
+            },
+            local: Some(local[local_index].clone()),
+            remote: Some(remote[remote_index].clone()),
+        })
+        .collect::<Vec<_>>();
+    changes.extend(local_unmatched.into_iter().map(|index| ModuleChange {
+        change: ModuleChangeKind::Created,
+        local: Some(local[index].clone()),
+        remote: None,
+    }));
+    changes.extend(remote_unmatched.into_iter().map(|index| ModuleChange {
+        change: ModuleChangeKind::Deleted,
+        local: None,
+        remote: Some(remote[index].clone()),
+    }));
+    changes.sort_by_key(change_sort_key);
+    changes
+}
+
+fn stable_identity(uid: Option<&str>, user_identifier: Option<&str>) -> Option<String> {
+    uid.filter(|value| !value.is_empty())
+        .or_else(|| user_identifier.filter(|value| !value.is_empty()))
+        .map(str::to_owned)
+}
+
+fn unique_identities(values: impl Iterator<Item = (String, usize)>) -> BTreeMap<String, usize> {
+    let mut unique = BTreeMap::new();
+    let mut duplicates = BTreeSet::new();
+    for (identity, index) in values {
+        if unique.insert(identity.clone(), index).is_some() {
+            duplicates.insert(identity);
+        }
+    }
+    for identity in duplicates {
+        unique.remove(&identity);
+    }
+    unique
+}
+
+fn modules_equal(local: &LocalModuleDescriptor, remote: &RemoteModuleDescriptor) -> bool {
+    if local.module_type != remote.module_type {
+        return false;
+    }
+    let compare_configuration = local.kind == ModuleKind::Configuration
+        || remote.kind == ModuleKind::Configuration
+        || local.configuration.is_some()
+        || remote.configuration.is_some();
+    !compare_configuration
+        || normalized_json(local.configuration.as_ref())
+            == normalized_json(remote.configuration.as_ref())
+}
+
+fn normalized_json(value: Option<&serde_json::Value>) -> serde_json::Value {
+    fn normalize(value: &serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => serde_json::Value::Object(
+                map.iter()
+                    .map(|(key, value)| (key.clone(), normalize(value)))
+                    .collect(),
+            ),
+            serde_json::Value::Array(values) => {
+                serde_json::Value::Array(values.iter().map(normalize).collect())
+            }
+            other => other.clone(),
+        }
+    }
+    value.map(normalize).unwrap_or(serde_json::Value::Null)
+}
+
+fn change_sort_key(change: &ModuleChange) -> (String, String, String, u8) {
+    let (module_type, handle, identity) = match (&change.local, &change.remote) {
+        (Some(module), _) => (
+            module.module_type.clone(),
+            module.handle.clone(),
+            stable_identity(module.uid.as_deref(), module.user_identifier.as_deref())
+                .unwrap_or_default(),
+        ),
+        (_, Some(module)) => (
+            module.module_type.clone(),
+            module.handle.clone(),
+            stable_identity(module.uid.as_deref(), module.user_identifier.as_deref())
+                .unwrap_or_default(),
+        ),
+        _ => (String::new(), String::new(), String::new()),
+    };
+    let rank = match change.change {
+        ModuleChangeKind::Created => 0,
+        ModuleChangeKind::Updated => 1,
+        ModuleChangeKind::Deleted => 2,
+        ModuleChangeKind::Unchanged => 3,
+    };
+    (module_type, handle, identity, rank)
+}
+
+fn enforce_reconciliation_policy(
+    changes: &[ModuleChange],
+    policy: &ModuleReconciliationPolicy,
+) -> Result<(), DeployError> {
+    let updates = if policy.allow_updates {
+        0
+    } else {
+        changes
+            .iter()
+            .filter(|change| change.change == ModuleChangeKind::Updated)
+            .count()
+    };
+    let deletes = if policy.allow_deletes {
+        0
+    } else {
+        changes
+            .iter()
+            .filter(|change| change.change == ModuleChangeKind::Deleted)
+            .count()
+    };
+    if updates == 0 && deletes == 0 {
+        Ok(())
+    } else {
+        Err(DeployError::ReconciliationPolicy { updates, deletes })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -224,6 +477,8 @@ pub struct DeployReport {
     pub released: bool,
     pub progress: Vec<UploadProgress>,
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub module_changes: Vec<ModuleChange>,
 }
 
 #[derive(Debug, ThisError)]
@@ -232,6 +487,10 @@ pub enum DeployError {
     MissingSelection,
     #[error("deploy validation failed: {0}")]
     Validation(String),
+    #[error(
+        "deploy reconciliation policy rejected {updates} update(s) and {deletes} deletion(s); enable allow_updates and/or allow_deletes to continue"
+    )]
+    ReconciliationPolicy { updates: usize, deletes: usize },
     #[error("Shopify rejected {operation:?}: {errors:?}")]
     UserErrors {
         operation: DeployOperation,
@@ -257,7 +516,9 @@ pub enum DeployError {
 impl From<DeployError> for Error {
     fn from(error: DeployError) -> Self {
         let kind = match error {
-            DeployError::MissingSelection | DeployError::Validation(_) => ErrorKind::Config,
+            DeployError::MissingSelection
+            | DeployError::Validation(_)
+            | DeployError::ReconciliationPolicy { .. } => ErrorKind::Config,
             DeployError::Cancelled => ErrorKind::Process,
             DeployError::UserErrors { .. }
             | DeployError::Backend { .. }
@@ -626,6 +887,10 @@ pub async fn deploy<B: DeployBackend>(
 ) -> Result<DeployReport, DeployError> {
     let selection = validate_options(options)?;
     let source = complete_source_from_build(build)?;
+    let module_changes = reconcile_modules(
+        &options.upload_policy.reconciliation.local_modules,
+        &options.upload_policy.reconciliation.remote_modules,
+    );
     let source_path = source.path.display().to_string();
     let source_size = u64::try_from(source.bytes.len()).unwrap_or(u64::MAX);
     if source_size > options.upload_policy.max_bytes {
@@ -645,8 +910,13 @@ pub async fn deploy<B: DeployBackend>(
             warnings: vec![
                 "dry-run: no upload URL was requested and no version was created".into(),
             ],
+            module_changes,
         });
     }
+    enforce_reconciliation_policy(
+        &module_changes,
+        &options.upload_policy.reconciliation.policy,
+    )?;
     cancelled(cancellation)?;
 
     // Shopify CLI 4.6.1 ordering: URL -> complete PUT -> version -> release.
@@ -719,6 +989,7 @@ pub async fn deploy<B: DeployBackend>(
         released,
         progress: progress_events,
         warnings: Vec::new(),
+        module_changes,
     })
 }
 
@@ -1044,6 +1315,274 @@ mod tests {
         assert!(calls.lock().unwrap().is_empty());
     }
 
+    fn local(
+        uid: Option<&str>,
+        module_type: &str,
+        handle: &str,
+        kind: ModuleKind,
+        configuration: Option<serde_json::Value>,
+    ) -> LocalModuleDescriptor {
+        LocalModuleDescriptor {
+            uid: uid.map(str::to_owned),
+            user_identifier: None,
+            module_type: module_type.into(),
+            handle: handle.into(),
+            kind,
+            configuration,
+        }
+    }
+
+    fn remote(
+        uid: Option<&str>,
+        module_type: &str,
+        handle: &str,
+        kind: ModuleKind,
+        configuration: Option<serde_json::Value>,
+    ) -> RemoteModuleDescriptor {
+        RemoteModuleDescriptor {
+            uid: uid.map(str::to_owned),
+            user_identifier: None,
+            module_type: module_type.into(),
+            handle: handle.into(),
+            kind,
+            configuration,
+        }
+    }
+
+    #[test]
+    fn reconciliation_is_deterministic_and_normalizes_configuration_json() {
+        let changes = reconcile_modules(
+            &[
+                local(
+                    Some("same"),
+                    "checkout",
+                    "renamed",
+                    ModuleKind::Extension,
+                    None,
+                ),
+                local(
+                    None,
+                    "app_config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"z": 1, "nested": {"b": 2, "a": 1}})),
+                ),
+                local(None, "new_type", "new", ModuleKind::Extension, None),
+            ],
+            &[
+                remote(None, "old_type", "old", ModuleKind::Extension, None),
+                remote(
+                    None,
+                    "app_config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"nested": {"a": 1, "b": 2}, "z": 1})),
+                ),
+                remote(
+                    Some("same"),
+                    "checkout",
+                    "old handle",
+                    ModuleKind::Extension,
+                    None,
+                ),
+            ],
+        );
+        assert_eq!(
+            changes
+                .iter()
+                .map(|change| change.change)
+                .collect::<Vec<_>>(),
+            vec![
+                ModuleChangeKind::Unchanged,
+                ModuleChangeKind::Unchanged,
+                ModuleChangeKind::Created,
+                ModuleChangeKind::Deleted,
+            ]
+        );
+        let reversed = reconcile_modules(
+            &[
+                local(None, "new_type", "new", ModuleKind::Extension, None),
+                local(
+                    Some("same"),
+                    "checkout",
+                    "renamed",
+                    ModuleKind::Extension,
+                    None,
+                ),
+                local(
+                    None,
+                    "app_config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"nested": {"b": 2, "a": 1}, "z": 1})),
+                ),
+            ],
+            &[
+                remote(
+                    Some("same"),
+                    "checkout",
+                    "old handle",
+                    ModuleKind::Extension,
+                    None,
+                ),
+                remote(None, "old_type", "old", ModuleKind::Extension, None),
+                remote(
+                    None,
+                    "app_config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"z": 1, "nested": {"a": 1, "b": 2}})),
+                ),
+            ],
+        );
+        assert_eq!(changes, reversed);
+    }
+
+    #[test]
+    fn reconciliation_policy_is_serde_backward_compatible() {
+        let options: DeployOptions = serde_json::from_value(serde_json::json!({
+            "selection": null,
+            "non_interactive": true,
+            "dry_run": false,
+            "release": false,
+            "upload_policy": {
+                "max_bytes": 12,
+                "max_retries": 1,
+                "base_delay_millis": 2,
+                "max_delay_millis": 3
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            options.upload_policy.reconciliation,
+            DeployReconciliation::default()
+        );
+    }
+
+    #[tokio::test]
+    async fn policy_rejects_updates_and_deletes_before_backend_calls() {
+        let (backend, calls) = fake(None, false);
+        let mut opts = options(false);
+        opts.upload_policy.reconciliation = DeployReconciliation {
+            local_modules: vec![local(
+                Some("update"),
+                "config",
+                "config",
+                ModuleKind::Configuration,
+                Some(serde_json::json!({"value": 2})),
+            )],
+            remote_modules: vec![
+                remote(
+                    Some("update"),
+                    "config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"value": 1})),
+                ),
+                remote(
+                    Some("delete"),
+                    "pixel",
+                    "pixel",
+                    ModuleKind::Extension,
+                    None,
+                ),
+            ],
+            policy: ModuleReconciliationPolicy::default(),
+        };
+        let error = deploy(
+            &backend,
+            &opts,
+            &build_with(&[b"bundle"]),
+            &Cancellation::default(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            DeployError::ReconciliationPolicy {
+                updates: 1,
+                deletes: 1
+            }
+        ));
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn policy_flags_allow_deploy_and_report_changes() {
+        let (backend, calls) = fake(None, false);
+        let mut opts = options(false);
+        opts.upload_policy.reconciliation = DeployReconciliation {
+            local_modules: vec![local(
+                Some("update"),
+                "config",
+                "config",
+                ModuleKind::Configuration,
+                Some(serde_json::json!({"value": 2})),
+            )],
+            remote_modules: vec![
+                remote(
+                    Some("update"),
+                    "config",
+                    "config",
+                    ModuleKind::Configuration,
+                    Some(serde_json::json!({"value": 1})),
+                ),
+                remote(
+                    Some("delete"),
+                    "pixel",
+                    "pixel",
+                    ModuleKind::Extension,
+                    None,
+                ),
+            ],
+            policy: ModuleReconciliationPolicy {
+                allow_updates: true,
+                allow_deletes: true,
+            },
+        };
+        let report = deploy(
+            &backend,
+            &opts,
+            &build_with(&[b"bundle"]),
+            &Cancellation::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            report
+                .module_changes
+                .iter()
+                .map(|change| change.change)
+                .collect::<Vec<_>>(),
+            vec![ModuleChangeKind::Updated, ModuleChangeKind::Deleted]
+        );
+        assert!(!calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn dry_run_reports_disallowed_changes_without_backend_calls() {
+        let (backend, calls) = fake(None, false);
+        let mut opts = options(false);
+        opts.dry_run = true;
+        opts.upload_policy.reconciliation.remote_modules = vec![remote(
+            Some("delete"),
+            "pixel",
+            "pixel",
+            ModuleKind::Extension,
+            None,
+        )];
+        let report = deploy(
+            &backend,
+            &opts,
+            &build_with(&[b"bundle"]),
+            &Cancellation::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.module_changes[0].change, ModuleChangeKind::Deleted);
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn oversized_source_is_rejected_before_requesting_a_url() {
         let (backend, calls) = fake(None, false);
@@ -1090,6 +1629,7 @@ mod tests {
             max_retries: 2,
             base_delay_millis: 100,
             max_delay_millis: 150,
+            reconciliation: DeployReconciliation::default(),
         };
         assert_eq!(policy.delay(0), Duration::from_millis(100));
         assert_eq!(policy.delay(1), Duration::from_millis(150));

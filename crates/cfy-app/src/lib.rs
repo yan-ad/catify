@@ -35,12 +35,181 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+const ACTIVE_APP_MODULES_QUERY: &str = r#"query ActiveAppModules($appId: ID!) {
+  app(id: $appId) {
+    activeRelease {
+      version {
+        appModules {
+          uuid
+          userIdentifier
+          handle
+          config
+          target
+          specification {
+            identifier
+            externalIdentifier
+            experience
+          }
+        }
+      }
+    }
+  }
+}"#;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ActiveAppModule {
+    pub uuid: Option<String>,
+    pub user_identifier: Option<String>,
+    pub handle: Option<String>,
+    pub configuration: Option<serde_json::Value>,
+    pub target: Option<String>,
+    pub identifier: Option<String>,
+    pub external_identifier: String,
+    pub experience: Option<String>,
+}
 const DEV_SESSION_DELETE_MUTATION: &str = r#"mutation DevSessionDelete($appId: String!) {
   devSessionDelete(appId: $appId) { userErrors { message } }
 }"#;
+const DEV_SESSION_CREATE_MUTATION: &str = r#"mutation DevSessionCreate($appId: String!, $assetsUrl: String!, $websocketUrl: String) {
+  devSessionCreate(appId: $appId, assetsUrl: $assetsUrl, websocketUrl: $websocketUrl) {
+    devSession {
+      websocketUrl
+      updatedAt
+      user { id email }
+      app { id key }
+    }
+    warnings { message code }
+    userErrors { message on field category }
+  }
+}"#;
+const DEV_SESSION_UPDATE_MUTATION: &str = r#"mutation DevSessionUpdate($appId: String!, $assetsUrl: String, $manifest: JSON, $inheritedModuleUids: [String!]!) {
+  devSessionUpdate(appId: $appId, assetsUrl: $assetsUrl, manifest: $manifest, inheritedModuleUids: $inheritedModuleUids) {
+    devSession {
+      websocketUrl
+      updatedAt
+      user { id email }
+      app { id key }
+    }
+    userErrors { message on field category }
+  }
+}"#;
+
+/// Values sent when starting an App Dev session.
+#[derive(Clone, Serialize)]
+pub struct AppDevCreateSessionRequest {
+    pub app_id: String,
+    pub assets_url: Option<String>,
+    pub websocket_url: Option<String>,
+}
+
+impl std::fmt::Debug for AppDevCreateSessionRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppDevCreateSessionRequest")
+            .field("app_id", &self.app_id)
+            .field(
+                "assets_url",
+                &self.assets_url.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("websocket_url", &self.websocket_url)
+            .finish()
+    }
+}
+
+/// Values sent when refreshing an existing App Dev session.
+#[derive(Clone, Serialize)]
+pub struct AppDevUpdateSessionRequest {
+    pub app_id: String,
+    pub assets_url: Option<String>,
+    pub manifest: serde_json::Value,
+    pub inherited_module_uids: Vec<String>,
+}
+
+impl std::fmt::Debug for AppDevUpdateSessionRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppDevUpdateSessionRequest")
+            .field("app_id", &self.app_id)
+            .field(
+                "assets_url",
+                &self.assets_url.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("manifest", &"[REDACTED]")
+            .field("inherited_module_uids", &self.inherited_module_uids)
+            .finish()
+    }
+}
+
+#[derive(Clone, Deserialize, PartialEq)]
+pub struct AppDevSession {
+    #[serde(rename = "websocketUrl")]
+    pub websocket_url: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: serde_json::Value,
+    pub user: Option<AppDevSessionUser>,
+    pub app: AppDevSessionApp,
+}
+
+impl std::fmt::Debug for AppDevSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppDevSession")
+            .field(
+                "websocket_url",
+                &self.websocket_url.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("updated_at", &self.updated_at)
+            .field("user", &self.user)
+            .field("app", &self.app)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct AppDevSessionUser {
+    pub id: String,
+    pub email: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct AppDevSessionApp {
+    pub id: String,
+    pub key: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct AppDevWarning {
+    pub message: String,
+    pub code: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AppDevUserError {
+    pub message: String,
+    #[serde(default)]
+    pub on: serde_json::Value,
+    #[serde(default)]
+    pub field: Option<Vec<String>>,
+    #[serde(default)]
+    pub category: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppDevCreateSessionResponse {
+    pub session: Option<AppDevSession>,
+    pub warnings: Vec<AppDevWarning>,
+    pub user_errors: Vec<AppDevUserError>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppDevUpdateSessionResponse {
+    pub session: Option<AppDevSession>,
+    pub user_errors: Vec<AppDevUserError>,
+}
 
 pub struct AppDevClient {
     graphql: GraphQlClient,
+    token: Secret,
 }
 
 impl AppDevClient {
@@ -82,7 +251,146 @@ impl AppDevClient {
             .with_sensitive_header(HeaderName::from_static("authorization"), auth);
         Ok(Self {
             graphql: GraphQlClient::new(http, "/app_dev/unstable/graphql.json"),
+            token: Secret::new(token),
         })
+    }
+
+    pub async fn create_session(
+        &self,
+        request: &AppDevCreateSessionRequest,
+    ) -> Result<AppDevCreateSessionResponse> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Variables<'a> {
+            app_id: &'a str,
+            assets_url: &'a str,
+            websocket_url: Option<&'a str>,
+        }
+        #[derive(Deserialize)]
+        struct Data {
+            #[serde(rename = "devSessionCreate")]
+            creation: Option<CreatePayload>,
+        }
+        #[derive(Deserialize)]
+        struct CreatePayload {
+            #[serde(rename = "devSession")]
+            session: Option<AppDevSession>,
+            #[serde(default)]
+            warnings: Option<Vec<AppDevWarning>>,
+            #[serde(rename = "userErrors", default)]
+            user_errors: Vec<AppDevUserError>,
+        }
+
+        let app_id = numeric_app_id(&request.app_id)?;
+        let variables = Variables {
+            app_id,
+            assets_url: request.assets_url.as_deref().unwrap_or_default(),
+            websocket_url: request.websocket_url.as_deref(),
+        };
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::mutation(
+                DEV_SESSION_CREATE_MUTATION,
+                variables,
+            ))
+            .await
+            .map_err(|error| {
+                self.request_error(
+                    "could not create dev preview",
+                    &error.to_string(),
+                    request.assets_url.as_deref(),
+                )
+            })?;
+        let mut payload = response.data.creation.ok_or_else(|| {
+            Error::api("could not create dev preview: response omitted devSessionCreate")
+        })?;
+        let mut warnings = payload.warnings.unwrap_or_default();
+        for warning in &mut warnings {
+            warning.message = redact_app_dev_diagnostic(
+                &warning.message,
+                self.token.expose(),
+                request.assets_url.as_deref(),
+            );
+        }
+        redact_user_errors(
+            &mut payload.user_errors,
+            self.token.expose(),
+            request.assets_url.as_deref(),
+        );
+        Ok(AppDevCreateSessionResponse {
+            session: payload.session,
+            warnings,
+            user_errors: payload.user_errors,
+        })
+    }
+
+    pub async fn update_session(
+        &self,
+        request: &AppDevUpdateSessionRequest,
+    ) -> Result<AppDevUpdateSessionResponse> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Variables<'a> {
+            app_id: &'a str,
+            assets_url: Option<&'a str>,
+            manifest: String,
+            inherited_module_uids: &'a [String],
+        }
+        #[derive(Deserialize)]
+        struct Data {
+            #[serde(rename = "devSessionUpdate")]
+            update: Option<UpdatePayload>,
+        }
+        #[derive(Deserialize)]
+        struct UpdatePayload {
+            #[serde(rename = "devSession")]
+            session: Option<AppDevSession>,
+            #[serde(rename = "userErrors", default)]
+            user_errors: Vec<AppDevUserError>,
+        }
+
+        let app_id = numeric_app_id(&request.app_id)?;
+        let manifest = serde_json::to_string(&request.manifest)
+            .map_err(|error| Error::invalid_input(format!("invalid App Dev manifest: {error}")))?;
+        let variables = Variables {
+            app_id,
+            assets_url: request.assets_url.as_deref(),
+            manifest,
+            inherited_module_uids: &request.inherited_module_uids,
+        };
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::mutation(
+                DEV_SESSION_UPDATE_MUTATION,
+                variables,
+            ))
+            .await
+            .map_err(|error| {
+                self.request_error(
+                    "could not update dev preview",
+                    &error.to_string(),
+                    request.assets_url.as_deref(),
+                )
+            })?;
+        let mut payload = response.data.update.ok_or_else(|| {
+            Error::api("could not update dev preview: response omitted devSessionUpdate")
+        })?;
+        redact_user_errors(
+            &mut payload.user_errors,
+            self.token.expose(),
+            request.assets_url.as_deref(),
+        );
+        Ok(AppDevUpdateSessionResponse {
+            session: payload.session,
+            user_errors: payload.user_errors,
+        })
+    }
+
+    fn request_error(&self, context: &str, diagnostic: &str, assets_url: Option<&str>) -> Error {
+        Error::api(format!(
+            "{context}: {}",
+            redact_app_dev_diagnostic(diagnostic, self.token.expose(), assets_url)
+        ))
     }
 
     pub async fn delete_session(&self, app_id: &str) -> Result<()> {
@@ -100,12 +408,7 @@ impl AppDevClient {
         struct UserError {
             message: String,
         }
-        let app_id = app_id.rsplit('/').next().unwrap_or(app_id);
-        if app_id.is_empty() || !app_id.chars().all(|character| character.is_ascii_digit()) {
-            return Err(Error::invalid_input(format!(
-                "app ID must end in a numeric identifier, got `{app_id}`"
-            )));
-        }
+        let app_id = numeric_app_id(app_id)?;
         let response = self
             .graphql
             .execute::<_, Data>(&GraphQlRequest::mutation(
@@ -124,13 +427,76 @@ impl AppDevClient {
                 "failed to stop the dev preview: {}",
                 errors
                     .into_iter()
-                    .map(|error| error.message)
+                    .map(|error| {
+                        redact_app_dev_diagnostic(&error.message, self.token.expose(), None)
+                    })
                     .collect::<Vec<_>>()
                     .join("; ")
             )));
         }
         Ok(())
     }
+}
+
+fn numeric_app_id(app_id: &str) -> Result<&str> {
+    let numeric = app_id.rsplit('/').next().unwrap_or(app_id);
+    if numeric.is_empty() || !numeric.chars().all(|character| character.is_ascii_digit()) {
+        return Err(Error::invalid_input(format!(
+            "app ID must end in a numeric identifier, got `{numeric}`"
+        )));
+    }
+    Ok(numeric)
+}
+
+fn redact_user_errors(errors: &mut [AppDevUserError], token: &str, assets_url: Option<&str>) {
+    for error in errors {
+        error.message = redact_app_dev_diagnostic(&error.message, token, assets_url);
+        error.on = redact_diagnostic_json(error.on.take(), token, assets_url);
+    }
+}
+
+fn redact_diagnostic_json(
+    mut value: serde_json::Value,
+    token: &str,
+    assets_url: Option<&str>,
+) -> serde_json::Value {
+    match &mut value {
+        serde_json::Value::String(text) => {
+            *text = redact_app_dev_diagnostic(text, token, assets_url)
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                *value = redact_diagnostic_json(value.take(), token, assets_url);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            for (key, value) in values {
+                let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+                if ["token", "password", "secret", "authorization"]
+                    .iter()
+                    .any(|sensitive| normalized.contains(sensitive))
+                {
+                    *value = serde_json::Value::String("[REDACTED]".into());
+                } else {
+                    *value = redact_diagnostic_json(value.take(), token, assets_url);
+                }
+            }
+        }
+        _ => {}
+    }
+    value
+}
+
+fn redact_app_dev_diagnostic(value: &str, token: &str, assets_url: Option<&str>) -> String {
+    let mut redacted = if token.is_empty() {
+        value.to_owned()
+    } else {
+        value.replace(token, "[REDACTED]")
+    };
+    if let Some(assets_url) = assets_url.filter(|url| !url.is_empty()) {
+        redacted = redacted.replace(assets_url, "[REDACTED ASSETS URL]");
+    }
+    redacted
 }
 
 fn url_scheme_is_insecure_non_loopback(value: &str) -> bool {
@@ -596,6 +962,78 @@ impl AppManagementClient {
             .collect::<Vec<_>>();
         registrations.sort_by(|left, right| left.uuid.cmp(&right.uuid));
         Ok(registrations)
+    }
+
+    pub async fn active_app_modules(&self, app_id: &str) -> Result<Vec<ActiveAppModule>> {
+        #[derive(Deserialize)]
+        struct Data {
+            app: Option<App>,
+        }
+        #[derive(Deserialize)]
+        struct App {
+            #[serde(rename = "activeRelease")]
+            active_release: Option<Release>,
+        }
+        #[derive(Deserialize)]
+        struct Release {
+            version: Version,
+        }
+        #[derive(Deserialize)]
+        struct Version {
+            #[serde(rename = "appModules", default)]
+            modules: Vec<Module>,
+        }
+        #[derive(Deserialize)]
+        struct Module {
+            uuid: Option<String>,
+            #[serde(rename = "userIdentifier")]
+            user_identifier: Option<String>,
+            handle: Option<String>,
+            config: Option<serde_json::Value>,
+            target: Option<String>,
+            specification: Specification,
+        }
+        #[derive(Deserialize)]
+        struct Specification {
+            identifier: Option<String>,
+            #[serde(rename = "externalIdentifier")]
+            external_identifier: String,
+            experience: Option<String>,
+        }
+
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::query(
+                ACTIVE_APP_MODULES_QUERY,
+                serde_json::json!({"appId": app_id}),
+            ))
+            .await
+            .map_err(|error| Error::api(format!("could not fetch active app modules: {error}")))?;
+        let mut modules = response
+            .data
+            .app
+            .and_then(|app| app.active_release)
+            .map(|release| release.version.modules)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|module| ActiveAppModule {
+                uuid: module.uuid,
+                user_identifier: module.user_identifier,
+                handle: module.handle,
+                configuration: module.config,
+                target: module.target,
+                identifier: module.specification.identifier,
+                external_identifier: module.specification.external_identifier,
+                experience: module.specification.experience,
+            })
+            .collect::<Vec<_>>();
+        modules.sort_by(|left, right| {
+            left.external_identifier
+                .cmp(&right.external_identifier)
+                .then_with(|| left.handle.cmp(&right.handle))
+                .then_with(|| left.uuid.cmp(&right.uuid))
+        });
+        Ok(modules)
     }
 
     pub async fn app_client_credentials(&self, client_id: &str) -> Result<AppClientCredentials> {
