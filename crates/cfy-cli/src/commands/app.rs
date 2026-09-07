@@ -3897,6 +3897,24 @@ mod app_dev_tests {
     use super::*;
     use notify::{Event, EventKind};
 
+    fn temp_app_graph() -> (PathBuf, cfy_config::graph::AppConfigGraph) {
+        let root = std::env::temp_dir().join(format!(
+            "catify-app-dev-manifest-{}-{}",
+            std::process::id(),
+            unix_time_ms()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let config = root.join("shopify.app.toml");
+        std::fs::write(
+            &config,
+            "client_id='client'\nname='App'\napplication_url='https://old.example'\nembedded=true\n",
+        )
+        .unwrap();
+        let project = discover(&root, Some(ProjectKind::App)).unwrap();
+        let graph = cfy_config::graph::AppConfigGraph::load_selected(&project, &config).unwrap();
+        (root, graph)
+    }
+
     #[test]
     fn watcher_filters_generated_and_dependency_paths() {
         let root = Path::new("/project");
@@ -3945,5 +3963,69 @@ mod app_dev_tests {
         assert!(!rendered.contains("X-Goog-Signature"));
         assert!(!rendered.contains("token"));
         assert!(!rendered.contains("secret"));
+    }
+
+    #[test]
+    fn dev_manifest_updates_public_url_and_resource_metadata() {
+        let (root, graph) = temp_app_graph();
+        let public_url = url::Url::parse("https://dev.example.test").unwrap();
+        let manifest = dev_manifest(
+            &graph,
+            Some(&public_url),
+            true,
+            Some("/products/subscription"),
+            Some("/cart/123"),
+        )
+        .unwrap();
+        let app_home = manifest["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["type"] == "app_home")
+            .unwrap();
+        assert_eq!(
+            app_home["configuration"]["app_url"],
+            "https://dev.example.test/"
+        );
+        assert_eq!(
+            manifest["metadata"]["subscriptionProductUrl"],
+            "/products/subscription"
+        );
+        assert_eq!(manifest["metadata"]["checkoutCartUrl"], "/cart/123");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn inherited_module_uids_exclude_locally_managed_modules() {
+        let local = vec![LocalModuleDescriptor {
+            uid: Some("local".into()),
+            user_identifier: None,
+            module_type: "function".into(),
+            handle: "local".into(),
+            kind: ModuleKind::Extension,
+            configuration: None,
+        }];
+        let remote = vec![
+            RemoteModuleDescriptor {
+                uid: Some("local".into()),
+                user_identifier: None,
+                module_type: "function".into(),
+                handle: "local".into(),
+                kind: ModuleKind::Extension,
+                configuration: None,
+            },
+            RemoteModuleDescriptor {
+                uid: Some("remote-only".into()),
+                user_identifier: None,
+                module_type: "admin_link".into(),
+                handle: "remote-only".into(),
+                kind: ModuleKind::Extension,
+                configuration: None,
+            },
+        ];
+        assert_eq!(
+            inherited_dev_module_uids(&local, &remote),
+            vec!["remote-only".to_owned()]
+        );
     }
 }
