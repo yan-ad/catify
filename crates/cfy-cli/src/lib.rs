@@ -16,7 +16,9 @@ use cfy_app::{
     exchange_admin_token, exchange_app_management_token, exchange_storefront_renderer_token,
     extension_generate::{GenerateExtensionOptions, generate_extension},
     extension_import::{
-        ExistingDirectoryPolicy, ImportExtensionsOptions, ImportSelection, import_extensions,
+        ExistingDirectoryPolicy, ExtensionRegistrationProvider, ImportExtensionsOptions,
+        ImportSelection, RemoteExtensionRegistration, filter_imported_registrations,
+        import_directory_conflicts, import_extension_registrations, migration_family,
     },
     logs::AppLogsClient,
     webhook::{
@@ -105,6 +107,7 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 use std::{
+    collections::{BTreeMap, BTreeSet},
     env,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -122,6 +125,53 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+fn select_extension_imports(
+    registrations: &[RemoteExtensionRegistration],
+) -> Result<ImportSelection> {
+    let mut families = BTreeMap::<String, Vec<&RemoteExtensionRegistration>>::new();
+    for registration in registrations {
+        families
+            .entry(migration_family(&registration.extension_type).to_owned())
+            .or_default()
+            .push(registration);
+    }
+    let family_names = families.keys().cloned().collect::<Vec<_>>();
+    let family_index = if family_names.len() == 1 {
+        0
+    } else {
+        select_text_choice(
+            "Which extension family would you like to import?",
+            &family_names,
+        )?
+    };
+    let family = &family_names[family_index];
+    let candidates = &families[family];
+    if candidates.len() == 1 {
+        return Ok(ImportSelection::Uuids(BTreeSet::from([candidates[0]
+            .uuid
+            .clone()])));
+    }
+    let mut choices = vec![format!("All {family} extensions")];
+    choices.extend(
+        candidates
+            .iter()
+            .map(|registration| format!("{} ({})", registration.title, registration.uuid)),
+    );
+    let selected = select_text_choice("Which extension would you like to import?", &choices)?;
+    if selected == 0 {
+        return Ok(ImportSelection::Uuids(
+            candidates
+                .iter()
+                .map(|registration| registration.uuid.clone())
+                .collect(),
+        ));
+    }
+    Ok(ImportSelection::Uuids(BTreeSet::from([candidates
+        [selected - 1]
+        .uuid
+        .clone()])))
 }
 
 fn explicit_theme_tokens(
@@ -6843,15 +6893,71 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
                 select_organization(&organizations)?
             };
             let backend = AppManagementClient::from_session(&session).await?;
+            let dotenv_name = if selected.config_name == "default" {
+                ".env".to_owned()
+            } else {
+                format!(".env.{}", selected.config_name)
+            };
+            let dotenv_path = selected.project.root().join(dotenv_name);
+            let registrations = backend
+                .fetch_extension_registrations(client_id, &organization.id)
+                .await?
+                .into_iter()
+                .filter(|registration| {
+                    cfy_app::extension_import::is_migratable_type(&registration.extension_type)
+                })
+                .collect::<Vec<_>>();
+            let registrations =
+                filter_imported_registrations(registrations, selected.project.root(), &dotenv_path)
+                    .map_err(|error| Error::api(error.to_string()))?;
+            if registrations.is_empty() {
+                return Err(Error::invalid_input(
+                    "this app has no dashboard extensions supported by import-extensions",
+                ));
+            }
+            let selection = if non_interactive {
+                ImportSelection::All
+            } else {
+                select_extension_imports(&registrations)?
+            };
             let options = ImportExtensionsOptions {
                 app_directory: selected.project.root().to_owned(),
                 client_id: client_id.to_owned(),
                 organization_id: organization.id,
-                selection: ImportSelection::All,
+                dotenv_path,
+                api_key: client_id.to_owned(),
+                selection,
                 existing_directory_policy: ExistingDirectoryPolicy::Skip,
+                directory_policies: BTreeMap::new(),
             };
-            let report = import_extensions(&backend, &options)
-                .await
+            let mut options = options;
+            if !non_interactive {
+                for conflict in import_directory_conflicts(registrations.clone(), &options)
+                    .map_err(|error| Error::api(error.to_string()))?
+                {
+                    let choices = vec![
+                        "Overwrite local TOML with remote configuration".to_owned(),
+                        "Keep local TOML".to_owned(),
+                        "Cancel".to_owned(),
+                    ];
+                    match select_text_choice(
+                        &format!(
+                            "Directory for '{}' already exists. What would you like to do?",
+                            conflict.title
+                        ),
+                        &choices,
+                    )? {
+                        0 => {
+                            options
+                                .directory_policies
+                                .insert(conflict.uuid, ExistingDirectoryPolicy::Overwrite);
+                        }
+                        1 => {}
+                        _ => return Err(Error::invalid_input("extension import was cancelled")),
+                    }
+                }
+            }
+            let report = import_extension_registrations(registrations, &options)
                 .map_err(|error| Error::api(error.to_string()))?;
             output
                 .success("Extensions imported", &report)

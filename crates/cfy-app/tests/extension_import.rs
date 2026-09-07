@@ -133,14 +133,18 @@ fn options(root: &Path) -> ImportExtensionsOptions {
         app_directory: root.into(),
         client_id: "client-id".into(),
         organization_id: "organization-id".into(),
+        dotenv_path: root.join(".env"),
+        api_key: "client-id".into(),
         selection: ImportSelection::All,
         existing_directory_policy: ExistingDirectoryPolicy::Skip,
+        directory_policies: Default::default(),
     }
 }
 
 #[test]
 fn imports_all_and_selected_registrations_deterministically() {
     let all = TempDir::new("all");
+    fs::write(all.path().join(".env"), "# keep\nCUSTOM=value\n").unwrap();
     let report = import_extension_registrations(
         vec![registration("b", "Second"), registration("a", "First")],
         &options(all.path()),
@@ -164,6 +168,10 @@ fn imports_all_and_selected_registrations_deterministically() {
         serde_json::from_str::<serde_json::Value>(&state).unwrap()["extensions"]["a"],
         "first"
     );
+    let dotenv = fs::read_to_string(all.path().join(".env")).unwrap();
+    assert!(dotenv.contains("# keep\nCUSTOM=value"));
+    assert!(dotenv.contains("SHOPIFY_API_KEY=client-id"));
+    assert!(dotenv.contains("SHOPIFY_FIRST_ID=a"));
 
     let selected = TempDir::new("selected");
     let mut uuids = BTreeSet::new();
@@ -181,7 +189,7 @@ fn imports_all_and_selected_registrations_deterministically() {
 }
 
 #[test]
-fn reports_already_imported_without_rewriting() {
+fn filters_already_imported_extensions_from_state_without_rewriting() {
     let root = TempDir::new("already");
     let initial =
         import_extension_registrations(vec![registration("a", "Original")], &options(root.path()))
@@ -190,12 +198,29 @@ fn reports_already_imported_without_rewriting() {
         .path()
         .join("extensions/original/shopify.extension.toml");
     fs::write(&config, "local = true\n").unwrap();
-    let report =
+    let error =
         import_extension_registrations(vec![registration("a", "Changed")], &options(root.path()))
-            .unwrap();
-    assert_eq!(report.items[0].outcome, ImportOutcome::AlreadyImported);
-    assert_eq!(report.items[0].handle, initial.items[0].handle);
+            .unwrap_err();
+    assert!(error.to_string().contains("no dashboard extensions"));
+    assert_eq!(initial.items[0].handle, "original");
     assert_eq!(fs::read_to_string(config).unwrap(), "local = true\n");
+}
+
+#[test]
+fn filters_already_imported_extensions_from_dotenv() {
+    let root = TempDir::new("dotenv-imported");
+    fs::write(
+        root.path().join(".env"),
+        "SHOPIFY_EXISTING_ID=uuid-existing\n",
+    )
+    .unwrap();
+    let error = import_extension_registrations(
+        vec![registration("uuid-existing", "Existing")],
+        &options(root.path()),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("no dashboard extensions"));
+    assert!(!root.path().join("extensions/existing").exists());
 }
 
 #[test]
@@ -226,7 +251,9 @@ fn explicitly_skips_or_overwrites_existing_directories() {
     fs::create_dir_all(&target).unwrap();
     fs::write(target.join("old.txt"), "old").unwrap();
     let mut overwrite = options(overwritten.path());
-    overwrite.existing_directory_policy = ExistingDirectoryPolicy::Overwrite;
+    overwrite
+        .directory_policies
+        .insert("a".into(), ExistingDirectoryPolicy::Overwrite);
     let report =
         import_extension_registrations(vec![registration("a", "Collision")], &overwrite).unwrap();
     assert_eq!(report.items[0].outcome, ImportOutcome::Imported);

@@ -254,14 +254,12 @@
       "evidence": [
         "crates/cfy-app/src/extension_import.rs",
         "crates/cfy-app/tests/extension_import.rs",
-        "crates/cfy-app/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/src/lib.rs tests"
       ],
-      "implementation": "Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path.",
+      "implementation": "Rust-native App Management discovery, two-stage interactive family/extension selection, safe dashboard-to-local TOML conversion, atomic extension/state/dotenv transaction, SHOPIFY_<HANDLE>_ID persistence, and rollback are wired at the exact public command path.",
       "live_verified": false,
-      "notes": "Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions.",
       "owner": 24,
-      "status": "partial",
+      "status": "native",
       "tested": true
     },
     "app info": {

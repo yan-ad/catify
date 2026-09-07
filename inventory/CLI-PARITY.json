@@ -5,18 +5,18 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 106,
+    "implemented": 107,
     "tested": 111,
     "live_verified": 9,
     "by_status": {
       "adapter": 27,
-      "native": 79,
-      "partial": 5
+      "native": 80,
+      "partial": 4
     },
     "by_domain": {
       "app": {
-        "native": 26,
-        "partial": 5
+        "native": 27,
+        "partial": 4
       },
       "auth": {
         "native": 2
@@ -403,18 +403,17 @@
     {
       "command": "app import-extensions",
       "domain": "app",
-      "status": "partial",
+      "status": "native",
       "owner": 24,
-      "implementation": "Rust-native App Management registration discovery, migratable-family filtering, atomic extension directory import, rollback, identifier state, and dashboard-to-local TOML conversion are wired at the exact public command path.",
+      "implementation": "Rust-native App Management discovery, two-stage interactive family/extension selection, safe dashboard-to-local TOML conversion, atomic extension/state/dotenv transaction, SHOPIFY_<HANDLE>_ID persistence, and rollback are wired at the exact public command path.",
       "tested": true,
       "evidence": [
         "crates/cfy-app/src/extension_import.rs",
         "crates/cfy-app/tests/extension_import.rs",
-        "crates/cfy-app/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/src/lib.rs tests"
       ],
       "live_verified": false,
-      "notes": "Exact parity remains for interactive family/extension selection, .env SHOPIFY_<HANDLE>_ID persistence, and several family-specific edge-field conversions."
+      "notes": null
     },
     {
       "command": "app info",

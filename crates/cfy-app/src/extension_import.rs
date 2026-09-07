@@ -25,6 +25,94 @@ pub struct RemoteExtensionRegistration {
     pub context: Option<String>,
 }
 
+pub fn filter_imported_registrations(
+    mut registrations: Vec<RemoteExtensionRegistration>,
+    app_directory: &Path,
+    dotenv_path: &Path,
+) -> ImportResult<Vec<RemoteExtensionRegistration>> {
+    let root = absolute_lexical(app_directory)?;
+    let state_path = confined_join(&root, Path::new(STATE_PATH))?;
+    let state = load_state(&state_path)?;
+    let imported = imported_uuids(dotenv_path)?;
+    registrations.retain(|registration| {
+        !state.extensions.contains_key(&registration.uuid) && !imported.contains(&registration.uuid)
+    });
+    Ok(registrations)
+}
+
+pub fn import_directory_conflicts(
+    registrations: Vec<RemoteExtensionRegistration>,
+    options: &ImportExtensionsOptions,
+) -> ImportResult<Vec<ImportDirectoryConflict>> {
+    let root = absolute_lexical(&options.app_directory)?;
+    let extensions_root = confined_join(&root, Path::new("extensions"))?;
+    let state_path = confined_join(&root, Path::new(STATE_PATH))?;
+    let state = load_state(&state_path)?;
+    let mut registrations =
+        filter_imported_registrations(registrations, &options.app_directory, &options.dotenv_path)?;
+    if let ImportSelection::Uuids(selected) = &options.selection {
+        registrations.retain(|registration| selected.contains(&registration.uuid));
+    }
+    registrations.sort_by(|a, b| a.uuid.cmp(&b.uuid).then_with(|| a.title.cmp(&b.title)));
+    let mut reserved = state.extensions.values().cloned().collect::<BTreeSet<_>>();
+    let mut conflicts = Vec::new();
+    for registration in registrations {
+        let handle = unique_handle(&registration.title, &registration.uuid, &mut reserved);
+        let path = confined_join(&extensions_root, Path::new(&handle))?;
+        if path.exists() {
+            conflicts.push(ImportDirectoryConflict {
+                uuid: registration.uuid,
+                title: registration.title,
+                path,
+            });
+        }
+    }
+    Ok(conflicts)
+}
+
+fn imported_uuids(path: &Path) -> ImportResult<BTreeSet<String>> {
+    let Some(bytes) = read_optional(path)? else {
+        return Ok(BTreeSet::new());
+    };
+    let contents = String::from_utf8_lossy(&bytes);
+    Ok(contents
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.starts_with('#') {
+                return None;
+            }
+            let (name, value) = line.split_once('=')?;
+            if !name.trim().starts_with("SHOPIFY_") || !name.trim().ends_with("_ID") {
+                return None;
+            }
+            let value = value.trim().trim_matches(['\'', '"']);
+            (!value.is_empty()).then(|| value.to_owned())
+        })
+        .collect())
+}
+
+struct FileBackup<'a> {
+    path: &'a Path,
+    contents: Option<&'a [u8]>,
+}
+
+#[must_use]
+pub fn migration_family(extension_type: &str) -> &'static str {
+    match extension_type {
+        value if value.starts_with("payments_") || value == "payments_extension" => {
+            "Payments Extensions"
+        }
+        "flow_action_definition" | "flow_trigger_definition" | "flow_trigger_discovery_webhook" => {
+            "Flow Extensions"
+        }
+        "marketing_activity_extension" => "Marketing Activity Extensions",
+        "subscription_link" | "subscription_link_extension" => "Subscription Link Extensions",
+        "app_link" | "bulk_action" => "Admin Link extensions",
+        _ => "Other",
+    }
+}
+
 pub fn is_migratable_type(extension_type: &str) -> bool {
     matches!(
         extension_type.to_ascii_lowercase().as_str(),
@@ -269,15 +357,24 @@ pub struct ImportExtensionsOptions {
     pub app_directory: PathBuf,
     pub client_id: String,
     pub organization_id: String,
+    pub dotenv_path: PathBuf,
+    pub api_key: String,
     pub selection: ImportSelection,
     pub existing_directory_policy: ExistingDirectoryPolicy,
+    pub directory_policies: BTreeMap<String, ExistingDirectoryPolicy>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ImportDirectoryConflict {
+    pub uuid: String,
+    pub title: String,
+    pub path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImportOutcome {
     Imported,
-    AlreadyImported,
     SkippedExistingDirectory,
 }
 
@@ -306,6 +403,8 @@ pub enum ExtensionImportError {
     },
     #[error("selected extension UUID(s) were not returned by Shopify: {0}")]
     UnknownSelection(String),
+    #[error("no dashboard extensions remain to import")]
+    NoExtensionsToImport,
     #[error("extension registration has an empty UUID")]
     EmptyUuid,
     #[error("extension `{uuid}` has an empty type")]
@@ -358,7 +457,7 @@ pub async fn import_extensions<P: ExtensionRegistrationProvider>(
 
 /// Plan and commit already-fetched registrations. Useful for fixtures and non-HTTP callers.
 pub fn import_extension_registrations(
-    mut registrations: Vec<RemoteExtensionRegistration>,
+    registrations: Vec<RemoteExtensionRegistration>,
     options: &ImportExtensionsOptions,
 ) -> ImportResult<ImportExtensionsReport> {
     let root = absolute_lexical(&options.app_directory)?;
@@ -366,6 +465,11 @@ pub fn import_extension_registrations(
     let extensions_root = confined_join(&root, Path::new("extensions"))?;
     let state_path = confined_join(&root, Path::new(STATE_PATH))?;
     let mut state = load_state(&state_path)?;
+    let mut registrations =
+        filter_imported_registrations(registrations, &options.app_directory, &options.dotenv_path)?;
+    if registrations.is_empty() {
+        return Err(ExtensionImportError::NoExtensionsToImport);
+    }
 
     registrations.sort_by(|a, b| a.uuid.cmp(&b.uuid).then_with(|| a.title.cmp(&b.title)));
     let available: BTreeSet<_> = registrations.iter().map(|r| r.uuid.clone()).collect();
@@ -388,20 +492,16 @@ pub fn import_extension_registrations(
                 uuid: registration.uuid,
             });
         }
-        if let Some(handle) = state.extensions.get(&registration.uuid).cloned() {
-            planned.push(PlannedImport {
-                target: confined_join(&extensions_root, Path::new(&handle))?,
-                registration,
-                handle,
-                outcome: ImportOutcome::AlreadyImported,
-            });
-            continue;
-        }
         let handle = unique_handle(&registration.title, &registration.uuid, &mut reserved);
         let target = confined_join(&extensions_root, Path::new(&handle))?;
         ensure_no_symlink_ancestors(&root, &target)?;
         let outcome = if target.exists() {
-            match options.existing_directory_policy {
+            match options
+                .directory_policies
+                .get(&registration.uuid)
+                .copied()
+                .unwrap_or(options.existing_directory_policy)
+            {
                 ExistingDirectoryPolicy::Overwrite => ImportOutcome::Imported,
                 ExistingDirectoryPolicy::Skip => ImportOutcome::SkippedExistingDirectory,
             }
@@ -416,7 +516,14 @@ pub fn import_extension_registrations(
         });
     }
 
-    commit(&root, &extensions_root, &state_path, &mut state, &planned)?;
+    commit(
+        &root,
+        &extensions_root,
+        &state_path,
+        &mut state,
+        &planned,
+        options,
+    )?;
     Ok(ImportExtensionsReport {
         items: planned
             .into_iter()
@@ -438,14 +545,22 @@ fn commit(
     state_path: &Path,
     state: &mut IdentifierState,
     planned: &[PlannedImport],
+    options: &ImportExtensionsOptions,
 ) -> ImportResult<()> {
     let actionable: Vec<_> = planned
         .iter()
         .filter(|item| item.outcome == ImportOutcome::Imported)
         .collect();
-    if actionable.is_empty() {
+    if actionable.is_empty() && state.extensions.is_empty() {
         return Ok(());
     }
+    let dotenv_path = absolute_lexical(&options.dotenv_path)?;
+    if !dotenv_path.starts_with(root) {
+        return Err(ExtensionImportError::PathEscape(dotenv_path));
+    }
+    ensure_no_symlink_ancestors(root, &dotenv_path)?;
+    let original_state = read_optional(state_path)?;
+    let original_dotenv = read_optional(&dotenv_path)?;
     create_dir_all(extensions_root)?;
     let transaction = extensions_root.join(format!(".cfy-import-{}", std::process::id()));
     if transaction.exists() {
@@ -480,11 +595,39 @@ fn commit(
         }
         let bytes = serde_json::to_vec_pretty(state).expect("identifier state is serializable");
         cfy_config::write_atomic(state_path, &bytes).map_err(|source| io_at(state_path, source))?;
+
+        let existing = original_dotenv
+            .as_deref()
+            .map(String::from_utf8_lossy)
+            .unwrap_or_default();
+        let mut values = cfy_config::app_env::AppEnvironment::new();
+        values.insert("SHOPIFY_API_KEY".into(), options.api_key.clone());
+        for (uuid, handle) in &state.extensions {
+            values.insert(identifier_environment_name(handle), uuid.clone());
+        }
+        let dotenv = cfy_config::app_env::merge_dotenv(&existing, &values);
+        cfy_config::write_atomic(&dotenv_path, dotenv.as_bytes())
+            .map_err(|source| io_at(&dotenv_path, source))?;
         Ok(())
     })();
 
     if let Err(error) = operation {
-        let rollback = rollback(&actionable, &staged_root, &backup_root, &transaction);
+        let rollback = rollback(
+            &actionable,
+            &staged_root,
+            &backup_root,
+            &transaction,
+            [
+                FileBackup {
+                    path: state_path,
+                    contents: original_state.as_deref(),
+                },
+                FileBackup {
+                    path: &dotenv_path,
+                    contents: original_dotenv.as_deref(),
+                },
+            ],
+        );
         return match rollback {
             Ok(()) => Err(error),
             Err(rollback) => Err(ExtensionImportError::Rollback {
@@ -502,6 +645,7 @@ fn rollback(
     staged_root: &Path,
     backup_root: &Path,
     transaction: &Path,
+    files: [FileBackup<'_>; 2],
 ) -> ImportResult<()> {
     for item in items.iter().rev() {
         let backup = backup_root.join(&item.handle);
@@ -518,7 +662,40 @@ fn rollback(
     if transaction.exists() {
         remove_path(transaction).map_err(|source| io_at(transaction, source))?;
     }
+    for file in files {
+        restore_optional(file.path, file.contents)?;
+    }
     Ok(())
+}
+
+fn identifier_environment_name(handle: &str) -> String {
+    let normalized = handle
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("SHOPIFY_{normalized}_ID")
+}
+
+fn read_optional(path: &Path) -> ImportResult<Option<Vec<u8>>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(io_at(path, source)),
+    }
+}
+
+fn restore_optional(path: &Path, original: Option<&[u8]>) -> ImportResult<()> {
+    match original {
+        Some(bytes) => cfy_config::write_atomic(path, bytes).map_err(|source| io_at(path, source)),
+        None if path.exists() => remove_path(path).map_err(|source| io_at(path, source)),
+        None => Ok(()),
+    }
 }
 
 fn render_configuration(
