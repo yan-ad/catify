@@ -17,6 +17,17 @@ fn context(executable: impl Into<PathBuf>) -> DetectionContext {
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn detects_windows_executable_suffix_in_cargo_home() {
+    let mut context = context(r"C:\Users\me\.cargo\bin\cfy.exe");
+    context.cargo_home = Some(r"C:\Users\me\.cargo".into());
+    assert!(matches!(
+        detect_with(&context),
+        InstallProvenance::Cargo { .. }
+    ));
+}
+
 #[test]
 fn detects_long_catify_command_in_cargo_home() {
     let mut context = context("/users/me/.cargo/bin/catify");

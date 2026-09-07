@@ -364,8 +364,13 @@ fn source_workspace(executable: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn executable_names() -> [OsString; 2] {
-    [OsString::from("cfy.exe"), OsString::from("catify.exe")]
+fn executable_names() -> [OsString; 4] {
+    [
+        OsString::from(EXECUTABLE_NAME),
+        OsString::from("cfy.exe"),
+        OsString::from("catify"),
+        OsString::from("catify.exe"),
+    ]
 }
 #[cfg(not(windows))]
 fn executable_names() -> [OsString; 2] {
