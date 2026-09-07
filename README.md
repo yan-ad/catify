@@ -1,157 +1,204 @@
-# 🐈‍⬛ catify
+# Catify
 
-Catify (`cfy`) is an independent, memory-efficient CLI aiming for behavioral compatibility with common Shopify CLI workflows. It is experimental and is not affiliated with, endorsed by, or sponsored by Shopify.
+[![CI](https://github.com/yan-ad/catify/actions/workflows/ci.yml/badge.svg)](https://github.com/yan-ad/catify/actions/workflows/ci.yml)
+[![Release](https://github.com/yan-ad/catify/actions/workflows/release.yml/badge.svg)](https://github.com/yan-ad/catify/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-| Compatibility | Memory Usage | Bundle Size | Load Time |
-| ---: | ---: | ---: | ---: |
-| **73%** | **24.7x lower** | **2.9x smaller** | **93.6x faster** |
+Catify is an independent, native-first command-line interface for Shopify development. The project ships the `cfy` and `catify` commands from the same Rust binary and targets behavioral compatibility with Shopify CLI while using substantially less memory at rest.
 
-Measured on macOS arm64 against Shopify CLI 4.7.1: compatibility is 81 of 111
-upstream commands implemented, memory is peak RSS, bundle size compares the
-17 MB release binary with the 47 MB installed Shopify CLI package, and load time
-is median warm startup. See [`inventory/CLI-PARITY.md`](inventory/CLI-PARITY.md)
-and [`benchmarks/results/latest.json`](benchmarks/results/latest.json).
+With Catify, you can:
 
-## Installation
+- initialize, inspect, build, develop, deploy, and release Shopify apps;
+- work with extensions and Shopify Functions;
+- authenticate with Shopify and manage organizations and stores;
+- pull, push, preview, profile, package, and develop Liquid themes;
+- search and fetch Shopify developer documentation;
+- invoke Hydrogen, Theme Check, and language-server runtimes through isolated adapters when the ecosystem tool itself is intrinsically external.
 
-### npm (macOS, Linux, and Windows)
+> [!IMPORTANT]
+> Catify is experimental prerelease software. It is not affiliated with, endorsed by, or sponsored by Shopify. Test commands against development stores and source-controlled projects before using them in production workflows.
+
+## Before you begin
+
+You need a Shopify account and a supported platform:
+
+- macOS on Apple Silicon or Intel;
+- Linux on x86-64 or arm64;
+- Windows on x86-64.
+
+Node.js is not required by the native Rust command core. It can still be required during npm installation or by external project runtimes such as Hydrogen, JavaScript bundlers, and extension toolchains.
+
+## Install Catify
+
+### npm
 
 ```sh
 npm install --global catify-cli
 cfy version
-# `catify version` is equivalent
 ```
 
-The npm package installs the native binary for the current OS and architecture.
-Node.js is only used during installation and as a small process launcher; Catify
-commands run in the Rust binary.
+The npm package downloads the native binary for the current platform. `catify version` is equivalent to `cfy version`.
 
-### Installer script (macOS and Linux)
+### Shell installer
+
+On macOS or Linux:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yan-ad/catify/main/install.sh | sh
 ```
 
-The script installs to `~/.local/bin` by default and verifies the release archive
-against the published `SHA256SUMS`. Override the destination with
-`CFY_INSTALL_DIR=/usr/local/bin` or install a specific release with
-`CFY_VERSION=0.1.0`.
-
-See the complete [installation guide](docs/installation.md) for manual downloads,
-supported platforms, upgrades, uninstall steps, and npm publishing setup.
-
-## Development
+### Cargo
 
 ```sh
-cargo run -p cfy-cli -- --help
-cargo test --workspace
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo install cfy-cli --locked
+cfy version
 ```
 
-Work is driven by the [GitHub issue roadmap](https://github.com/yan-ad/catify/issues). Architecture and compatibility decisions live in [`docs/adr`](docs/adr) and [`docs/compatibility.md`](docs/compatibility.md).
+See the [installation guide](docs/installation.md) for manual downloads, checksums, upgrades, uninstall instructions, supported targets, and prerelease packaging.
 
-The generated [CLI parity matrix](inventory/CLI-PARITY.md) tracks all 111 pinned
-Shopify CLI commands, including native/adapter status, automated test evidence,
-live verification, gaps, and the owning GitHub issue.
+## Develop Shopify apps
 
-Configuration precedence, file locations, and persistence guarantees are
-documented in [`docs/configuration.md`](docs/configuration.md).
+Authenticate, initialize an app, and start development:
 
-Pinned upstream research lives in [`docs/research`](docs/research), including
-the [Shopify authentication flow and risk analysis](docs/research/shopify-authentication.md).
+```sh
+cfy auth login
+cfy app init
+cd my-app
+cfy app dev
+```
 
-## CLI conventions
+Common native workflows include:
 
-Global flags work before or after nested commands:
+```sh
+cfy app config link
+cfy app config validate
+cfy app info
+cfy app build
+cfy app deploy
+cfy app versions list
+```
 
-- `-v, --verbose` can be repeated to increase diagnostic detail.
-- `--no-color` disables ANSI color output.
-- `--json` requests machine-readable output from commands that support it.
-- `--non-interactive` prevents commands from prompting.
+Catify keeps public command names and nesting aligned with Shopify CLI. For example, the command is `cfy app config link`, not `cfy app config-link`.
 
-The initial compatibility aliases are `cfy a` for `cfy app`, `cfy th` for
-`cfy theme`, `cfy v` for `cfy version`, and `show` for nested `info` commands.
+## Develop Shopify themes
 
-### Output and diagnostics
+Authenticate to a store and inspect its themes:
 
-`--json` reserves stdout for one machine-readable command result. Runtime errors
-are emitted as JSON on stderr, so pipelines never receive human log lines on
-stdout. Diagnostic logs are disabled by default; pass `-v` to enable cause and
-debug details, or repeat it as future commands add finer levels.
+```sh
+cfy store auth --store example.myshopify.com --scopes read_themes,write_themes
+cfy theme list --store example.myshopify.com
+```
 
-Known Shopify token environment variables are redacted from human output, JSON
-values, errors, and debug causes. Commands must pass output through the shared
-`Output` boundary rather than writing directly to stdout or stderr.
+Develop or synchronize a theme:
+
+```sh
+cfy theme pull --store example.myshopify.com --theme 123456789
+cfy theme dev --store example.myshopify.com
+cfy theme push --store example.myshopify.com --theme 123456789
+```
+
+Theme writes use path validation, staged filesystem transactions, rollback, cancellation handling, and explicit protection for live or destructive operations.
+
+## Hydrogen and ecosystem tools
+
+Hydrogen remains a JavaScript ecosystem runtime. Catify exposes the compatible command surface while supervising the external runtime rather than loading it into the Rust CLI process:
+
+```sh
+cfy hydrogen dev
+cfy hydrogen build
+```
+
+The same boundary applies to tools such as Theme Check, the Liquid language server, cloudflared, Git, package managers, and the Shopify Functions WASM runner. Catify owns command parsing, configuration, process lifecycle, signals, output, and diagnostics; the external tool is used only as its actual runtime engine.
+
+## Compatibility
+
+The generated [CLI parity matrix](inventory/CLI-PARITY.md) tracks every command in the pinned Shopify CLI runtime inventory, including implementation type, automated evidence, live verification, remaining gaps, and owning issue.
+
+| Compatibility status | Commands | Share |
+|---|---:|---:|
+| Native Rust | **82** | **73.9%** |
+| Explicit external-runtime adapter | **27** | **24.3%** |
+| Partial compatibility | **2** | **1.8%** |
+| Exposed upstream command paths | **111 / 111** | **100%** |
+| Fully implemented (`native` + `adapter`) | **109 / 111** | **98.2%** |
+
+Adapter commands are not thin default proxies to the `shopify` executable. They are reserved for runtimes that are intrinsically external, such as Hydrogen, Theme Check, and language servers. See [compatibility policy](docs/compatibility.md) for the implementation rules.
+
+## Performance
+
+Latest checked-in benchmark on macOS arm64 against Shopify CLI 4.7.1:
+
+| Metric | Catify | Shopify CLI | Difference |
+|---|---:|---:|---:|
+| Warm startup median | **10.0 ms** | 936.1 ms | **93.6× faster** |
+| Peak RSS | **8.7 MiB** | 215.8 MiB | **24.7× lower** |
+| Idle RSS | **8.8 MiB** | 96.6 MiB | **11.0× lower** |
+| Installed binary/package size | **17 MiB** | 47 MiB | **2.8× smaller** |
+
+The benchmark measures the CLI process, not every child process in an application workflow. A framework dev server, bundler, tunnel, Hydrogen runtime, or language server still consumes memory while active.
+
+Raw measurements are in [`benchmarks/results/latest.json`](benchmarks/results/latest.json). Methodology and limitations are documented in the [performance report](docs/performance.md).
+
+## Commands and help
+
+```sh
+cfy help
+cfy commands
+cfy help app
+cfy app --help
+```
+
+Useful global options:
+
+- `--verbose` increases diagnostic detail and can be repeated;
+- `--no-color` disables ANSI output;
+- `--json` requests machine-readable output where supported;
+- `--non-interactive` prevents prompts and requires explicit destructive-operation approval.
+
+Generate shell completions with:
+
+```sh
+cfy completion bash
+cfy completion zsh
+cfy completion fish
+cfy completion powershell
+```
 
 Exit codes are stable by category:
 
-| Status | Categories |
-| --- | --- |
-| `0` | Success |
-| `1` | Shopify API and external process failures |
-| `2` | Invalid input, CLI usage, and configuration failures |
+| Code | Meaning |
+|---:|---|
+| `0` | Command succeeded |
+| `1` | Shopify API, network, or external-runtime failure |
+| `2` | Invalid input, CLI usage, or configuration failure |
 
-Generate shell completion scripts with `cfy completion <shell>`, for example:
+## Documentation
 
-```sh
-cfy completion bash > ~/.local/share/bash-completion/completions/cfy
-cfy completion zsh > ~/.zfunc/_cfy
-cfy completion fish > ~/.config/fish/completions/cfy.fish
-```
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
+- [CLI parity matrix](inventory/CLI-PARITY.md)
+- [Compatibility policy](docs/compatibility.md)
+- [Architecture decisions](docs/adr)
+- [Release process](docs/release.md)
+- [Performance report](docs/performance.md)
+- [Public-readiness checklist](docs/public-readiness.md)
 
-### Theme listing
+## Help and feedback
 
-List all available theme metadata with:
+- Run `cfy doctor env` to inspect the local environment.
+- Run `cfy doctor project` inside a Shopify project.
+- Search [existing issues](https://github.com/yan-ad/catify/issues).
+- Open an issue with the command, sanitized output, platform, Catify version, and expected Shopify CLI behavior.
 
-```sh
-SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme list --store example
-cfy theme list --store example --json
-```
+Never include access tokens, app client secrets, session cookies, private store data, or unredacted environment dumps in an issue.
 
-Store resolution uses `--store`, then `CFY_STORE`, then the compatible
-`SHOPIFY_FLAG_STORE`, then the discovered project configuration. Theme access
-uses `SHOPIFY_CLI_THEME_TOKEN` until the interactive login command is wired.
-Pagination is automatic. Human output contains theme ID, role, and name; JSON
-returns the complete metadata objects. Authentication and permission failures
-include token-refresh and scope remediation without printing the token.
+## Contributing
 
-Pull selected theme assets into a local directory with repeatable wildcard
-filters:
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-```sh
-SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme pull \
-  --store example --theme 123456789 \
-  --include 'assets/*' --exclude '*.map' --destination ./theme
-```
+Catify is native-first. New public commands should implement parsing, configuration, filesystem behavior, transport, state, output, and interaction in Rust. External adapters are accepted only when the child tool is the command's actual runtime engine.
 
-`--include` defaults to all assets when omitted; exclusions are applied after
-includes. Text and binary files are staged fully before the destination is
-changed. Unsafe paths and symlink traversal are rejected, and write failure or
-Ctrl-C triggers rollback so selected files are not left partially updated.
+## License
 
-Push local changes back to a theme:
-
-```sh
-SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme push \
-  --store example --theme 123456789 --source ./theme
-```
-
-Only new and changed assets are uploaded. Remote-only assets are retained unless
-`--allow-delete` is explicitly supplied. A live theme requires confirmation;
-non-interactive automation must pass `--force`. Individual API failures produce
-a non-zero actionable summary while preserving the successful operation counts.
-
-Run a development session with an initial sync and incremental watching:
-
-```sh
-SHOPIFY_CLI_THEME_TOKEN=shptka_... cfy theme dev --store example --source ./theme
-```
-
-Without `--theme`, catify creates a temporary development theme and deletes it
-when the session ends, including on Ctrl-C or a sync error. Pass `--theme ID` to
-reuse an existing theme; a user-supplied theme is never deleted. Lifecycle state,
-preview URL, and editor URL are printed clearly. Creates and updates upload,
-deletes remove the remote asset, and renames delete the old key and upload the new
-key. Noisy events are debounced and sync failures use bounded retry/backoff.
+Catify is available under the [MIT License](LICENSE).
