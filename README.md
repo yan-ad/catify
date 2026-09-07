@@ -136,9 +136,14 @@ Latest checked-in benchmark on macOS arm64 against Shopify CLI 4.7.1:
 | Warm startup median | **10.0 ms** | 936.1 ms | **93.6× faster** |
 | Peak RSS | **8.7 MiB** | 215.8 MiB | **24.7× lower** |
 | Idle RSS | **8.8 MiB** | 96.6 MiB | **11.0× lower** |
-| Installed binary/package size | **17 MiB** | 47 MiB | **2.8× smaller** |
+| Release archive | **15.3 MiB** | Not standalone | — |
+| Effective installed footprint | **19.0 MiB** | At least 169.2 MiB | **8.9× smaller** |
 
-The benchmark measures the CLI process, not every child process in an application workflow. A framework dev server, bundler, tunnel, Hydrogen runtime, or language server still consumes memory while active.
+The Shopify CLI figure includes its measured 47.4 MiB installed package and the 121.8 MiB Node executable required to run it. Node is distributed separately rather than inside the Shopify CLI npm package, but the command cannot run without that runtime. By contrast, the Catify release archive contains a standalone native executable and does not require Node for its Rust command core.
+
+The complete Node installation used for this measurement occupied 554.9 MiB, including package-manager files and globally installed packages. That broader number is environment-dependent, so the table uses the more conservative package-plus-Node-executable footprint. On the measured machine, the complete installation was about **29.2× larger** than the Catify binary.
+
+The runtime benchmark measures the CLI process, not every child process in an application workflow. A framework dev server, bundler, tunnel, Hydrogen runtime, or language server still consumes memory while active.
 
 Raw measurements are in [`benchmarks/results/latest.json`](benchmarks/results/latest.json). Methodology and limitations are documented in the [performance report](docs/performance.md).
 
