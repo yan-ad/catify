@@ -154,10 +154,13 @@ fn cfy(args: &[&str]) -> Output {
 }
 
 fn assert_public_usage(help: &str, command: &str) {
+    let normalized = help
+        .replace("Usage: cfy.exe", "Usage: cfy")
+        .replace("Usage: catify.exe", "Usage: catify");
     let cfy_usage = format!("Usage: cfy{command}");
     let catify_usage = format!("Usage: catify{command}");
     assert!(
-        help.contains(&cfy_usage) || help.contains(&catify_usage),
+        normalized.contains(&cfy_usage) || normalized.contains(&catify_usage),
         "expected `{cfy_usage}` or `{catify_usage}` in help output:\n{help}"
     );
 }
