@@ -2,6 +2,10 @@ pub mod output;
 mod theme_check;
 mod update_check;
 
+use cfy_app_init::{
+    AppInitRequest, AppTemplate, PackageManager as AppPackageManager, ReactRouterFlavor,
+    initialize as initialize_app, parse_github_template_url, slugify as slugify_app_name,
+};
 pub use update_check::{
     is_update_check, maybe_notify_and_refresh, refresh as refresh_update_check,
 };
@@ -5711,6 +5715,360 @@ fn doctor_command(command: DoctorCommand, output: &Output) -> Result<u8> {
     Ok(0)
 }
 
+struct AppInitCliOptions {
+    name: Option<String>,
+    path: PathBuf,
+    auth_alias: Option<String>,
+    client_id: Option<String>,
+    organization_id: Option<String>,
+    template: Option<String>,
+    flavor: Option<String>,
+    package_manager: Option<String>,
+    non_interactive: bool,
+}
+
+enum AppInitRemoteTarget {
+    Existing(cfy_app::RemoteApp),
+    New {
+        organization: RemoteOrganization,
+        name: String,
+    },
+}
+
+async fn app_init(options: AppInitCliOptions, output: &Output) -> Result<u8> {
+    let template = resolve_app_init_template(
+        options.template.clone(),
+        options.flavor.clone(),
+        options.non_interactive,
+    )?;
+    let package_manager = match options.package_manager.as_deref().unwrap_or("npm") {
+        "npm" => AppPackageManager::Npm,
+        "yarn" => AppPackageManager::Yarn,
+        "pnpm" => AppPackageManager::Pnpm,
+        "bun" => AppPackageManager::Bun,
+        value => {
+            return Err(Error::invalid_input(format!(
+                "unsupported package manager `{value}`"
+            )));
+        }
+    };
+    if options.non_interactive && options.client_id.is_none() {
+        if options
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            return Err(Error::invalid_input(
+                "app init requires --name or --client-id in non-interactive mode",
+            ));
+        }
+        if options.organization_id.is_none() {
+            return Err(Error::invalid_input(
+                "app init requires --organization-id or --client-id in non-interactive mode",
+            ));
+        }
+    }
+    let identity = options.auth_alias.unwrap_or_else(|| "default".into());
+    let session = authenticated_session(&identity).await?;
+    let business = BusinessPlatformClient::from_session(&session).await?;
+    let app_management = AppManagementClient::from_session(&session).await?;
+
+    let target = if let Some(client_id) = options.client_id.as_deref() {
+        let organizations = business.list_organizations().await?;
+        let mut matched = None;
+        for organization in organizations {
+            let apps = app_management.list_apps(&organization.id).await?;
+            if apps.iter().any(|app| app.client_id == client_id) {
+                matched = Some(
+                    app_management
+                        .app_by_client_id_in_organization(&organization.id, client_id)
+                        .await?,
+                );
+                break;
+            }
+        }
+        AppInitRemoteTarget::Existing(matched.ok_or_else(|| {
+            Error::invalid_input(format!(
+                "no app with client ID `{client_id}` is available to this account"
+            ))
+        })?)
+    } else {
+        let organization = if let Some(id) = options.organization_id.as_deref() {
+            business
+                .list_organizations()
+                .await?
+                .into_iter()
+                .find(|organization| organization.id == id)
+                .ok_or_else(|| {
+                    Error::invalid_input("the requested organization is not available")
+                })?
+        } else {
+            let organizations = business.list_organizations().await?;
+            if organizations.len() == 1 {
+                organizations[0].clone()
+            } else if options.non_interactive {
+                return Err(Error::invalid_input(
+                    "app init requires --organization-id in non-interactive mode",
+                ));
+            } else {
+                select_organization(&organizations)?
+            }
+        };
+        if let Some(name) = options.name.filter(|name| !name.trim().is_empty()) {
+            AppInitRemoteTarget::New { organization, name }
+        } else if options.non_interactive {
+            return Err(Error::invalid_input(
+                "app init requires --name or --client-id in non-interactive mode",
+            ));
+        } else {
+            let apps = app_management.list_apps(&organization.id).await?;
+            let choices = vec![
+                "Create a new app".to_owned(),
+                "Link to an existing app".to_owned(),
+            ];
+            if apps.is_empty()
+                || select_text_choice("How would you like to initialize this project?", &choices)?
+                    == 0
+            {
+                AppInitRemoteTarget::New {
+                    organization,
+                    name: required_interactive_value(None, "App name", false)?,
+                }
+            } else {
+                let choices = apps
+                    .iter()
+                    .map(|app| format!("{} ({})", app.name, app.client_id))
+                    .collect::<Vec<_>>();
+                let selected = select_text_choice("Which app would you like to link?", &choices)?;
+                AppInitRemoteTarget::Existing(
+                    app_management
+                        .app_by_client_id_in_organization(
+                            &organization.id,
+                            &apps[selected].client_id,
+                        )
+                        .await?,
+                )
+            }
+        }
+    };
+    let name = match &target {
+        AppInitRemoteTarget::Existing(app) => app.name.clone(),
+        AppInitRemoteTarget::New { name, .. } => name.clone(),
+    };
+    let directory_name = slugify_app_name(&name);
+    if directory_name.is_empty() {
+        return Err(Error::invalid_input(
+            "app name must contain a letter or number",
+        ));
+    }
+
+    let mut request = AppInitRequest::new(&options.path, &name, template);
+    request.directory_name = directory_name;
+    request.package_manager = package_manager;
+    request.interactive = !options.non_interactive;
+    request.package_manager_executable = env::var_os("CFY_PACKAGE_MANAGER_BIN").map(PathBuf::from);
+    let scaffold = initialize_app(request)
+        .await
+        .map_err(|error| Error::process(error.to_string()))?;
+
+    let remote_app = if let AppInitRemoteTarget::Existing(app) = target {
+        app
+    } else if let AppInitRemoteTarget::New { organization, .. } = target {
+        let (launchable, scopes) = app_creation_shape(&scaffold.destination);
+        let created = match app_management
+            .create_app(
+                &organization.id,
+                &name,
+                SHOPIFY_API_VERSION,
+                launchable,
+                &scopes,
+            )
+            .await
+        {
+            Ok(created) => created,
+            Err(error) => {
+                remove_app_init_destination(&scaffold.destination);
+                return Err(error);
+            }
+        };
+        match app_management
+            .app_by_client_id_in_organization(&organization.id, &created.client_id)
+            .await
+        {
+            Ok(app) => app,
+            Err(error) => {
+                remove_app_init_destination(&scaffold.destination);
+                return Err(Error::api(format!(
+                    "Shopify app `{}` was created with client ID `{}`, but Catify could not fetch its configuration: {error}. Retry with `cfy app init --client-id {}`",
+                    created.id, created.client_id, created.client_id
+                )));
+            }
+        }
+    } else {
+        unreachable!("app init remote target is exhaustive")
+    };
+    let link = match write_linked_config(
+        &LinkOptions {
+            directory: scaffold.destination.clone(),
+            client_id: Some(remote_app.client_id.clone()),
+            file_name: Some("shopify.app.toml".into()),
+            force: true,
+        },
+        &remote_app,
+    ) {
+        Ok(link) => link,
+        Err(error) => {
+            remove_app_init_destination(&scaffold.destination);
+            return Err(error);
+        }
+    };
+    output
+        .success(
+            &format!(
+                "{} is ready for you to build!",
+                scaffold.destination.display()
+            ),
+            &serde_json::json!({"scaffold": scaffold, "app": remote_app, "link": link}),
+        )
+        .map_err(|error| Error::process(error.to_string()))?;
+    Ok(0)
+}
+
+fn resolve_app_init_template(
+    template: Option<String>,
+    flavor: Option<String>,
+    non_interactive: bool,
+) -> Result<AppTemplate> {
+    let template = if let Some(template) = template {
+        template
+    } else if non_interactive {
+        return Err(Error::invalid_input(
+            "app init requires --template in non-interactive mode",
+        ));
+    } else {
+        let choices = vec![
+            "Build a React Router app (recommended)".to_owned(),
+            "Build an extension-only app".to_owned(),
+        ];
+        if select_text_choice("Get started building your app:", &choices)? == 0 {
+            "reactRouter".into()
+        } else {
+            "none".into()
+        }
+    };
+    match template.as_str() {
+        "reactRouter" => {
+            let flavor = if let Some(flavor) = flavor {
+                flavor
+            } else if non_interactive {
+                return Err(Error::invalid_input(
+                    "React Router app init requires --flavor javascript or typescript",
+                ));
+            } else {
+                let choices = vec!["JavaScript".to_owned(), "TypeScript".to_owned()];
+                if select_text_choice(
+                    "For your React Router template, which language do you want?",
+                    &choices,
+                )? == 0
+                {
+                    "javascript".into()
+                } else {
+                    "typescript".into()
+                }
+            };
+            match flavor.as_str() {
+                "javascript" => Ok(AppTemplate::ReactRouter(ReactRouterFlavor::JavaScript)),
+                "typescript" => Ok(AppTemplate::ReactRouter(ReactRouterFlavor::TypeScript)),
+                _ => Err(Error::invalid_input(
+                    "--flavor must be javascript or typescript for reactRouter",
+                )),
+            }
+        }
+        "none" => {
+            if flavor.is_some() {
+                return Err(Error::invalid_input(
+                    "--flavor is only supported by templates that define flavors",
+                ));
+            }
+            Ok(AppTemplate::None)
+        }
+        "remix" => {
+            let flavor = flavor.unwrap_or_else(|| "typescript".into());
+            let branch = match flavor.as_str() {
+                "javascript" => "javascript",
+                "typescript" => "main",
+                _ => {
+                    return Err(Error::invalid_input(
+                        "--flavor must be javascript or typescript for remix",
+                    ));
+                }
+            };
+            Ok(AppTemplate::Custom(cfy_app_init::GitTemplate {
+                repository: "https://github.com/Shopify/shopify-app-template-remix.git".into(),
+                branch: Some(branch.into()),
+                subpath: None,
+            }))
+        }
+        "node" | "ruby" => {
+            if flavor.is_some() {
+                return Err(Error::invalid_input(
+                    "--flavor is not supported by the selected template",
+                ));
+            }
+            Ok(AppTemplate::Custom(cfy_app_init::GitTemplate {
+                repository: format!(
+                    "https://github.com/Shopify/shopify-app-template-{template}.git"
+                ),
+                branch: None,
+                subpath: None,
+            }))
+        }
+        custom => Ok(AppTemplate::Custom(
+            parse_github_template_url(custom)
+                .map_err(|error| Error::invalid_input(error.to_string()))?,
+        )),
+    }
+}
+
+fn app_creation_shape(directory: &Path) -> (bool, Vec<String>) {
+    let graph = discover(directory, Some(ProjectKind::App))
+        .ok()
+        .and_then(|project| cfy_config::graph::AppConfigGraph::load(&project).ok());
+    let launchable = graph.as_ref().is_some_and(|graph| {
+        graph.apps.iter().any(|app| {
+            app.webs.iter().any(|web| {
+                web.roles
+                    .iter()
+                    .any(|role| matches!(role.as_str(), "frontend" | "backend"))
+            })
+        })
+    });
+    let scopes = graph
+        .and_then(|graph| graph.apps.into_iter().next())
+        .and_then(|app| {
+            app.config
+                .raw
+                .get("access_scopes")?
+                .get("scopes")?
+                .as_str()
+                .map(str::to_owned)
+        })
+        .map(|scopes| {
+            scopes
+                .split(',')
+                .map(str::trim)
+                .filter(|scope| !scope.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    (launchable, scopes)
+}
+
+fn remove_app_init_destination(path: &Path) {
+    let _ = std::fs::remove_dir_all(path);
+}
+
 fn selected_app_environment(
     path: Option<PathBuf>,
     config: Option<String>,
@@ -6578,25 +6936,31 @@ async fn app_command(command: AppCommand, non_interactive: bool, output: &Output
             }
             None => app_dev(*args, output).await,
         },
-        AppCommand::Init { destination } => {
-            std::fs::create_dir_all(destination.join("extensions"))
-                .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
-            std::fs::create_dir_all(destination.join("web"))
-                .map_err(|error| Error::api(format!("could not initialize app: {error}")))?;
-            let marker = destination.join("shopify.app.toml");
-            if !marker.exists() {
-                std::fs::write(&marker, "# Catify app configuration\nname = \"my-app\"\n")
-                    .map_err(|error| {
-                        Error::api(format!("could not write {}: {error}", marker.display()))
-                    })?;
-            }
-            output
-                .success(
-                    "App project initialized",
-                    &serde_json::json!({"initialized": true}),
-                )
-                .map_err(|error| Error::process(error.to_string()))?;
-            Ok(0)
+        AppCommand::Init {
+            name,
+            path,
+            auth_alias,
+            client_id,
+            organization_id,
+            template,
+            flavor,
+            package_manager,
+        } => {
+            app_init(
+                AppInitCliOptions {
+                    name,
+                    path,
+                    auth_alias,
+                    client_id,
+                    organization_id,
+                    template,
+                    flavor,
+                    package_manager,
+                    non_interactive,
+                },
+                output,
+            )
+            .await
         }
         AppCommand::Info {
             config,
@@ -7298,9 +7662,32 @@ pub enum AppCommand {
         web_env: bool,
     },
     /// Initialize a new app project.
+    #[command(disable_version_flag = true)]
     Init {
-        #[arg(long, short = 'd', default_value = ".")]
-        destination: PathBuf,
+        #[arg(short = 'n', long, env = "SHOPIFY_FLAG_NAME")]
+        name: Option<String>,
+        #[arg(short = 'p', long, env = "SHOPIFY_FLAG_PATH", default_value = ".")]
+        path: PathBuf,
+        #[arg(long, env = "SHOPIFY_FLAG_AUTH_ALIAS")]
+        auth_alias: Option<String>,
+        #[arg(
+            long,
+            env = "SHOPIFY_FLAG_CLIENT_ID",
+            conflicts_with = "organization_id"
+        )]
+        client_id: Option<String>,
+        #[arg(
+            long,
+            env = "SHOPIFY_FLAG_ORGANIZATION_ID",
+            conflicts_with = "client_id"
+        )]
+        organization_id: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_TEMPLATE")]
+        template: Option<String>,
+        #[arg(long, env = "SHOPIFY_FLAG_TEMPLATE_FLAVOR")]
+        flavor: Option<String>,
+        #[arg(short = 'd', long, env = "SHOPIFY_FLAG_PACKAGE_MANAGER", value_parser = ["npm", "yarn", "pnpm", "bun"])]
+        package_manager: Option<String>,
     },
     /// Manage app and extension environment variables.
     Env {

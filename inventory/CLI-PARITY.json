@@ -5,18 +5,18 @@
   },
   "summary": {
     "total": 111,
-    "implemented": 107,
+    "implemented": 108,
     "tested": 111,
     "live_verified": 9,
     "by_status": {
       "adapter": 27,
-      "native": 80,
-      "partial": 4
+      "native": 81,
+      "partial": 3
     },
     "by_domain": {
       "app": {
-        "native": 27,
-        "partial": 4
+        "native": 28,
+        "partial": 3
       },
       "auth": {
         "native": 2
@@ -432,15 +432,17 @@
     {
       "command": "app init",
       "domain": "app",
-      "status": "partial",
+      "status": "native",
       "owner": 40,
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust-native template/flavor selection, secure Git template clone, Liquid rendering, package-manager workspace/dependency setup, Git initialization, App Management app creation or existing-app selection, atomic config link, and rollback are exposed at the exact public command path.",
       "tested": true,
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-app-init/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs appCreate fixture",
+        "crates/cfy-cli/tests/cli.rs app_init_matches_shopify_public_command_shape"
       ],
       "live_verified": false,
-      "notes": "Creates a minimal local skeleton; template selection/dependency setup are incomplete."
+      "notes": null
     },
     {
       "command": "app logs",

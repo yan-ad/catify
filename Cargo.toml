@@ -2,6 +2,7 @@
 members = [
   "crates/cfy-api",
   "crates/cfy-app",
+  "crates/cfy-app-init",
   "crates/cfy-auth",
   "crates/cfy-cli",
   "crates/cfy-config",
@@ -39,6 +40,7 @@ getrandom = "0.3"
 async-trait = "0.1.89"
 cfy-api = { version = "0.0.1-pre.0", path = "crates/cfy-api" }
 cfy-app = { version = "0.0.1-pre.0", path = "crates/cfy-app" }
+cfy-app-init = { version = "0.0.1-pre.0", path = "crates/cfy-app-init" }
 cfy-auth = { version = "0.0.1-pre.0", path = "crates/cfy-auth" }
 cfy-build = { version = "0.0.1-pre.0", path = "crates/cfy-build" }
 cfy-bulk = { version = "0.0.1-pre.0", path = "crates/cfy-bulk" }

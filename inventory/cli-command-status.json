@@ -275,13 +275,15 @@
     },
     "app init": {
       "evidence": [
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-app-init/src/lib.rs tests",
+        "crates/cfy-app/src/lib.rs appCreate fixture",
+        "crates/cfy-cli/tests/cli.rs app_init_matches_shopify_public_command_shape"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust-native template/flavor selection, secure Git template clone, Liquid rendering, package-manager workspace/dependency setup, Git initialization, App Management app creation or existing-app selection, atomic config link, and rollback are exposed at the exact public command path.",
       "live_verified": false,
-      "notes": "Creates a minimal local skeleton; template selection/dependency setup are incomplete.",
       "owner": 40,
-      "status": "partial"
+      "status": "native",
+      "tested": true
     },
     "app logs": {
       "evidence": [

@@ -18,6 +18,7 @@ path = "src/bin/catify.rs"
 [dependencies]
 cfy-api.workspace = true
 cfy-app.workspace = true
+cfy-app-init.workspace = true
 cfy-auth.workspace = true
 cfy-build.workspace = true
 cfy-bulk.workspace = true

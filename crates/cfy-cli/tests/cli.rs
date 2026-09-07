@@ -92,6 +92,40 @@ export = "run"
 }
 
 #[test]
+fn app_init_matches_shopify_public_command_shape() {
+    let output = cfy(&["app", "init", "--help"]);
+    assert!(output.status.success());
+    let help = String::from_utf8_lossy(&output.stdout);
+    for expected in [
+        "-n, --name",
+        "-p, --path",
+        "-d, --package-manager",
+        "--auth-alias",
+        "--client-id",
+        "--organization-id",
+        "--template",
+        "--flavor",
+    ] {
+        assert!(help.contains(expected), "missing {expected} in {help}");
+    }
+    assert!(!help.contains("-V, --version"));
+
+    let output = cfy(&[
+        "--non-interactive",
+        "app",
+        "init",
+        "--name",
+        "Example",
+        "--organization-id",
+        "7",
+        "--template",
+        "reactRouter",
+    ]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--flavor"));
+}
+
+#[test]
 fn store_preview_create_matches_shopify_json_name_and_country_flags() {
     let help = cfy(&[
         "store",

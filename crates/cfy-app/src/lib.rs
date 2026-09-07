@@ -35,6 +35,24 @@ const APPS_QUERY: &str = r#"query listApps($query: String) {
     pageInfo { hasNextPage }
   }
 }"#;
+
+fn organization_gid(id: &str) -> Result<String> {
+    if let Some(number) = id.rsplit('/').next().filter(|value| !value.is_empty())
+        && number.chars().all(|character| character.is_ascii_digit())
+    {
+        return Ok(format!("gid://shopify/Organization/{number}"));
+    }
+    Err(Error::invalid_input(format!(
+        "organization ID must be numeric or a Shopify GID, got `{id}`"
+    )))
+}
+
+const CREATE_APP_MUTATION: &str = r#"mutation CreateApp($initialVersion: AppVersionInput!, $organizationId: ID!) {
+  appCreate(initialVersion: $initialVersion, organizationId: $organizationId) {
+    app { id key }
+    userErrors { category message on }
+  }
+}"#;
 const EXTENSION_REGISTRATIONS_QUERY: &str = r#"query ExtensionRegistrations($apiKey: String!) {
   app: appByKey(key: $apiKey) {
     activeRelease {
@@ -111,6 +129,12 @@ pub struct RemoteAppSummary {
     pub id: String,
     pub client_id: String,
     pub name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct CreatedApp {
+    pub id: String,
+    pub client_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -299,6 +323,100 @@ impl extension_import::ExtensionRegistrationProvider for AppManagementClient {
 }
 
 impl AppManagementClient {
+    pub async fn create_app(
+        &self,
+        organization_id: &str,
+        name: &str,
+        api_version: &str,
+        launchable: bool,
+        scopes: &[String],
+    ) -> Result<CreatedApp> {
+        #[derive(Deserialize)]
+        struct Data {
+            #[serde(rename = "appCreate")]
+            app_create: Payload,
+        }
+        #[derive(Deserialize)]
+        struct Payload {
+            app: Option<App>,
+            #[serde(rename = "userErrors", default)]
+            user_errors: Vec<UserError>,
+        }
+        #[derive(Deserialize)]
+        struct App {
+            id: String,
+            key: String,
+        }
+        #[derive(Deserialize)]
+        struct UserError {
+            category: Option<String>,
+            message: String,
+            on: Option<serde_json::Value>,
+        }
+        let app_url = if launchable {
+            "https://example.com"
+        } else {
+            "https://shopify.dev/apps/default-app-home"
+        };
+        let redirect_url = if launchable {
+            "https://example.com/api/auth"
+        } else {
+            "https://shopify.dev/apps/default-app-home/api/auth"
+        };
+        let organization_id = organization_gid(organization_id)?;
+        let variables = serde_json::json!({
+            "organizationId": organization_id,
+            "initialVersion": {
+                "source": {
+                    "name": name,
+                    "modules": [
+                        {"type": "app_home", "config": {"app_url": app_url, "embedded": true}},
+                        {"type": "branding", "config": {"name": name}},
+                        {"type": "webhooks", "config": {"api_version": api_version}},
+                        {"type": "app_access", "config": {
+                            "redirect_url_allowlist": [redirect_url],
+                            "scopes": scopes.iter().map(|scope| scope.trim()).collect::<Vec<_>>().join(",")
+                        }}
+                    ]
+                }
+            }
+        });
+        let response = self
+            .graphql
+            .execute::<_, Data>(&GraphQlRequest::mutation(CREATE_APP_MUTATION, variables))
+            .await
+            .map_err(|error| Error::api(format!("could not create Shopify app: {error}")))?;
+        if !response.data.app_create.user_errors.is_empty() {
+            let errors = response
+                .data
+                .app_create
+                .user_errors
+                .into_iter()
+                .map(|error| {
+                    let category = error.category.unwrap_or_else(|| "invalid".into());
+                    let on = error
+                        .on
+                        .map(|value| format!(" ({value})"))
+                        .unwrap_or_default();
+                    format!("{category}: {}{on}", error.message)
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(Error::api(format!(
+                "Shopify rejected app creation: {errors}"
+            )));
+        }
+        let app = response
+            .data
+            .app_create
+            .app
+            .ok_or_else(|| Error::api("Shopify returned no app after creation"))?;
+        Ok(CreatedApp {
+            id: app.id,
+            client_id: app.key,
+        })
+    }
+
     /// Fetch extension registrations from the dashboard without invoking Shopify CLI.
     pub async fn extension_registrations(
         &self,
@@ -1534,6 +1652,7 @@ uri = "/webhooks"
                 r#"{"data":{"app":{"id":"app-1","key":"client-1","organizationId":"gid://shopify/Organization/7","activeRoot":{"grantedShopifyApprovalScopes":["read_products"]},"activeRelease":{"version":{"name":"Example","appModules":[{"config":{"app_url":"https://example.test","embedded":true,"preferences_url":"https://example.test/settings"},"specification":{"externalIdentifier":"app_home"}},{"config":{"redirect_url_allowlist":["https://example.test/auth/callback"],"scopes":"read_products,write_orders","optional_scopes":["write_products"],"access":{"admin":{"direct_api_mode":"online"}}},"specification":{"externalIdentifier":"app_access"}},{"config":{"url":"https://example.test/apps/proxy/","subpath":"proxy","prefix":"apps"},"specification":{"externalIdentifier":"app_proxy"}},{"config":{"embedded":false},"specification":{"externalIdentifier":"point_of_sale"}},{"config":{"topic":"orders/create","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"topic":"orders/updated","uri":"pubsub://project:topic"},"specification":{"externalIdentifier":"webhook_subscription"}},{"config":{"api_version":"2025-07","customers_data_request_url":"/webhooks","customers_redact_url":"/webhooks","shop_redact_url":"/webhooks"},"specification":{"externalIdentifier":"privacy_compliance_webhooks"}}]}}}}}"#,
                 r#"{"data":{"app":{"activeRelease":{"version":{"id":"version-2"}},"versions":{"edges":[{"node":{"id":"version-2","createdAt":"2026-09-02T10:00:00Z","createdBy":"Yanuar","metadata":{"message":"Current","versionTag":"2"}}},{"node":{"id":"version-1","createdAt":"2026-09-01T10:00:00Z","createdBy":null,"metadata":{"message":null,"versionTag":"1"}}}]},"versionsCount":2}}}"#,
                 r#"{"data":{"app":{"key":"client-1","activeRoot":{"clientCredentials":{"secrets":[{"key":"super-secret"}]}}}}}"#,
+                r#"{"data":{"appCreate":{"app":{"id":"app-created","key":"client-created"},"userErrors":[]}}}"#,
             ]
             .into_iter()
             .enumerate()
@@ -1546,6 +1665,12 @@ uri = "/webhooks"
                 if index == 0 {
                     assert!(request.contains("organizationId"));
                     assert!(request.contains("\"7\""));
+                }
+                if index == 4 {
+                    assert!(request.contains("mutation CreateApp"));
+                    assert!(request.contains("gid://shopify/Organization/7"));
+                    assert!(request.contains("shopify.dev/apps/default-app-home"));
+                    assert!(request.contains("\"scopes\":\"read_products,write_products\""));
                 }
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
@@ -1613,6 +1738,18 @@ uri = "/webhooks"
         assert_eq!(credentials.client_id, "client-1");
         assert_eq!(credentials.client_secret.expose(), "super-secret");
         assert!(!format!("{credentials:?}").contains("super-secret"));
+        let created = client
+            .create_app(
+                "7",
+                "Created app",
+                "2026-07",
+                false,
+                &["read_products".into(), "write_products".into()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.id, "app-created");
+        assert_eq!(created.client_id, "client-created");
         server.await.unwrap();
     }
 
