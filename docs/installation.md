@@ -108,10 +108,12 @@ version to match. Prepare a release by updating both version fields, validating 
 workspace, and pushing the tag:
 
 ```sh
-# Update workspace.package.version in Cargo.toml and version in package.json.
-make tag-release VERSION=0.0.1-pre.0
-git push origin v0.0.1-pre.0
+make release
 ```
+
+The command bumps the prerelease, validates and packages it, commits the
+version files, creates the annotated tag, and atomically pushes `main` and the
+tag.
 
 The tag builds all supported archives and creates the GitHub Release first. npm
 publishing verifies those exact assets before upload and is intentionally gated by

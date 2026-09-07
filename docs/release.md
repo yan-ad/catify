@@ -1,5 +1,31 @@
 # Release and update strategy
 
+## One-command prereleases
+
+Run:
+
+```bash
+make release
+```
+
+The command advances the current prerelease (`0.0.1-pre.0` becomes
+`0.0.1-pre.1`), synchronizes Cargo and npm versions, runs all release gates,
+commits the version bump, creates an annotated tag, and atomically pushes the
+commit and tag to `origin/main`.
+
+Alternative release selections:
+
+```bash
+make release BUMP=release       # 0.0.1-pre.1 -> 0.0.1
+make release BUMP=patch         # 0.0.1-pre.1 -> 0.0.2
+make release BUMP=minor         # 0.0.1-pre.1 -> 0.1.0
+make release BUMP=major         # 0.0.1-pre.1 -> 1.0.0
+make release VERSION=1.2.3-pre.0
+```
+
+Use `make release-local VERSION=<version>` to build and smoke-test artifacts
+without committing, tagging, or pushing.
+
 ## Artifacts
 
 Release builds are produced by `scripts/package-release.py`. Each target archive contains `cfy`, `VERSION`, and a small README. Archives are deterministic, accompanied by `SHA256SUMS`, and release notes are generated from the last ten commits.

@@ -127,7 +127,7 @@ When relevant, also run:
 
 - compatibility scenarios in `compatibility/`;
 - inventory and command-owner checks in `scripts/`;
-- `make release VERSION=<version>` for packaging changes;
+- `make release-local VERSION=<version>` for packaging changes without Git mutations;
 - a real TTY flow for selectors, raw input, browser login, and signal handling;
 - platform-specific tests for path handling, CRLF output, executable suffixes, and installer behavior.
 
@@ -175,9 +175,9 @@ Keep unrelated refactors out of the pull request. Do not commit generated build 
 Release preparation uses the repository Makefile:
 
 ```sh
-make release VERSION=0.0.1-pre.0
+make release-local VERSION=0.0.1-pre.0
 ```
 
-This validates versions, builds artifacts, packages deterministic archives, and performs extracted-artifact and installer smoke tests. Creating or pushing a release tag must remain an explicit maintainer action.
+This validates versions, builds artifacts, packages deterministic archives, and performs extracted-artifact and installer smoke tests without mutating Git. Maintainers use `make release` when they intend to commit, tag, and push a release.
 
 See [docs/release.md](docs/release.md) for the complete release process.

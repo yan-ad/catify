@@ -8,11 +8,37 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+import importlib.util
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
+def load_release_module():
+    path = ROOT / "scripts/release.py"
+    spec = importlib.util.spec_from_file_location("catify_release", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class ReleaseToolsTest(unittest.TestCase):
+    def test_smart_release_version_bumps(self):
+        release = load_release_module()
+        current = release.Version.parse("0.0.1-pre.0")
+        self.assertEqual(str(release.next_version(current)), "0.0.1-pre.1")
+        self.assertEqual(str(release.next_version(current, "release")), "0.0.1")
+        self.assertEqual(str(release.next_version(current, "patch")), "0.0.2")
+        self.assertEqual(str(release.next_version(current, "minor")), "0.1.0")
+        self.assertEqual(str(release.next_version(current, "major")), "1.0.0")
+
+    def test_makefile_release_uses_transactional_release_script(self):
+        makefile = (ROOT / "Makefile").read_text()
+        release_block = makefile.split("release:\n", 1)[1].split("\nrelease-local:", 1)[0]
+        self.assertIn("scripts/release.py", release_block)
+        self.assertNotIn("release-check release-package release-smoke", release_block)
+
     def test_package_release_builds_unix_and_windows_archives(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

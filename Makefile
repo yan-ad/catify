@@ -2,7 +2,9 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
 PYTHON ?= python3
-VERSION ?= 0.0.1-pre.0
+VERSION ?=
+BUMP ?= prerelease
+PREID ?= pre
 TAG ?= v$(VERSION)
 DIST_DIR ?= dist
 
@@ -24,16 +26,28 @@ endif
 
 ARCHIVE := $(DIST_DIR)/cfy-v$(VERSION)-$(RELEASE_TARGET).tar.gz
 
-.PHONY: help release release-check release-build release-package release-smoke tag-release clean-release
+.PHONY: help release release-local _release-candidate release-check release-build release-package release-smoke clean-release
 
 help:
 	@printf '%s\n' \
-	  'make release VERSION=0.0.1-pre.0  Validate, build, package, and smoke-test a local release' \
-	  'make release-check VERSION=...    Validate versions and quality gates' \
-	  'make tag-release VERSION=...      Run release and create an annotated local tag' \
+	  'make release                       Bump prerelease, validate, commit, tag, and push' \
+	  'make release BUMP=minor            Create the next minor stable release' \
+	  'make release VERSION=1.2.3-pre.0   Release an exact version' \
+	  'make release-local VERSION=...     Build/package/smoke without Git mutations' \
+	  'make release-check VERSION=...     Validate versions and quality gates' \
 	  'make clean-release                Remove local release artifacts'
 
-release: release-check release-package release-smoke
+release:
+	@$(PYTHON) scripts/release.py \
+	  --bump '$(BUMP)' \
+	  --preid '$(PREID)' \
+	  $(if $(strip $(VERSION)),--version '$(VERSION)',)
+
+release-local:
+	@test -n '$(VERSION)' || { echo 'VERSION is required, for example: make release-local VERSION=0.0.1-pre.1' >&2; exit 2; }
+	@$(MAKE) _release-candidate VERSION='$(VERSION)'
+
+_release-candidate: release-check release-package release-smoke
 	@printf 'Catify v%s release candidate is ready: %s\n' '$(VERSION)' '$(ARCHIVE)'
 
 release-check:
@@ -65,12 +79,6 @@ release-package: release-build
 release-smoke:
 	@bash scripts/smoke-release-artifact.sh '$(ARCHIVE)'
 	@bash scripts/test-installers.sh
-
-tag-release: release
-	@git diff --quiet && git diff --cached --quiet || { echo 'working tree must be clean before tagging' >&2; exit 1; }
-	@! git rev-parse '$(TAG)' >/dev/null 2>&1 || { echo 'tag $(TAG) already exists' >&2; exit 1; }
-	@git tag -a '$(TAG)' -m 'Catify $(TAG)'
-	@printf 'Created local tag %s. Push it with: git push origin %s\n' '$(TAG)' '$(TAG)'
 
 clean-release:
 	@rm -rf '$(DIST_DIR)'
