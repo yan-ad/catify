@@ -1,11 +1,4 @@
-use std::{
-    fmt,
-    fs::File,
-    io::{self, BufReader},
-    net::SocketAddr,
-    path::Path,
-    sync::Arc,
-};
+use std::{fmt, io, net::SocketAddr, path::Path, sync::Arc};
 
 use thiserror::Error;
 use tokio::{
@@ -16,14 +9,16 @@ use tokio::{
 };
 use tokio_rustls::{
     TlsAcceptor,
-    rustls::{ServerConfig, pki_types::CertificateDer},
+    rustls::{
+        ServerConfig,
+        pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+    },
 };
 
 /// A loopback-only TLS terminator that forwards decrypted bytes to a TCP backend.
 ///
-/// Dropping the proxy requests shutdown and aborts any remaining listener and
-/// connection tasks. Call [`TlsProxy::stop`] when orderly, observable cleanup is
-/// required.
+/// Dropping the proxy requests graceful shutdown. Call [`TlsProxy::stop`] when
+/// orderly, observable cleanup is required before continuing.
 pub struct TlsProxy {
     local_addr: SocketAddr,
     shutdown: watch::Sender<bool>,
@@ -139,30 +134,44 @@ impl TlsProxy {
 impl Drop for TlsProxy {
     fn drop(&mut self) {
         let _ = self.shutdown.send(true);
-        if let Some(task) = self.task.take() {
-            task.abort();
-        }
+        // Detach the task after signalling it instead of aborting it. Tokio task
+        // abortion is asynchronous and can leave a Windows listener bound until
+        // the runtime next polls the cancelled task. The watch signal lets the
+        // accept loop own and drop the listener deterministically.
+        self.task.take();
     }
 }
 
 fn load_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>, TlsProxyError> {
-    let file = File::open(path).map_err(TlsProxyError::ReadCertificate)?;
-    let certificates = rustls_pemfile::certs(&mut BufReader::new(file))
-        .collect::<io::Result<Vec<_>>>()
-        .map_err(TlsProxyError::InvalidCertificate)?;
+    let certificates = CertificateDer::pem_file_iter(path)
+        .map_err(|error| match error {
+            tokio_rustls::rustls::pki_types::pem::Error::Io(error) => {
+                TlsProxyError::ReadCertificate(error)
+            }
+            error => TlsProxyError::InvalidCertificate(pem_error(error)),
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| TlsProxyError::InvalidCertificate(pem_error(error)))?;
     if certificates.is_empty() {
         return Err(TlsProxyError::MissingCertificate);
     }
     Ok(certificates)
 }
 
-fn load_private_key(
-    path: &Path,
-) -> Result<tokio_rustls::rustls::pki_types::PrivateKeyDer<'static>, TlsProxyError> {
-    let file = File::open(path).map_err(TlsProxyError::ReadPrivateKey)?;
-    rustls_pemfile::private_key(&mut BufReader::new(file))
-        .map_err(TlsProxyError::InvalidPrivateKey)?
-        .ok_or(TlsProxyError::MissingPrivateKey)
+fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, TlsProxyError> {
+    PrivateKeyDer::from_pem_file(path).map_err(|error| match error {
+        tokio_rustls::rustls::pki_types::pem::Error::NoItemsFound => {
+            TlsProxyError::MissingPrivateKey
+        }
+        tokio_rustls::rustls::pki_types::pem::Error::Io(error) => {
+            TlsProxyError::ReadPrivateKey(error)
+        }
+        error => TlsProxyError::InvalidPrivateKey(pem_error(error)),
+    })
+}
+
+fn pem_error(error: tokio_rustls::rustls::pki_types::pem::Error) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, error)
 }
 
 async fn run(
