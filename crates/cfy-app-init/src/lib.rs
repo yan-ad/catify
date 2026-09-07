@@ -928,7 +928,9 @@ mod tests {
                 && report.pnpm_workspace_updated
         );
         assert_eq!(
-            fs::read_to_string(destination.join("README.md")).unwrap(),
+            fs::read_to_string(destination.join("README.md"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "# My Cool App (pnpm)\n"
         );
         let package: Value =
