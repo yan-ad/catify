@@ -758,9 +758,17 @@ where
 }
 
 fn path_arg(path: &Path) -> Result<String, AppInitError> {
-    path.to_str()
-        .map(str::to_owned)
-        .ok_or_else(|| AppInitError::NonUtf8Path(path.to_owned()))
+    let path = path
+        .to_str()
+        .ok_or_else(|| AppInitError::NonUtf8Path(path.to_owned()))?;
+    Ok(normalize_process_path(path))
+}
+
+fn normalize_process_path(path: &str) -> String {
+    if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{path}");
+    }
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
 }
 fn io_at(path: &Path, source: io::Error) -> AppInitError {
     AppInitError::FileSystem {
@@ -781,6 +789,19 @@ mod tests {
     use super::*;
     use std::process::Command;
     use tempfile::TempDir;
+
+    #[test]
+    fn subprocess_paths_strip_windows_verbatim_prefixes() {
+        assert_eq!(
+            normalize_process_path(r"\\?\C:\Users\runner\AppData\Local\Temp\app"),
+            r"C:\Users\runner\AppData\Local\Temp\app"
+        );
+        assert_eq!(
+            normalize_process_path(r"\\?\UNC\server\share\app"),
+            r"\\server\share\app"
+        );
+        assert_eq!(normalize_process_path("/tmp/app"), "/tmp/app");
+    }
 
     fn git(directory: &Path, args: &[&str]) {
         let status = Command::new("git")
