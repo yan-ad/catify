@@ -326,9 +326,17 @@ fn validate_name(name: &str) -> Result<(), ThemeInitError> {
 }
 
 fn path_arg(path: &Path) -> Result<String, ThemeInitError> {
-    path.to_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| ThemeInitError::NonUtf8Path(path.to_owned()))
+    let path = path
+        .to_str()
+        .ok_or_else(|| ThemeInitError::NonUtf8Path(path.to_owned()))?;
+    Ok(normalize_process_path(path))
+}
+
+fn normalize_process_path(path: &str) -> String {
+    if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{path}");
+    }
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
 }
 
 async fn run_git<I, S>(
@@ -402,6 +410,19 @@ mod tests {
     use super::*;
     use std::{ffi::OsStr, process::Command};
     use tempfile::TempDir;
+
+    #[test]
+    fn subprocess_paths_strip_windows_verbatim_prefixes() {
+        assert_eq!(
+            normalize_process_path(r"\\?\C:\Users\runner\AppData\Local\Temp\theme"),
+            r"C:\Users\runner\AppData\Local\Temp\theme"
+        );
+        assert_eq!(
+            normalize_process_path(r"\\?\UNC\server\share\theme"),
+            r"\\server\share\theme"
+        );
+        assert_eq!(normalize_process_path("/tmp/theme"), "/tmp/theme");
+    }
 
     fn git(directory: &Path, args: &[&str]) -> String {
         let output = Command::new("git")
