@@ -153,6 +153,15 @@ fn cfy(args: &[&str]) -> Output {
         .expect("cfy should execute")
 }
 
+fn assert_public_usage(help: &str, command: &str) {
+    let cfy_usage = format!("Usage: cfy{command}");
+    let catify_usage = format!("Usage: catify{command}");
+    assert!(
+        help.contains(&cfy_usage) || help.contains(&catify_usage),
+        "expected `{cfy_usage}` or `{catify_usage}` in help output:\n{help}"
+    );
+}
+
 #[test]
 fn theme_preview_matches_shopify_override_and_preview_id_flags() {
     let help = cfy(&[
@@ -611,7 +620,7 @@ fn theme_init_and_upgrade_match_shopify_public_command_shapes() {
     let theme_help = cfy(&["theme", "init", "--help"]);
     assert!(theme_help.status.success());
     let theme_help = String::from_utf8_lossy(&theme_help.stdout);
-    assert!(theme_help.contains("Usage: cfy theme init [OPTIONS] [NAME]"));
+    assert_public_usage(&theme_help, " theme init [OPTIONS] [NAME]");
     for flag in ["--path", "--clone-url", "--latest"] {
         assert!(theme_help.contains(flag), "missing theme init flag {flag}");
     }
@@ -620,7 +629,7 @@ fn theme_init_and_upgrade_match_shopify_public_command_shapes() {
     let upgrade_help = cfy(&["upgrade", "--help"]);
     assert!(upgrade_help.status.success());
     let upgrade_help = String::from_utf8_lossy(&upgrade_help.stdout);
-    assert!(upgrade_help.contains("Usage: cfy upgrade"));
+    assert_public_usage(&upgrade_help, " upgrade");
     assert!(!upgrade_help.contains("--dry-run"));
 }
 
@@ -743,7 +752,7 @@ fn auth_logout_matches_shopify_local_session_command_contract() {
     let help = cfy(&["auth", "logout", "--help"]);
     assert!(help.status.success());
     let help = String::from_utf8_lossy(&help.stdout);
-    assert!(help.contains("Usage: cfy auth logout"));
+    assert_public_usage(&help, " auth logout");
     assert!(!help.contains("--identity"));
     assert_eq!(
         cfy(&["auth", "logout", "--identity", "other"])
@@ -819,7 +828,7 @@ fn plugins_use_exact_public_paths_and_shopify_compatible_flags() {
         let output = cfy(&["plugins", command, "--help"]);
         assert!(output.status.success(), "plugins {command} help failed");
         let help = String::from_utf8_lossy(&output.stdout);
-        assert!(help.contains(&format!("Usage: cfy plugins {command}")));
+        assert_public_usage(&help, &format!(" plugins {command}"));
         assert!(help.contains("--verbose"));
         assert!(help.contains("-v"));
     }
@@ -1520,12 +1529,12 @@ fn app_config_uses_shopify_compatible_nested_command_names() {
     let nested = cfy(&["app", "config", "link", "--help"]);
     assert!(nested.status.success());
     let nested_help = String::from_utf8_lossy(&nested.stdout);
-    assert!(nested_help.contains("Usage: cfy app config link"));
+    assert_public_usage(&nested_help, " app config link");
 
     let pull = cfy(&["app", "config", "pull", "--help"]);
     assert!(pull.status.success());
     let pull_help = String::from_utf8_lossy(&pull.stdout);
-    assert!(pull_help.contains("Usage: cfy app config pull"));
+    assert_public_usage(&pull_help, " app config pull");
     for flag in [
         "--config",
         "--auth-alias",
@@ -1673,7 +1682,7 @@ fn verbose_diagnostics_are_explicit_and_stay_out_of_stdout() {
 fn root_help_is_successful() {
     let output = cfy(&["--help"]);
     assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Usage: cfy"));
+    assert_public_usage(&String::from_utf8_lossy(&output.stdout), "");
 }
 
 #[test]
