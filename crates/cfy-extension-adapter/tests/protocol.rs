@@ -24,17 +24,23 @@ fn fixture(name: &str) -> (TempDir, PathBuf) {
     (directory, path)
 }
 
-fn fake_adapter() -> (TempDir, PathBuf) {
-    fixture("fake-adapter.sh")
+fn fixture_adapter(name: &str) -> (TempDir, AdapterCommand) {
+    let (directory, path) = fixture(name);
+    let command = AdapterCommand::new("/bin/sh").arguments([path.to_string_lossy().into_owned()]);
+    (directory, command)
+}
+
+fn fake_adapter() -> (TempDir, AdapterCommand) {
+    fixture_adapter("fake-adapter.sh")
 }
 
 #[tokio::test]
 async fn discovers_and_builds_using_machine_readable_protocol() {
-    let (_directory, path) = fake_adapter();
+    let (_directory, command) = fake_adapter();
     let supervisor = Supervisor::default();
     let adapter = Adapter::discover(
         &supervisor,
-        AdapterCommand::new(path),
+        command,
         Some(&VersionReq::parse("^1.0").unwrap()),
     )
     .await
@@ -63,10 +69,10 @@ async fn missing_and_incompatible_adapters_have_actionable_errors() {
     .unwrap_err();
     assert!(missing.to_string().contains("install it"));
 
-    let (_directory, path) = fake_adapter();
+    let (_directory, command) = fake_adapter();
     let incompatible = Adapter::discover(
         &supervisor,
-        AdapterCommand::new(path),
+        command,
         Some(&VersionReq::parse(">=2").unwrap()),
     )
     .await
@@ -80,9 +86,9 @@ async fn missing_and_incompatible_adapters_have_actionable_errors() {
 
 #[tokio::test]
 async fn rejects_unsupported_protocol_versions() {
-    let (_directory, path) = fixture("incompatible-adapter.sh");
+    let (_directory, command) = fixture_adapter("incompatible-adapter.sh");
     let supervisor = Supervisor::default();
-    let error = Adapter::discover(&supervisor, AdapterCommand::new(path), None)
+    let error = Adapter::discover(&supervisor, command, None)
         .await
         .unwrap_err();
     assert!(error.to_string().contains("install a compatible adapter"));
@@ -90,11 +96,9 @@ async fn rejects_unsupported_protocol_versions() {
 
 #[tokio::test]
 async fn memory_budget_constrains_configured_parallelism() {
-    let (_directory, path) = fake_adapter();
+    let (_directory, command) = fake_adapter();
     let supervisor = Supervisor::default();
-    let adapter = Adapter::discover(&supervisor, AdapterCommand::new(path), None)
-        .await
-        .unwrap();
+    let adapter = Adapter::discover(&supervisor, command, None).await.unwrap();
     let jobs = (0..2)
         .map(|_| BuildJob {
             request: BuildRequest::new("ui_extension", "extension", "output"),
@@ -125,11 +129,9 @@ async fn memory_budget_constrains_configured_parallelism() {
 
 #[tokio::test]
 async fn rejects_jobs_larger_than_memory_budget() {
-    let (_directory, path) = fake_adapter();
+    let (_directory, command) = fake_adapter();
     let supervisor = Supervisor::default();
-    let adapter = Adapter::discover(&supervisor, AdapterCommand::new(path), None)
-        .await
-        .unwrap();
+    let adapter = Adapter::discover(&supervisor, command, None).await.unwrap();
     let error = build_all(
         &supervisor,
         &adapter,
