@@ -61,7 +61,7 @@ fn eligible(cli: &Cli) -> bool {
             Some(Command::Completion { .. } | Command::Internal { .. })
         )
         && matches!(
-            UserSettings::resolve(Some(&crate::config_path()), None).autoupgrade,
+            UserSettings::resolve(Some(&crate::commands::config_path()), None).autoupgrade,
             AutoUpgrade::On
         )
 }
