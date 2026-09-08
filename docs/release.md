@@ -13,6 +13,12 @@ The command advances the current prerelease (`0.0.1-pre.0` becomes
 commits the version bump, creates an annotated tag, and atomically pushes the
 commit and tag to `origin/main`.
 
+The tag workflow builds every supported archive, publishes the GitHub Release,
+and then publishes `catify-cli` to npm through npm trusted publishing (GitHub
+OIDC). Prereleases use the npm `next` dist-tag; stable releases use `latest`.
+The npm job verifies that every platform archive exists before publishing and
+is idempotent when the exact package version is already present.
+
 Alternative release selections:
 
 ```bash
@@ -32,6 +38,23 @@ Release builds are produced by `scripts/package-release.py`. Each target archive
 
 Supported publishing targets are macOS and Linux. Windows packaging is implemented as a ZIP path, but publishing remains explicitly `not-published` until a Windows signing/install smoke process is established.
 
+## npm trusted publishing
+
+The npm package is published by `.github/workflows/release.yml`; local
+`NPM_TOKEN` secrets are not required. The npm trusted publisher must match:
+
+- repository: `yan-ad/catify`
+- workflow: `release.yml`
+- package: `catify-cli`
+
+Install prereleases with:
+
+```bash
+npm install --global catify-cli@next
+```
+
+Stable releases remain available through the default `latest` dist-tag.
+
 ## Homebrew
 
 `scripts/generate-homebrew-formula.py` generates the formula after the macOS archive URL and SHA256 are known. The formula remains a release artifact until it is submitted to a tap.
@@ -48,4 +71,6 @@ Shell-installer releases write a sibling `.catify-version` marker next to `cfy`.
 4. Require `--check` for network-only version checks and `--yes` for mutation; never run update implicitly during another command.
 5. Keep update disabled in non-interactive mode unless `CFY_UPDATE_ALLOW=1` is explicitly set.
 
-The update command is intentionally not implemented until signed release metadata and provenance detection are available.
+Standalone installations now use the native updater. Package-manager installs
+remain managed by their package manager and receive the corresponding upgrade
+instruction instead of being replaced directly.

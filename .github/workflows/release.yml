@@ -156,7 +156,6 @@ jobs:
           fi
 
   npm:
-    if: vars.NPM_PUBLISH == 'true'
     needs: [verify, github-release]
     runs-on: ubuntu-latest
     permissions:
@@ -175,9 +174,21 @@ jobs:
       - name: Publish npm package
         shell: bash
         run: |
+          VERSION='${{ needs.verify.outputs.version }}'
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+
+          if npm view "$PACKAGE_NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$PACKAGE_NAME@$VERSION is already published; skipping"
+            exit 0
+          fi
+
           DIST_TAG=latest
-          if [[ "${{ needs.verify.outputs.version }}" == *-* ]]; then
+          if [[ "$VERSION" == *-* ]]; then
             DIST_TAG=next
           fi
+
           node scripts/check-release-assets.js
-          CFY_SKIP_DOWNLOAD=1 npm publish --access public --tag "$DIST_TAG"
+          CFY_SKIP_DOWNLOAD=1 npm publish \
+            --access public \
+            --tag "$DIST_TAG" \
+            --provenance

@@ -218,6 +218,16 @@ class ReleaseToolsTest(unittest.TestCase):
         )
         self.assertEqual(result.stdout.strip(), package_version)
 
+    def test_release_workflow_publishes_npm_with_oidc_provenance(self):
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+
+        self.assertNotIn("vars.NPM_PUBLISH", workflow)
+        self.assertIn("id-token: write", workflow)
+        self.assertIn("npm publish", workflow)
+        self.assertIn("--provenance", workflow)
+        self.assertIn("DIST_TAG=next", workflow)
+        self.assertIn("is already published; skipping", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
