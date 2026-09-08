@@ -578,7 +578,7 @@
       "domain": "config",
       "status": "native",
       "owner": 42,
-      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and provides full-command-path suggestions, including missing intermediate subcommands; TTY users can confirm with arrows or y/n, while non-TTY execution remains safe.",
       "tested": true,
       "evidence": [
         "crates/cfy-config/src/lib.rs",
@@ -593,7 +593,7 @@
       "domain": "config",
       "status": "native",
       "owner": 42,
-      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and provides full-command-path suggestions, including missing intermediate subcommands; TTY users can confirm with arrows or y/n, while non-TTY execution remains safe.",
       "tested": true,
       "evidence": [
         "crates/cfy-config/src/lib.rs",
@@ -608,7 +608,7 @@
       "domain": "config",
       "status": "native",
       "owner": 42,
-      "implementation": "Rust implementation persists Catify autocorrect settings atomically and applies unique command-token corrections without modifying flags or values.",
+      "implementation": "Rust implementation persists Catify autocorrect settings atomically and provides full-command-path suggestions, including missing intermediate subcommands; TTY users can confirm with arrows or y/n, while non-TTY execution remains safe.",
       "tested": true,
       "evidence": [
         "crates/cfy-config/src/lib.rs",

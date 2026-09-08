@@ -1052,7 +1052,9 @@ fn config_autocorrect_commands_persist_exact_native_state() {
     assert!(String::from_utf8_lossy(&corrected.stderr).contains("Autocorrected command"));
 
     assert!(run(&["config", "autocorrect", "off"]).status.success());
-    assert!(!run(&["versoin"]).status.success());
+    let suggested = run(&["app", "link"]);
+    assert_eq!(suggested.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&suggested.stderr).contains("Did you mean `app config link`?"));
 
     std::fs::remove_dir_all(root).unwrap();
 }

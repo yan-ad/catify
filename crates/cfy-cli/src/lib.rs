@@ -386,40 +386,104 @@ fn edit_distance(left: &str, right: &str) -> usize {
     previous[right.chars().count()]
 }
 
-fn corrected_command_args(arguments: &[std::ffi::OsString]) -> Option<Vec<std::ffi::OsString>> {
-    let mut corrected = arguments.to_vec();
-    let mut command = Cli::command();
-    let mut changed = false;
+fn command_paths(command: &clap::Command, prefix: &mut Vec<String>, paths: &mut Vec<Vec<String>>) {
+    for subcommand in command
+        .get_subcommands()
+        .filter(|command| !command.is_hide_set())
+    {
+        prefix.push(subcommand.get_name().to_owned());
+        paths.push(prefix.clone());
+        command_paths(subcommand, prefix, paths);
+        prefix.pop();
+    }
+}
 
-    for argument in corrected.iter_mut().skip(1) {
-        let token = argument.to_str()?;
-        if token.starts_with('-') || command.get_subcommands().next().is_none() {
-            break;
-        }
+fn command_path_score(input: &[&str], candidate: &[String]) -> usize {
+    const TOKEN_INSERTION_COST: usize = 2;
+    const TOKEN_DELETION_COST: usize = 2;
 
-        if let Some(exact) = command.find_subcommand(token).cloned() {
-            command = exact;
-            continue;
+    let mut previous = (0..=candidate.len())
+        .map(|length| length * TOKEN_INSERTION_COST)
+        .collect::<Vec<_>>();
+    for (input_index, input_token) in input.iter().enumerate() {
+        let mut current = vec![(input_index + 1) * TOKEN_DELETION_COST];
+        for (candidate_index, candidate_token) in candidate.iter().enumerate() {
+            current.push(std::cmp::min(
+                std::cmp::min(
+                    current[candidate_index] + TOKEN_INSERTION_COST,
+                    previous[candidate_index + 1] + TOKEN_DELETION_COST,
+                ),
+                previous[candidate_index] + edit_distance(input_token, candidate_token),
+            ));
         }
+        previous = current;
+    }
+    previous[candidate.len()]
+}
 
-        let mut candidates = command
-            .get_subcommands()
-            .filter_map(|candidate| {
-                let distance = edit_distance(token, candidate.get_name());
-                (distance <= 2).then_some((distance, candidate.get_name().to_owned()))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort();
-        if candidates.len() != 1 {
-            break;
-        }
-        *argument = candidates[0].1.clone().into();
-        let exact = command.find_subcommand(&candidates[0].1)?.clone();
-        command = exact;
-        changed = true;
+fn suggested_command_args(
+    arguments: &[std::ffi::OsString],
+) -> Option<(Vec<std::ffi::OsString>, Vec<String>)> {
+    let command_start = arguments
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, argument)| {
+            argument
+                .to_str()
+                .filter(|argument| !argument.starts_with('-'))
+                .map(|_| index)
+        })?;
+    let command_tokens = arguments
+        .iter()
+        .skip(command_start)
+        .map(|argument| argument.to_str())
+        .take_while(|argument| argument.is_some_and(|argument| !argument.starts_with('-')))
+        .collect::<Option<Vec<_>>>()?;
+    if command_tokens.is_empty() {
+        return None;
     }
 
-    changed.then_some(corrected)
+    let mut paths = Vec::new();
+    command_paths(&Cli::command(), &mut Vec::new(), &mut paths);
+    let mut candidates = paths
+        .into_iter()
+        .filter_map(|path| {
+            if path.len() < command_tokens.len() {
+                return None;
+            }
+            let score = command_path_score(&command_tokens, &path);
+            let first_matches =
+                command_tokens
+                    .first()
+                    .zip(path.first())
+                    .is_some_and(|(input, candidate)| {
+                        input == candidate || edit_distance(input, candidate) <= 2
+                    });
+            (first_matches && score <= 4).then_some((score, path))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    let (best_score, best_path) = candidates.first()?.clone();
+    if candidates
+        .get(1)
+        .is_some_and(|candidate| candidate.0 == best_score)
+    {
+        return None;
+    }
+
+    let command_token_count = command_tokens.len();
+    let mut corrected =
+        Vec::with_capacity(arguments.len() + best_path.len().saturating_sub(command_token_count));
+    corrected.extend(arguments.iter().take(command_start).cloned());
+    corrected.extend(best_path.iter().cloned().map(std::ffi::OsString::from));
+    corrected.extend(
+        arguments
+            .iter()
+            .skip(command_start + command_token_count)
+            .cloned(),
+    );
+    Some((corrected, best_path))
 }
 
 /// Parse process arguments, automatically applying unambiguous command corrections when enabled.
@@ -430,20 +494,28 @@ pub fn parse_cli() -> Cli {
         Ok(cli) => cli,
         Err(original) => {
             let settings = UserSettings::resolve(Some(&config_path()), None);
-            if matches!(settings.autocorrect, AutoCorrect::On)
-                && let Some(corrected) = corrected_command_args(&arguments)
+            if let Some((corrected, path)) = suggested_command_args(&arguments)
                 && let Ok(cli) = Cli::try_parse_from(&corrected)
             {
-                eprintln!(
-                    "Autocorrected command to `{}`.",
-                    corrected
-                        .iter()
-                        .skip(1)
-                        .filter_map(|value| value.to_str())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                );
-                return cli;
+                let suggestion = path.join(" ");
+                if matches!(settings.autocorrect, AutoCorrect::On) {
+                    eprintln!("Autocorrected command to `{suggestion}`.");
+                    return cli;
+                }
+                if io::stdin().is_terminal() && io::stderr().is_terminal() {
+                    eprintln!("Command not found. Did you mean `{suggestion}`?");
+                    if select_text_choice_with_shortcuts(
+                        "Run the suggested command?",
+                        &["Yes, confirm".to_owned(), "No, cancel".to_owned()],
+                        &[('y', 0), ('n', 1)],
+                    )
+                    .is_ok_and(|selected| selected == 0)
+                    {
+                        return cli;
+                    }
+                } else {
+                    eprintln!("Did you mean `{suggestion}`?");
+                }
             }
             original.exit()
         }
@@ -2673,9 +2745,9 @@ fn print_completion(shell: Shell) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppCommand, Cli, Command, ThemeCommand, corrected_command_args, explicit_theme_tokens,
-        filesystem_event, format_themes, insert_character, live_push_requires_confirmation,
-        remove_character, reusable_session, select_store, select_theme_for_open,
+        AppCommand, Cli, Command, ThemeCommand, explicit_theme_tokens, filesystem_event,
+        format_themes, insert_character, live_push_requires_confirmation, remove_character,
+        reusable_session, select_store, select_theme_for_open, suggested_command_args,
         update_auth_selection, update_list_selection,
     };
     use cfy_api::theme::Theme;
@@ -3179,8 +3251,8 @@ mod tests {
     }
 
     #[test]
-    fn autocorrect_only_changes_unique_command_tokens() {
-        let corrected = corrected_command_args(&[
+    fn suggestions_match_unique_full_command_paths() {
+        let (corrected, path) = suggested_command_args(&[
             "cfy".into(),
             "config".into(),
             "autocorrect".into(),
@@ -3188,6 +3260,22 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(corrected[3], "status");
-        assert!(corrected_command_args(&["cfy".into(), "--json".into()]).is_none());
+        assert_eq!(path, ["config", "autocorrect", "status"]);
+
+        let (corrected, path) =
+            suggested_command_args(&["cfy".into(), "app".into(), "link".into()]).unwrap();
+        assert_eq!(
+            corrected,
+            ["cfy", "app", "config", "link"].map(std::ffi::OsString::from)
+        );
+        assert_eq!(path, ["app", "config", "link"]);
+
+        let (corrected, path) =
+            suggested_command_args(&["cfy".into(), "--json".into(), "versoin".into()]).unwrap();
+        assert_eq!(corrected[1], "--json");
+        assert_eq!(corrected[2], "version");
+        assert_eq!(path, ["version"]);
+
+        assert!(suggested_command_args(&["cfy".into(), "--json".into()]).is_none());
     }
 }
