@@ -229,6 +229,7 @@ class ReleaseToolsTest(unittest.TestCase):
         self.assertIn("is already published; skipping", workflow)
         self.assertIn("npm registry did not expose", workflow)
         self.assertIn("--prefer-online", workflow)
+        self.assertIn("--allow-scripts=catify-cli", workflow)
         self.assertIn('prefix/bin/cfy" version', workflow)
 
 

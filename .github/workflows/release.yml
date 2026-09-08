@@ -215,6 +215,7 @@ jobs:
             --prefix "$TMP_NPM_SMOKE/prefix" \
             --cache "$TMP_NPM_SMOKE/cache" \
             --prefer-online \
+            --allow-scripts=catify-cli \
             "$PACKAGE_NAME@$VERSION"
           "$TMP_NPM_SMOKE/prefix/bin/cfy" version
           "$TMP_NPM_SMOKE/prefix/bin/catify" version

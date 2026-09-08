@@ -50,7 +50,7 @@ The npm package is published by `.github/workflows/release.yml`; local
 Install prereleases with:
 
 ```bash
-npm install --global catify-cli@next
+npm install --global --allow-scripts=catify-cli catify-cli@next
 ```
 
 Stable releases remain available through the default `latest` dist-tag.

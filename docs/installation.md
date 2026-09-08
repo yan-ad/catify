@@ -17,14 +17,15 @@ the shorter `cfy` command; both execute the same native Rust binary. Official re
 ## Install with npm
 
 ```sh
-npm install --global catify-cli@next
+npm install --global --allow-scripts=catify-cli catify-cli@next
 cfy version
 catify version
 ```
 
-Catify prereleases are published under npm's `next` dist-tag. The existing
-`catify-cli@0.0.1` package predates the matching GitHub release and cannot install;
-use the shell installer until `0.0.1-pre.0` is published.
+Catify prereleases are published under npm's `next` dist-tag. Newer npm versions
+block package lifecycle scripts unless the package is explicitly allowlisted;
+Catify's `postinstall` script is required to download and verify the native
+binary.
 
 The package downloads the matching GitHub Release archive and verifies its SHA-256
 checksum before installing it. Node.js 18 or newer is required for installation.
@@ -33,7 +34,7 @@ The command implementation remains the native Rust binary.
 Upgrade or remove it with:
 
 ```sh
-npm update --global catify-cli@next
+npm update --global --allow-scripts=catify-cli catify-cli@next
 npm uninstall --global catify-cli
 ```
 
