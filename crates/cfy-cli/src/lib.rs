@@ -470,6 +470,14 @@ pub enum ThemeMetafieldsCommand {
 }
 
 pub(crate) fn select_text_choice(title: &str, choices: &[String]) -> Result<usize> {
+    select_text_choice_with_shortcuts(title, choices, &[])
+}
+
+pub(crate) fn select_text_choice_with_shortcuts(
+    title: &str,
+    choices: &[String],
+    shortcuts: &[(char, usize)],
+) -> Result<usize> {
     enable_raw_mode().map_err(|error| {
         Error::with_source(ErrorKind::Process, "could not enable selector", error)
     })?;
@@ -518,13 +526,23 @@ pub(crate) fn select_text_choice(title: &str, choices: &[String]) -> Result<usiz
         if let Event::Key(key) = event::read().map_err(|error| {
             Error::with_source(ErrorKind::Process, "could not read selection", error)
         })? && key.kind == KeyEventKind::Press
-            && let Some((next, confirmed)) =
-                update_list_selection(selected, choices.len(), key.code)?
         {
-            selected = next;
-            if confirmed {
+            if let KeyCode::Char(character) = key.code
+                && let Some((_, index)) = shortcuts
+                    .iter()
+                    .find(|(shortcut, _)| shortcut.eq_ignore_ascii_case(&character))
+            {
                 terminal.clear().ok();
-                return Ok(selected);
+                return Ok(*index);
+            }
+            if let Some((next, confirmed)) =
+                update_list_selection(selected, choices.len(), key.code)?
+            {
+                selected = next;
+                if confirmed {
+                    terminal.clear().ok();
+                    return Ok(selected);
+                }
             }
         }
     }

@@ -45,10 +45,11 @@
     },
     "app config link": {
       "evidence": [
+        "crates/cfy-cli/src/commands/app/config.rs tests",
         "crates/cfy-cli/tests/cli.rs",
         "crates/cfy-app/src/lib.rs tests"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Native Rust organization selection, create-vs-existing prompt with y/n shortcuts, local shopify.app*.toml mapping, App Management lookup/create, and atomic overwrite of an explicitly selected config.",
       "live_verified": false,
       "owner": 40,
       "status": "native"

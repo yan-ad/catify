@@ -1,5 +1,6 @@
 use super::super::super::{
-    AuthTerminalGuard, output::Output, select_organization, update_list_selection,
+    AuthTerminalGuard, SHOPIFY_API_VERSION, output::Output, select_organization,
+    select_text_choice, select_text_choice_with_shortcuts, update_list_selection,
 };
 use cfy_app::{
     AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, write_linked_config,
@@ -69,6 +70,46 @@ fn select_app_config_path(
                 .collect::<Vec<_>>()
                 .join(", ")
         ))),
+    }
+}
+
+fn linked_config_target(
+    directory: &Path,
+    selected: Option<&LocalAppConfig>,
+    requested_file_name: Option<String>,
+    force: bool,
+    reset: bool,
+) -> (PathBuf, Option<String>, bool) {
+    let target_directory = selected
+        .and_then(|local| local.path.parent())
+        .unwrap_or(directory)
+        .to_path_buf();
+    let target_file_name = selected
+        .map(|local| local.file_name.clone())
+        .or(requested_file_name);
+    let selected_existing_file = selected.is_some()
+        && target_file_name
+            .as_ref()
+            .is_some_and(|name| target_directory.join(name).exists());
+    (
+        target_directory,
+        target_file_name,
+        force || reset || selected_existing_file,
+    )
+}
+
+fn select_local_mapping(choices: &[LocalAppConfig], title: &str) -> Result<Option<LocalAppConfig>> {
+    match choices {
+        [] => Ok(None),
+        [choice] => Ok(Some(choice.clone())),
+        _ => {
+            let labels = choices
+                .iter()
+                .map(|choice| format!("{} ({})", choice.name, choice.file_name))
+                .collect::<Vec<_>>();
+            let index = select_text_choice(title, &labels)?;
+            Ok(Some(choices[index].clone()))
+        }
     }
 }
 
@@ -296,6 +337,9 @@ pub(super) struct LocalAppConfig {
     path: PathBuf,
     pub(super) file_name: String,
     pub(super) client_id: String,
+    name: String,
+    scopes: Vec<String>,
+    launchable: bool,
 }
 
 pub(super) fn load_local_app_configs(
@@ -329,6 +373,27 @@ pub(super) fn load_local_app_configs(
                         path.file_name().unwrap_or_default().to_string_lossy()
                     ))
                 })?;
+            let name = document
+                .get("name")
+                .and_then(toml::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("Catify app")
+                .to_owned();
+            let scopes = document
+                .get("access_scopes")
+                .and_then(toml::Value::as_table)
+                .and_then(|table| table.get("scopes"))
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|scope| !scope.is_empty())
+                .map(str::to_owned)
+                .collect();
+            let launchable = document
+                .get("application_url")
+                .and_then(toml::Value::as_str)
+                .is_some_and(|value| !value.is_empty());
             Ok(LocalAppConfig {
                 path: path.clone(),
                 file_name: path
@@ -337,6 +402,9 @@ pub(super) fn load_local_app_configs(
                     .to_string_lossy()
                     .into_owned(),
                 client_id: client_id.to_owned(),
+                name,
+                scopes,
+                launchable,
             })
         })
         .collect()
@@ -628,6 +696,25 @@ pub(super) async fn app_config_command(
                 return delegate_shopify_command("app", &args);
             }
 
+            let directory = path.unwrap_or(env::current_dir().map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Config,
+                    "could not determine app directory",
+                    error,
+                )
+            })?);
+            let local_configs = discover(&directory, Some(ProjectKind::App))
+                .ok()
+                .map(|project| load_local_app_configs(&project))
+                .transpose()?
+                .unwrap_or_default();
+            let requested_file_name =
+                file_name.or_else(|| config.as_deref().map(normalized_app_config_name));
+            let explicitly_selected_local = requested_file_name
+                .as_deref()
+                .and_then(|name| find_local_app_config(&local_configs, name))
+                .cloned();
+
             let identity = auth_alias.unwrap_or_else(|| "default".to_owned());
             let store = Arc::new(NativeCredentialStore::default());
             let identity_client = Arc::new(IdentityClient::new(
@@ -656,42 +743,110 @@ pub(super) async fn app_config_command(
                 }
                 select_organization(&organizations)?
             };
-            let selected_client_id = if let Some(client_id) = client_id {
-                client_id
+            let interactive =
+                !non_interactive && io::stdin().is_terminal() && io::stderr().is_terminal();
+            let create_new = if client_id.is_some() {
+                false
+            } else if interactive {
+                select_text_choice_with_shortcuts(
+                    "Create this project as a new app on Shopify?",
+                    &[
+                        "(y) Yes, create it as a new app".to_owned(),
+                        "(n) No, connect it to an existing app".to_owned(),
+                    ],
+                    &[('y', 0), ('n', 1)],
+                )? == 0
             } else {
-                if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
-                    return Err(Error::invalid_input(
-                        "app config link requires --client-id outside an interactive terminal",
-                    ));
+                return Err(Error::invalid_input(
+                    "app config link requires --client-id outside an interactive terminal",
+                ));
+            };
+
+            let mut selected_local = explicitly_selected_local;
+            let selected_client_id = if create_new {
+                if selected_local.is_none() {
+                    selected_local = select_local_mapping(
+                        &local_configs,
+                        "Which app configuration should be used to create the app?",
+                    )?;
                 }
-                let apps = backend.list_apps(&organization.id).await?;
-                select_remote_app(&apps)?.client_id
+                let local = selected_local.as_ref().ok_or_else(|| {
+                    Error::invalid_input(
+                        "creating a new Shopify app requires a local shopify.app*.toml configuration",
+                    )
+                })?;
+                backend
+                    .create_app(
+                        &organization.id,
+                        &local.name,
+                        SHOPIFY_API_VERSION,
+                        local.launchable,
+                        &local.scopes,
+                    )
+                    .await?
+                    .client_id
+            } else {
+                let selected = if let Some(client_id) = client_id {
+                    if selected_local.is_none() {
+                        selected_local = local_configs
+                            .iter()
+                            .find(|local| local.client_id == client_id)
+                            .cloned();
+                    }
+                    client_id
+                } else if !local_configs.is_empty() {
+                    if selected_local.is_none() {
+                        selected_local = select_local_mapping(
+                            &local_configs,
+                            "Which existing app is this for?",
+                        )?;
+                    }
+                    selected_local
+                        .as_ref()
+                        .map(|local| local.client_id.clone())
+                        .filter(|client_id| !client_id.is_empty())
+                        .ok_or_else(|| {
+                            Error::invalid_input(
+                                "the selected local configuration has no client_id; pass --client-id to choose the Shopify app",
+                            )
+                        })?
+                } else {
+                    let apps = backend.list_apps(&organization.id).await?;
+                    select_remote_app(&apps)?.client_id
+                };
+                if selected_local.is_none() && !local_configs.is_empty() {
+                    let matching = local_configs
+                        .iter()
+                        .filter(|local| local.client_id == selected)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    selected_local = match matching.as_slice() {
+                        [matching] => Some(matching.clone()),
+                        _ if interactive => select_local_mapping(
+                            &local_configs,
+                            "Which local configuration should be updated?",
+                        )?,
+                        _ => None,
+                    };
+                }
+                selected
             };
             let app = backend
                 .app_by_client_id_in_organization(&organization.id, &selected_client_id)
                 .await?;
-            let directory = path.unwrap_or(env::current_dir().map_err(|error| {
-                Error::with_source(
-                    ErrorKind::Config,
-                    "could not determine app directory",
-                    error,
-                )
-            })?);
-            let requested_file_name = file_name.or_else(|| {
-                config.map(|name| {
-                    if name == "shopify.app.toml" || name.ends_with(".toml") {
-                        name
-                    } else {
-                        format!("shopify.app.{name}.toml")
-                    }
-                })
-            });
+            let (directory, target_file_name, overwrite) = linked_config_target(
+                &directory,
+                selected_local.as_ref(),
+                requested_file_name,
+                force,
+                reset,
+            );
             let report = write_linked_config(
                 &LinkOptions {
                     directory,
                     client_id: Some(selected_client_id),
-                    file_name: requested_file_name,
-                    force: force || reset,
+                    file_name: target_file_name,
+                    force: overwrite,
                 },
                 &app,
             )?;
@@ -847,4 +1002,42 @@ fn delegate_shopify_command(command: &str, args: &[String]) -> Result<u8> {
             )
         })?;
     Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicitly_selected_existing_config_is_overwritten_without_force() {
+        let root =
+            std::env::temp_dir().join(format!("catify-config-link-target-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("shopify.app.staging.toml");
+        std::fs::write(&path, "client_id = 'old'").unwrap();
+        let selected = LocalAppConfig {
+            path,
+            file_name: "shopify.app.staging.toml".into(),
+            client_id: "old".into(),
+            name: "Staging".into(),
+            scopes: vec![],
+            launchable: true,
+        };
+
+        let (directory, file_name, overwrite) =
+            linked_config_target(&root, Some(&selected), None, false, false);
+        assert_eq!(directory, root);
+        assert_eq!(file_name.as_deref(), Some("shopify.app.staging.toml"));
+        assert!(overwrite);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn implicit_existing_config_still_requires_force() {
+        let root = std::env::temp_dir();
+        let (_, file_name, overwrite) =
+            linked_config_target(&root, None, Some("shopify.app.toml".into()), false, false);
+        assert_eq!(file_name.as_deref(), Some("shopify.app.toml"));
+        assert!(!overwrite);
+    }
 }
