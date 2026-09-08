@@ -487,13 +487,16 @@ pub(crate) fn select_text_choice_with_shortcuts(
     })?;
     let backend = CrosstermBackend::new(io::stderr());
     let height = u16::try_from(choices.len().saturating_add(4).min(15)).unwrap_or(15);
-    let mut terminal = Terminal::with_options(
+    let terminal = Terminal::with_options(
         backend,
         TerminalOptions {
             viewport: Viewport::Inline(height),
         },
-    )
-    .map_err(|error| Error::with_source(ErrorKind::Process, "could not create selector", error))?;
+    );
+    let mut terminal = match terminal {
+        Ok(terminal) => terminal,
+        Err(_) => return select_text_choice_fallback(title, choices, shortcuts),
+    };
     let mut selected = 0usize;
     loop {
         terminal
@@ -545,6 +548,57 @@ pub(crate) fn select_text_choice_with_shortcuts(
                 }
             }
         }
+    }
+}
+
+fn select_text_choice_fallback(
+    title: &str,
+    choices: &[String],
+    shortcuts: &[(char, usize)],
+) -> Result<usize> {
+    let mut selected = 0usize;
+    let lines = choices.len().saturating_add(2);
+    loop {
+        let mut stderr = io::stderr();
+        writeln!(stderr, "? {title}").ok();
+        for (index, choice) in choices.iter().enumerate() {
+            writeln!(
+                stderr,
+                "{}  {choice}",
+                if index == selected { ">" } else { " " }
+            )
+            .ok();
+        }
+        writeln!(stderr, "Press ↑↓ arrows to select, enter to confirm.").ok();
+        stderr.flush().ok();
+
+        if let Event::Key(key) = event::read().map_err(|error| {
+            Error::with_source(ErrorKind::Process, "could not read selection", error)
+        })? && key.kind == KeyEventKind::Press
+        {
+            if let KeyCode::Char(character) = key.code
+                && let Some((_, index)) = shortcuts
+                    .iter()
+                    .find(|(shortcut, _)| shortcut.eq_ignore_ascii_case(&character))
+            {
+                return Ok(*index);
+            }
+            if let Some((next, confirmed)) =
+                update_list_selection(selected, choices.len(), key.code)?
+            {
+                selected = next;
+                if confirmed {
+                    return Ok(selected);
+                }
+            }
+        }
+
+        execute!(
+            io::stderr(),
+            cursor::MoveUp(u16::try_from(lines).unwrap_or(u16::MAX)),
+            Clear(ClearType::FromCursorDown)
+        )
+        .ok();
     }
 }
 

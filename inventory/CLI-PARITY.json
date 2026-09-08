@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 111,
     "tested": 111,
-    "live_verified": 25,
+    "live_verified": 26,
     "by_status": {
       "adapter": 27,
       "native": 84
@@ -128,9 +128,11 @@
       "evidence": [
         "crates/cfy-cli/src/commands/app/config.rs tests",
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "live Shopify App Management config-link matrix across five isolated shopify.app*.toml mappings",
+        "live PTY organization/create-vs-existing/local-mapping flow with arrow-key selection and overwrite without --force"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {

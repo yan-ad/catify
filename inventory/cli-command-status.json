@@ -47,10 +47,12 @@
       "evidence": [
         "crates/cfy-cli/src/commands/app/config.rs tests",
         "crates/cfy-cli/tests/cli.rs",
-        "crates/cfy-app/src/lib.rs tests"
+        "crates/cfy-app/src/lib.rs tests",
+        "live Shopify App Management config-link matrix across five isolated shopify.app*.toml mappings",
+        "live PTY organization/create-vs-existing/local-mapping flow with arrow-key selection and overwrite without --force"
       ],
       "implementation": "Native Rust organization selection, create-vs-existing prompt with y/n shortcuts, local shopify.app*.toml mapping, App Management lookup/create, and atomic overwrite of an explicitly selected config.",
-      "live_verified": false,
+      "live_verified": true,
       "owner": 40,
       "status": "native"
     },

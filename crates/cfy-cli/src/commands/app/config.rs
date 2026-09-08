@@ -3,7 +3,8 @@ use super::super::super::{
     select_text_choice, select_text_choice_with_shortcuts, update_list_selection,
 };
 use cfy_app::{
-    AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, write_linked_config,
+    AppManagementClient, BusinessPlatformClient, LinkOptions, RemoteAppSummary, RemoteOrganization,
+    write_linked_config,
 };
 use cfy_auth::{
     NativeCredentialStore,
@@ -53,6 +54,7 @@ fn select_app_config_path(
                 Error::invalid_input(format!("could not find configuration file {normalized}"))
             });
     }
+
     if let Some(default) = project.config_files().iter().find(|path| {
         path.file_name()
             .is_some_and(|name| name == "shopify.app.toml")
@@ -71,6 +73,20 @@ fn select_app_config_path(
                 .join(", ")
         ))),
     }
+}
+
+async fn organization_for_client_id(
+    backend: &AppManagementClient,
+    organizations: &[RemoteOrganization],
+    client_id: &str,
+) -> Result<Option<RemoteOrganization>> {
+    for organization in organizations {
+        let apps = backend.list_apps(&organization.id).await?;
+        if apps.iter().any(|app| app.client_id == client_id) {
+            return Ok(Some(organization.clone()));
+        }
+    }
+    Ok(None)
 }
 
 fn linked_config_target(
@@ -733,18 +749,26 @@ pub(super) async fn app_config_command(
                 .await?
                 .list_organizations()
                 .await?;
-            let organization = if organizations.len() == 1 {
-                organizations[0].clone()
-            } else {
-                if non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
-                    return Err(Error::invalid_input(
-                        "app config link requires an interactive terminal when multiple organizations are available",
-                    ));
-                }
-                select_organization(&organizations)?
-            };
             let interactive =
                 !non_interactive && io::stdin().is_terminal() && io::stderr().is_terminal();
+            let organization = if organizations.len() == 1 {
+                organizations[0].clone()
+            } else if !interactive {
+                let requested_client_id = client_id.as_deref().ok_or_else(|| {
+                    Error::invalid_input(
+                        "app config link requires --client-id outside an interactive terminal when multiple organizations are available",
+                    )
+                })?;
+                organization_for_client_id(&backend, &organizations, requested_client_id)
+                    .await?
+                    .ok_or_else(|| {
+                        Error::invalid_input(format!(
+                            "could not find Shopify app `{requested_client_id}` in any accessible organization"
+                        ))
+                    })?
+            } else {
+                select_organization(&organizations)?
+            };
             let create_new = if client_id.is_some() {
                 false
             } else if interactive {
