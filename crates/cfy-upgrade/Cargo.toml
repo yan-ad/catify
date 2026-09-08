@@ -7,15 +7,20 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+cfy-config.workspace = true
 cfy-core.workspace = true
 cfy-process.workspace = true
+flate2.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

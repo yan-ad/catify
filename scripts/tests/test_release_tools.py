@@ -201,6 +201,7 @@ class ReleaseToolsTest(unittest.TestCase):
             uname.chmod(0o755)
             subprocess.run(["sh", str(install)], check=True, env=env, capture_output=True, text=True)
             self.assertTrue((destination / "cfy").is_file())
+            self.assertEqual((destination / ".catify-version").read_text(), f"{version}\n")
 
     def test_release_version_matches_workspace_and_npm(self):
         package_version = json.loads((ROOT / "package.json").read_text())["version"]

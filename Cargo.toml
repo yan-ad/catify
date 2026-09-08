@@ -36,6 +36,7 @@ repository = "https://github.com/yan-ad/catify"
 [workspace.dependencies]
 base64 = "0.22"
 brotli = "8.0.2"
+flate2 = "1.1"
 getrandom = "0.3"
 async-trait = "0.1.89"
 cfy-api = { version = "0.0.1-pre.2", path = "crates/cfy-api" }
@@ -79,6 +80,7 @@ tokio = { version = "1.47.1", features = ["fs", "io-util", "macros", "net", "pro
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12"] }
 toml = "0.9.5"
 url = { version = "2.5.7", features = ["serde"] }
+zip = "2.4.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 
 [workspace.dependencies.libc]

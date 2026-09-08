@@ -1164,9 +1164,9 @@
         "crates/cfy-upgrade/tests/upgrade.rs",
         "crates/cfy-cli/tests/cli.rs"
       ],
-      "implementation": "Rust detects trusted install provenance and executes the exact Homebrew or Cargo upgrade plan with inherited TTY/signals. Source, unknown, and unverifiable standalone installs fail safely.",
+      "implementation": "Rust detects Homebrew, Cargo, npm, current standalone metadata, and legacy shell-installer layouts. Standalone upgrades discover stable or prerelease GitHub assets, verify SHA256SUMS, extract the platform archive, and replace the executable atomically; package-manager channels retain inherited TTY/signals.",
       "live_verified": false,
-      "notes": "Safe channel checks exist, but end-to-end self-upgrade is not complete for every install method.",
+      "notes": "Standalone archive replacement is fixture-tested end to end. Windows schedules replacement after the running executable exits.",
       "owner": 36,
       "status": "native"
     },

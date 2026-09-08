@@ -50,7 +50,8 @@ use cfy_process::Supervisor;
 use cfy_store::{AdminStoreBackend, StoreTarget, store_auth::StoreAuthRegistry};
 use cfy_theme_init::{ThemeInitRequest, initialize as initialize_theme};
 use cfy_upgrade::{
-    ExecutionPolicy, detect as detect_upgrade, execute as execute_upgrade, plan as plan_upgrade,
+    ExecutionPolicy, detect as detect_upgrade, execute as execute_upgrade, execute_standalone,
+    plan as plan_upgrade,
 };
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -1458,6 +1459,32 @@ async fn upgrade(non_interactive: bool, output: &Output) -> Result<()> {
     let provenance = detect_upgrade()?;
     let plan = plan_upgrade(&provenance)
         .map_err(|error| Error::with_source(ErrorKind::Config, error.to_string(), error))?;
+    if matches!(plan, cfy_upgrade::UpgradePlan::Standalone { .. }) {
+        if non_interactive {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "standalone upgrade requires an interactive terminal",
+            ));
+        }
+        let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).map_err(|error| {
+            Error::with_source(ErrorKind::Config, "invalid Catify build version", error)
+        })?;
+        let releases_url = env::var("CFY_RELEASES_API_URL")
+            .unwrap_or_else(|_| cfy_upgrade::DEFAULT_RELEASES_API_URL.into());
+        let result = execute_standalone(&plan, &current, &releases_url)
+            .await
+            .map_err(|error| Error::with_source(ErrorKind::Process, error.to_string(), error))?;
+        return output
+            .success(
+                if result.changed {
+                    "Catify upgraded"
+                } else {
+                    "Catify is already up to date"
+                },
+                &result,
+            )
+            .map_err(|error| Error::process(error.to_string()));
+    }
     let result = execute_upgrade(
         &plan,
         ExecutionPolicy {

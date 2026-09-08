@@ -101,6 +101,8 @@ mkdir -p "$INSTALL_DIR"
 cp "$SOURCE" "${INSTALL_DIR}/cfy"
 chmod 755 "${INSTALL_DIR}/cfy"
 ln -sf cfy "${INSTALL_DIR}/catify"
+printf '%s\n' "$VERSION" > "${INSTALL_DIR}/.catify-version.tmp"
+mv "${INSTALL_DIR}/.catify-version.tmp" "${INSTALL_DIR}/.catify-version"
 
 echo "Installed Catify ${VERSION} to ${INSTALL_DIR}/cfy (alias: catify)"
 case ":$PATH:" in

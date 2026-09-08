@@ -42,7 +42,9 @@ Update must not replace binaries installed by a package manager. The planned flo
 
 1. Detect install provenance (managed package, Homebrew, standalone archive, or source).
 2. For Homebrew/package-manager installs, print the package-manager command and exit without mutation.
-3. For standalone installs, download the target archive over HTTPS, verify `SHA256SUMS`, atomically replace the binary, and retain one rollback copy.
+3. For standalone installs, download the target archive over HTTPS, verify `SHA256SUMS`, and atomically replace the binary. On Windows, replacement is scheduled after the running process exits.
+
+Shell-installer releases write a sibling `.catify-version` marker next to `cfy`. Catify also recognizes the legacy `~/.local/bin/cfy` plus `catify -> cfy` layout shipped before `0.0.1-pre.3`, so those installations can self-heal without manual metadata creation.
 4. Require `--check` for network-only version checks and `--yes` for mutation; never run update implicitly during another command.
 5. Keep update disabled in non-interactive mode unless `CFY_UPDATE_ALLOW=1` is explicitly set.
 

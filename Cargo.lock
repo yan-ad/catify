@@ -606,6 +606,7 @@ dependencies = [
  "notify",
  "ratatui",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -813,15 +814,20 @@ dependencies = [
 name = "cfy-upgrade"
 version = "0.0.1-pre.2"
 dependencies = [
+ "cfy-config",
  "cfy-core",
  "cfy-process",
+ "flate2",
  "reqwest",
  "rustls",
  "semver",
  "serde",
  "serde_json",
+ "sha2",
+ "tar",
  "thiserror 2.0.20",
  "tokio",
+ "zip",
 ]
 
 [[package]]

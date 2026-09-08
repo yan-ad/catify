@@ -1,7 +1,7 @@
 use cfy_upgrade::{
     CARGO_PACKAGE, DetectionContext, ExecutionPolicy, HOMEBREW_FORMULA, InstallProvenance,
-    NPM_PACKAGE, UpdateCache, UpgradeError, UpgradePlan, detect_with, fetch_latest_version, plan,
-    read_update_cache, write_update_cache,
+    NPM_PACKAGE, UpdateCache, UpgradeError, UpgradePlan, detect_with, execute_standalone,
+    fetch_latest_version, plan, read_update_cache, write_update_cache,
 };
 use std::{fs, path::PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -15,6 +15,128 @@ fn context(executable: impl Into<PathBuf>) -> DetectionContext {
         homebrew_prefix: None,
         install_channel: None,
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn detects_legacy_shell_installer_layout_without_a_marker() {
+    use std::os::unix::fs::symlink;
+    let home = std::env::temp_dir().join(format!(
+        "cfy-upgrade-legacy-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bin = home.join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(bin.join("cfy"), b"legacy").unwrap();
+    symlink("cfy", bin.join("catify")).unwrap();
+    let mut detection = context(bin.join("cfy"));
+    detection.home = Some(home.clone());
+    assert!(matches!(
+        detect_with(&detection),
+        InstallProvenance::Standalone { .. }
+    ));
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn standalone_upgrade_verifies_extracts_and_replaces_the_binary() {
+    use flate2::{Compression, write::GzEncoder};
+    use sha2::{Digest, Sha256};
+
+    let root = std::env::temp_dir().join(format!(
+        "cfy-upgrade-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let executable = root.join("cfy");
+    let version_file = root.join(".catify-version");
+    fs::write(&executable, b"old-binary").unwrap();
+    fs::write(&version_file, b"0.0.1-pre.2\n").unwrap();
+
+    let target = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "aarch64-apple-darwin"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "x86_64-apple-darwin"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "aarch64-unknown-linux-gnu"
+    } else {
+        "x86_64-unknown-linux-gnu"
+    };
+    let archive_name = format!("cfy-v0.0.1-pre.3-{target}.tar.gz");
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut tar = tar::Builder::new(encoder);
+    let binary = b"new-binary";
+    let mut header = tar::Header::new_gnu();
+    header.set_mode(0o755);
+    header.set_size(binary.len() as u64);
+    header.set_cksum();
+    tar.append_data(
+        &mut header,
+        format!("cfy-v0.0.1-pre.3-{target}/cfy"),
+        &binary[..],
+    )
+    .unwrap();
+    let encoder = tar.into_inner().unwrap();
+    let archive = encoder.finish().unwrap();
+    let digest = format!("{:x}", Sha256::digest(&archive));
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let releases = format!(
+        r#"[{{"tag_name":"v0.0.1-pre.3","draft":false,"assets":[{{"name":"{archive_name}","browser_download_url":"http://{address}/archive"}},{{"name":"SHA256SUMS","browser_download_url":"http://{address}/sums"}}]}}]"#
+    );
+    let sums = format!("{digest}  {archive_name}\n");
+    let server = tokio::spawn(async move {
+        for _ in 0..3 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0; 2048];
+            let read = stream.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            let body = if request.starts_with("GET /releases ") {
+                releases.as_bytes()
+            } else if request.starts_with("GET /archive ") {
+                archive.as_slice()
+            } else {
+                sums.as_bytes()
+            };
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            stream.write_all(body).await.unwrap();
+        }
+    });
+    let plan = UpgradePlan::Standalone {
+        executable: executable.clone(),
+        version_file: version_file.clone(),
+    };
+    let outcome = execute_standalone(
+        &plan,
+        &semver::Version::parse("0.0.1-pre.2").unwrap(),
+        &format!("http://{address}/releases"),
+    )
+    .await
+    .unwrap();
+    assert!(outcome.changed);
+    assert_eq!(fs::read(&executable).unwrap(), b"new-binary");
+    assert_eq!(fs::read_to_string(&version_file).unwrap(), "0.0.1-pre.3\n");
+    server.await.unwrap();
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(windows)]

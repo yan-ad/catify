@@ -5,12 +5,15 @@
 
 use cfy_core::{Error, ErrorKind, Result};
 use cfy_process::{OutputMode, ProcessOutput, ProcessSpec, Supervisor};
+use flate2::read::GzDecoder;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     env,
     ffi::{OsStr, OsString},
     fmt, fs,
+    io::{Cursor, Read},
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -22,6 +25,8 @@ pub const NPM_PACKAGE: &str = "catify-cli";
 pub const EXECUTABLE_NAME: &str = "cfy";
 pub const DEFAULT_RELEASE_API_URL: &str =
     "https://api.github.com/repos/yan-ad/catify/releases/latest";
+pub const DEFAULT_RELEASES_API_URL: &str =
+    "https://api.github.com/repos/yan-ad/catify/releases?per_page=30";
 pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// The mechanism which placed the running executable on disk.
@@ -54,6 +59,343 @@ pub enum InstallProvenance {
         executable: PathBuf,
         reason: String,
     },
+}
+
+fn release_target() -> std::result::Result<&'static str, UpgradeError> {
+    match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => Ok("aarch64-apple-darwin"),
+        ("macos", "x86_64") => Ok("x86_64-apple-darwin"),
+        ("linux", "aarch64") => Ok("aarch64-unknown-linux-gnu"),
+        ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
+        ("windows", "x86_64") => Ok("x86_64-pc-windows-msvc"),
+        (os, arch) => Err(UpgradeError::ReleaseDiscovery {
+            message: format!("unsupported release platform {os}/{arch}"),
+        }),
+    }
+}
+
+fn checksum_for(manifest: &str, asset: &str) -> Option<String> {
+    manifest.lines().find_map(|line| {
+        let mut fields = line.split_whitespace();
+        let digest = fields.next()?;
+        let name = fields.next()?.trim_start_matches('*');
+        (name == asset && digest.len() == 64).then(|| digest.to_ascii_lowercase())
+    })
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn secure_url(url: &str) -> std::result::Result<reqwest::Url, UpgradeError> {
+    let parsed = reqwest::Url::parse(url).map_err(|error| UpgradeError::ReleaseDiscovery {
+        message: error.to_string(),
+    })?;
+    let loopback_http = parsed.scheme() == "http"
+        && parsed.host_str().is_some_and(|host| {
+            host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        });
+    if parsed.scheme() != "https" && !loopback_http {
+        return Err(UpgradeError::ReleaseDiscovery {
+            message: "release URLs must use HTTPS (HTTP is allowed only for loopback tests)".into(),
+        });
+    }
+    Ok(parsed)
+}
+
+fn extract_binary(
+    archive_name: &str,
+    bytes: Vec<u8>,
+) -> std::result::Result<Vec<u8>, UpgradeError> {
+    let binary_name = if cfg!(windows) { "cfy.exe" } else { "cfy" };
+    if archive_name.ends_with(".zip") {
+        let mut archive =
+            zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| UpgradeError::Archive {
+                message: error.to_string(),
+            })?;
+        for index in 0..archive.len() {
+            let mut entry = archive
+                .by_index(index)
+                .map_err(|error| UpgradeError::Archive {
+                    message: error.to_string(),
+                })?;
+            if entry.is_file()
+                && Path::new(entry.name()).file_name() == Some(OsStr::new(binary_name))
+            {
+                let mut binary = Vec::new();
+                entry
+                    .read_to_end(&mut binary)
+                    .map_err(|error| UpgradeError::Archive {
+                        message: error.to_string(),
+                    })?;
+                return Ok(binary);
+            }
+        }
+    } else {
+        let decoder = GzDecoder::new(Cursor::new(bytes));
+        let mut archive = tar::Archive::new(decoder);
+        let entries = archive.entries().map_err(|error| UpgradeError::Archive {
+            message: error.to_string(),
+        })?;
+        for entry in entries {
+            let mut entry = entry.map_err(|error| UpgradeError::Archive {
+                message: error.to_string(),
+            })?;
+            let path = entry.path().map_err(|error| UpgradeError::Archive {
+                message: error.to_string(),
+            })?;
+            if entry.header().entry_type().is_file()
+                && path.file_name() == Some(OsStr::new(binary_name))
+            {
+                let mut binary = Vec::new();
+                entry
+                    .read_to_end(&mut binary)
+                    .map_err(|error| UpgradeError::Archive {
+                        message: error.to_string(),
+                    })?;
+                return Ok(binary);
+            }
+        }
+    }
+    Err(UpgradeError::Archive {
+        message: format!("archive does not contain {binary_name}"),
+    })
+}
+
+async fn release_assets(
+    releases_url: &str,
+    current: &Version,
+) -> std::result::Result<Option<(Version, String, String, String)>, UpgradeError> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })?;
+    let releases = client
+        .get(secure_url(releases_url)?)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })?
+        .json::<Vec<Release>>()
+        .await
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })?;
+    let target = release_target()?;
+    let extension = if cfg!(windows) { "zip" } else { "tar.gz" };
+    let archive_name = format!("cfy-v{{version}}-{target}.{extension}");
+    let release = releases
+        .into_iter()
+        .filter(|release| !release.draft)
+        .filter_map(|release| {
+            Version::parse(release.tag_name.trim_start_matches('v'))
+                .ok()
+                .map(|version| (version, release.assets))
+        })
+        .filter(|(version, _)| version > current)
+        .filter(|(version, assets)| {
+            let expected = archive_name.replace("{version}", &version.to_string());
+            assets.iter().any(|asset| asset.name == expected)
+                && assets.iter().any(|asset| asset.name == "SHA256SUMS")
+        })
+        .max_by(|left, right| left.0.cmp(&right.0));
+    let Some((version, assets)) = release else {
+        return Ok(None);
+    };
+    let expected_archive = archive_name.replace("{version}", &version.to_string());
+    let archive_url = assets
+        .iter()
+        .find(|asset| asset.name == expected_archive)
+        .map(|asset| asset.browser_download_url.clone())
+        .ok_or_else(|| UpgradeError::ReleaseAssetMissing {
+            version: version.clone(),
+            asset: expected_archive.clone(),
+        })?;
+    let checksums_url = assets
+        .iter()
+        .find(|asset| asset.name == "SHA256SUMS")
+        .map(|asset| asset.browser_download_url.clone())
+        .ok_or_else(|| UpgradeError::ReleaseAssetMissing {
+            version: version.clone(),
+            asset: "SHA256SUMS".into(),
+        })?;
+    Ok(Some((
+        version,
+        expected_archive,
+        archive_url,
+        checksums_url,
+    )))
+}
+
+async fn download(
+    client: &reqwest::Client,
+    url: &str,
+) -> std::result::Result<Vec<u8>, UpgradeError> {
+    let parsed = secure_url(url)?;
+    client
+        .get(parsed)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })?
+        .bytes()
+        .await
+        .map(|bytes| bytes.to_vec())
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })
+}
+
+#[cfg(unix)]
+fn replace_standalone(
+    executable: &Path,
+    version_file: &Path,
+    binary: &[u8],
+    version: &Version,
+) -> std::result::Result<bool, UpgradeError> {
+    cfy_config::write_atomic(executable, binary).map_err(|error| UpgradeError::Replacement {
+        message: error.to_string(),
+    })?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(executable, fs::Permissions::from_mode(0o755)).map_err(|error| {
+        UpgradeError::Replacement {
+            message: error.to_string(),
+        }
+    })?;
+    cfy_config::write_atomic(version_file, format!("{version}\n").as_bytes()).map_err(|error| {
+        UpgradeError::Replacement {
+            message: error.to_string(),
+        }
+    })?;
+    Ok(false)
+}
+
+#[cfg(windows)]
+fn replace_standalone(
+    executable: &Path,
+    version_file: &Path,
+    binary: &[u8],
+    version: &Version,
+) -> std::result::Result<bool, UpgradeError> {
+    use std::process::Command;
+    let staging = executable.with_extension(format!("update-{}.exe", std::process::id()));
+    let script = executable.with_extension(format!("update-{}.cmd", std::process::id()));
+    fs::write(&staging, binary).map_err(|error| UpgradeError::Replacement {
+        message: error.to_string(),
+    })?;
+    let body = format!(
+        "@echo off\r\n:retry\r\nmove /Y \"{}\" \"{}\" >nul 2>&1\r\nif errorlevel 1 (timeout /t 1 /nobreak >nul & goto retry)\r\n>\"{}\" echo {}\r\ndel \"%~f0\"\r\n",
+        staging.display(),
+        executable.display(),
+        version_file.display(),
+        version
+    );
+    fs::write(&script, body).map_err(|error| UpgradeError::Replacement {
+        message: error.to_string(),
+    })?;
+    Command::new("cmd")
+        .args(["/C", "start", "", "/B", "cmd", "/C"])
+        .arg(&script)
+        .spawn()
+        .map_err(|error| UpgradeError::Replacement {
+            message: error.to_string(),
+        })?;
+    Ok(true)
+}
+
+pub async fn execute_standalone(
+    plan: &UpgradePlan,
+    current_version: &Version,
+    releases_url: &str,
+) -> std::result::Result<StandaloneUpgradeOutcome, UpgradeError> {
+    let UpgradePlan::Standalone {
+        executable,
+        version_file,
+    } = plan
+    else {
+        return Err(UpgradeError::ExecutionFailed {
+            message: "standalone updater received a non-standalone plan".into(),
+        });
+    };
+    let Some((version, archive_name, archive_url, checksums_url)) =
+        release_assets(releases_url, current_version).await?
+    else {
+        return Ok(StandaloneUpgradeOutcome {
+            previous_version: current_version.to_string(),
+            installed_version: current_version.to_string(),
+            changed: false,
+            replacement_scheduled: false,
+        });
+    };
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("catify/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|error| UpgradeError::ReleaseDiscovery {
+            message: error.to_string(),
+        })?;
+    let checksums =
+        String::from_utf8(download(&client, &checksums_url).await?).map_err(|error| {
+            UpgradeError::Checksum {
+                message: error.to_string(),
+            }
+        })?;
+    let archive = download(&client, &archive_url).await?;
+    let expected =
+        checksum_for(&checksums, &archive_name).ok_or_else(|| UpgradeError::Checksum {
+            message: format!("{archive_name} is missing from SHA256SUMS"),
+        })?;
+    let actual = sha256(&archive);
+    if actual != expected {
+        return Err(UpgradeError::Checksum {
+            message: format!("expected {expected}, got {actual}"),
+        });
+    }
+    let binary = extract_binary(&archive_name, archive)?;
+    let replacement_scheduled = replace_standalone(executable, version_file, &binary, &version)?;
+    Ok(StandaloneUpgradeOutcome {
+        previous_version: current_version.to_string(),
+        installed_version: version.to_string(),
+        changed: true,
+        replacement_scheduled,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StandaloneUpgradeOutcome {
+    pub previous_version: String,
+    pub installed_version: String,
+    pub changed: bool,
+    pub replacement_scheduled: bool,
+}
+
+fn is_legacy_shell_install(executable: &Path, context: &DetectionContext) -> bool {
+    let Some(directory) = executable.parent() else {
+        return false;
+    };
+    let trusted_directory = env::var_os("XDG_BIN_HOME")
+        .map(PathBuf::from)
+        .or_else(|| context.home.as_ref().map(|home| home.join(".local/bin")));
+    if trusted_directory.is_none_or(|trusted| canonical_or_original(&trusted) != directory) {
+        return false;
+    }
+    if executable.file_name() != Some(OsStr::new(EXECUTABLE_NAME)) {
+        return false;
+    }
+    let alias = directory.join("catify");
+    fs::read_link(alias).is_ok_and(|target| target == Path::new(EXECUTABLE_NAME))
 }
 
 /// A cached result from the release update checker.
@@ -132,6 +474,20 @@ pub fn write_update_cache(path: &Path, cache: &UpdateCache) -> std::io::Result<(
 #[derive(Debug, Deserialize)]
 struct LatestRelease {
     tag_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Release {
+    tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    assets: Vec<ReleaseAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    browser_download_url: String,
 }
 
 /// Fetch the latest stable Catify release version. This never downloads an executable.
@@ -279,11 +635,18 @@ pub fn detect_with(context: &DetectionContext) -> InstallProvenance {
         };
     }
 
-    let version_file = executable
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("VERSION");
-    if channel == Some("standalone") || version_file.is_file() {
+    let install_directory = executable.parent().unwrap_or(Path::new("."));
+    let version_file = [
+        install_directory.join(".catify-version"),
+        install_directory.join("VERSION"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .unwrap_or_else(|| install_directory.join(".catify-version"));
+    if channel == Some("standalone")
+        || version_file.is_file()
+        || is_legacy_shell_install(&executable, context)
+    {
         return InstallProvenance::Standalone {
             executable,
             version_file,
@@ -455,10 +818,16 @@ pub enum UpgradeError {
         "cannot safely upgrade installation at {executable}: {reason}; reinstall cfy through npm, Homebrew, Cargo, or a standalone release archive"
     )]
     UnknownInstall { executable: PathBuf, reason: String },
-    #[error(
-        "standalone upgrade at {executable} requires signed, verified release metadata; no files were changed"
-    )]
-    StandaloneMetadataUnavailable { executable: PathBuf },
+    #[error("could not discover Catify releases: {message}")]
+    ReleaseDiscovery { message: String },
+    #[error("release v{version} has no asset `{asset}`")]
+    ReleaseAssetMissing { version: Version, asset: String },
+    #[error("release checksum verification failed: {message}")]
+    Checksum { message: String },
+    #[error("could not extract the Catify release archive: {message}")]
+    Archive { message: String },
+    #[error("could not replace the Catify executable: {message}")]
+    Replacement { message: String },
     #[error(
         "refusing to mutate the installation in non-interactive mode without explicit approval"
     )]
@@ -551,11 +920,8 @@ pub async fn execute(
         return Err(UpgradeError::NonInteractiveApprovalRequired);
     }
     let Some(command) = plan.command() else {
-        let UpgradePlan::Standalone { executable, .. } = plan else {
-            unreachable!()
-        };
-        return Err(UpgradeError::StandaloneMetadataUnavailable {
-            executable: executable.clone(),
+        return Err(UpgradeError::ExecutionFailed {
+            message: "standalone plans must be executed through execute_standalone".into(),
         });
     };
     let spec = ProcessSpec::new(command.program.to_string_lossy())
