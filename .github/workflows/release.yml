@@ -177,9 +177,10 @@ jobs:
           VERSION='${{ needs.verify.outputs.version }}'
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
 
+          ALREADY_PUBLISHED=false
           if npm view "$PACKAGE_NAME@$VERSION" version >/dev/null 2>&1; then
             echo "$PACKAGE_NAME@$VERSION is already published; skipping"
-            exit 0
+            ALREADY_PUBLISHED=true
           fi
 
           DIST_TAG=latest
@@ -187,8 +188,33 @@ jobs:
             DIST_TAG=next
           fi
 
-          node scripts/check-release-assets.js
-          CFY_SKIP_DOWNLOAD=1 npm publish \
-            --access public \
-            --tag "$DIST_TAG" \
-            --provenance
+          if [[ "$ALREADY_PUBLISHED" != true ]]; then
+            node scripts/check-release-assets.js
+            CFY_SKIP_DOWNLOAD=1 npm publish \
+              --access public \
+              --tag "$DIST_TAG" \
+              --provenance
+          fi
+
+          for attempt in $(seq 1 12); do
+            PUBLISHED_VERSION="$(npm view "$PACKAGE_NAME@$VERSION" version 2>/dev/null || true)"
+            TAGGED_VERSION="$(npm view "$PACKAGE_NAME@$DIST_TAG" version 2>/dev/null || true)"
+            if [[ "$PUBLISHED_VERSION" == "$VERSION" && "$TAGGED_VERSION" == "$VERSION" ]]; then
+              break
+            fi
+            if [[ "$attempt" == 12 ]]; then
+              echo "npm registry did not expose $PACKAGE_NAME@$VERSION with tag $DIST_TAG" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+
+          TMP_NPM_SMOKE="$(mktemp -d)"
+          trap 'rm -rf "$TMP_NPM_SMOKE"' EXIT
+          npm install --global \
+            --prefix "$TMP_NPM_SMOKE/prefix" \
+            --cache "$TMP_NPM_SMOKE/cache" \
+            --prefer-online \
+            "$PACKAGE_NAME@$VERSION"
+          "$TMP_NPM_SMOKE/prefix/bin/cfy" version
+          "$TMP_NPM_SMOKE/prefix/bin/catify" version

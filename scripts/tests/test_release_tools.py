@@ -227,6 +227,9 @@ class ReleaseToolsTest(unittest.TestCase):
         self.assertIn("--provenance", workflow)
         self.assertIn("DIST_TAG=next", workflow)
         self.assertIn("is already published; skipping", workflow)
+        self.assertIn("npm registry did not expose", workflow)
+        self.assertIn("--prefer-online", workflow)
+        self.assertIn('prefix/bin/cfy" version', workflow)
 
 
 if __name__ == "__main__":
