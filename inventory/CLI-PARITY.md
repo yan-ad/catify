@@ -7,12 +7,12 @@
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **111**
 - Commands with automated evidence: **111**
-- Live-verified commands: **26**
+- Live-verified commands: **28**
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `adapter` | 26 | Implemented through an explicit external runtime adapter. |
-| `native` | 85 | Implemented in Rust and exposed at the upstream command path. |
+| `adapter` | 24 | Implemented through an explicit external runtime adapter. |
+| `native` | 87 | Implemented in Rust and exposed at the upstream command path. |
 
 ## Runtime black-box parity
 
@@ -86,8 +86,8 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `hydrogen env list` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen env pull` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen env push` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `hydrogen generate route` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `hydrogen generate routes` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
+| `hydrogen generate route` | `native` | yes | yes | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust route generator resolves the project layout, locale convention, and React Router version, then synchronizes the official Shopify Hydrogen skeleton from an immutable project-compatible tag or commit into a checksummed runtime cache, safely extracts only template files from the GitHub archive, transpiles TypeScript templates to JavaScript natively, resolves local dependencies including non-code assets, and reuses the cached snapshot when offline. Evidence: crates/cfy-hydrogen/src/lib.rs tests; crates/cfy-cli/tests/cli.rs PATH-empty black-box test; live remote template fetch from Shopify/hydrogen immutable release ref. |
+| `hydrogen generate routes` | `native` | yes | yes | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust multi-route generator shares the secure official-template synchronization, dynamic route discovery, dependency traversal, TypeScript/JavaScript generation, locale handling, overwrite behavior, and cached offline behavior used by hydrogen generate route. Evidence: crates/cfy-hydrogen/src/lib.rs tests; crates/cfy-cli/tests/cli.rs PATH-empty black-box test; live remote template fetch from Shopify/hydrogen immutable release ref. |
 | `hydrogen init` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen link` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen list` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |

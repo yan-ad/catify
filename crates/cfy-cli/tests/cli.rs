@@ -92,6 +92,78 @@ export = "run"
 }
 
 #[test]
+fn hydrogen_route_generation_is_native_without_external_tools() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-route-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(fixture.join("app/routes")).unwrap();
+    std::fs::write(fixture.join("vite.config.js"), "export default {};\n").unwrap();
+
+    let cache_root = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-route-cache-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let cache_dir = cache_root.join("templates/test-ref");
+    std::fs::create_dir_all(cache_dir.join("app/routes")).unwrap();
+    std::fs::create_dir_all(cache_dir.join("app/components")).unwrap();
+    std::fs::write(
+        cache_dir.join("app/routes/pages.$handle.tsx"),
+        "import {PageTitle} from '~/components/PageTitle';\nexport default function Page() { return <PageTitle />; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        cache_dir.join("app/components/PageTitle.tsx"),
+        "export function PageTitle() { return <h1>Page</h1>; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        cache_dir.join("locale-check.ts"),
+        "export async function loader() {}\n",
+    )
+    .unwrap();
+    std::fs::write(cache_dir.join(".complete"), "test-ref\n").unwrap();
+
+    for help_flag in ["--help", "-h"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .env("PATH", "")
+            .args(["hydrogen", "generate", "route", help_flag])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("cfy hydrogen generate route"));
+    }
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .env("PATH", "")
+        .env("CFY_HYDROGEN_OFFLINE", "1")
+        .env("CFY_HYDROGEN_TEMPLATE_REF", "test-ref")
+        .env("CFY_CACHE_DIR", &cache_root)
+        .args(["hydrogen", "generate", "route", "page", "--path"])
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fixture.join("app/routes/pages.$handle.jsx").is_file());
+    assert!(fixture.join("app/components/PageTitle.jsx").is_file());
+
+    std::fs::remove_dir_all(fixture).unwrap();
+    std::fs::remove_dir_all(cache_root).unwrap();
+}
+
+#[test]
 fn hydrogen_unlink_help_is_native() {
     for help_flag in ["--help", "-h"] {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))

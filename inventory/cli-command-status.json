@@ -577,21 +577,25 @@
     },
     "hydrogen generate route": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs PATH-empty black-box test",
+        "live remote template fetch from Shopify/hydrogen immutable release ref"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "implementation": "Native Rust route generator resolves the project layout, locale convention, and React Router version, then synchronizes the official Shopify Hydrogen skeleton from an immutable project-compatible tag or commit into a checksummed runtime cache, safely extracts only template files from the GitHub archive, transpiles TypeScript templates to JavaScript natively, resolves local dependencies including non-code assets, and reuses the cached snapshot when offline.",
+      "live_verified": true,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen generate routes": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs PATH-empty black-box test",
+        "live remote template fetch from Shopify/hydrogen immutable release ref"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
-      "live_verified": false,
+      "implementation": "Native Rust multi-route generator shares the secure official-template synchronization, dynamic route discovery, dependency traversal, TypeScript/JavaScript generation, locale handling, overwrite behavior, and cached offline behavior used by hydrogen generate route.",
+      "live_verified": true,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen init": {
       "evidence": [
