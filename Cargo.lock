@@ -530,7 +530,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
 name = "cfy-api"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "base64",
  "cfy-auth",
@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-app"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "base64",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-app-init"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "cfy-process",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-auth"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "base64",
@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-build"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-config",
  "cfy-core",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-bulk"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "base64",
  "cfy-core",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-cli"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "brotli",
  "cfy-api",
@@ -679,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-config"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "serde",
@@ -689,14 +689,14 @@ dependencies = [
 
 [[package]]
 name = "cfy-core"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "cfy-deploy"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "cfy-api",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-dev"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "cfy-process",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-docs"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "reqwest",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-extension-adapter"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "cfy-process",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-functions"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-api",
  "cfy-auth",
@@ -776,7 +776,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-hydrogen"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-api",
  "cfy-app",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-organization"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "cfy-api",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-plugins"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-config",
  "cfy-core",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-process"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "libc",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-store"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "base64",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-theme-init"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-core",
  "cfy-process",
@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-tunnel"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "async-trait",
  "cfy-core",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "cfy-upgrade"
-version = "0.0.1-pre.5"
+version = "0.0.1-pre.6"
 dependencies = [
  "cfy-config",
  "cfy-core",
