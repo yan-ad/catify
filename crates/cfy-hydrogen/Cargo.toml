@@ -7,12 +7,16 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+cfy-api.workspace = true
+cfy-app.workspace = true
+cfy-auth.workspace = true
 cfy-core.workspace = true
 cfy-config.workspace = true
 cfy-process.workspace = true
 regex = "1.13"
 reqwest.workspace = true
 rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 swc_common = "26.0.0"
@@ -22,4 +26,5 @@ swc_ecma_transforms_base = "49.0.1"
 swc_ecma_transforms_typescript = "55.0.2"
 thiserror.workspace = true
 tokio.workspace = true
+url.workspace = true
 zip.workspace = true

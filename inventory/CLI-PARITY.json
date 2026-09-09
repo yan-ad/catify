@@ -9,8 +9,8 @@
     "tested": 111,
     "live_verified": 28,
     "by_status": {
-      "adapter": 20,
-      "native": 91
+      "adapter": 18,
+      "native": 93
     },
     "by_domain": {
       "app": {
@@ -32,8 +32,8 @@
         "native": 1
       },
       "hydrogen": {
-        "adapter": 18,
-        "native": 7
+        "adapter": 16,
+        "native": 9
       },
       "organization": {
         "native": 1
@@ -883,12 +883,13 @@
     {
       "command": "hydrogen link",
       "domain": "hydrogen",
-      "status": "adapter",
+      "status": "native",
       "owner": 43,
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust Hydrogen linker preserves upstream flags, authenticates with Catify's native session and Admin GraphQL token exchange, lists or creates storefronts through typed GraphQL operations, waits for explicit creation jobs, supports TTY selection, atomically writes only local .shopify/project.json state, and never invokes Shopify CLI or Node.",
       "tested": true,
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_list_and_link_are_native_without_an_external_cli"
       ],
       "live_verified": false,
       "notes": null
@@ -896,12 +897,13 @@
     {
       "command": "hydrogen list",
       "domain": "hydrogen",
-      "status": "adapter",
+      "status": "native",
       "owner": 43,
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust storefront listing resolves the configured shop, exchanges Catify's native session for a scoped Admin GraphQL token, requests typed Hydrogen storefront and deployment data, formats the upstream-compatible summary, and never invokes Shopify CLI or Node.",
       "tested": true,
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_list_and_link_are_native_without_an_external_cli"
       ],
       "live_verified": false,
       "notes": null

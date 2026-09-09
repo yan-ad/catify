@@ -608,21 +608,23 @@
     },
     "hydrogen link": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_list_and_link_are_native_without_an_external_cli"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust Hydrogen linker preserves upstream flags, authenticates with Catify's native session and Admin GraphQL token exchange, lists or creates storefronts through typed GraphQL operations, waits for explicit creation jobs, supports TTY selection, atomically writes only local .shopify/project.json state, and never invokes Shopify CLI or Node.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen list": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_list_and_link_are_native_without_an_external_cli"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust storefront listing resolves the configured shop, exchanges Catify's native session for a scoped Admin GraphQL token, requests typed Hydrogen storefront and deployment data, formats the upstream-compatible summary, and never invokes Shopify CLI or Node.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen login": {
       "evidence": [

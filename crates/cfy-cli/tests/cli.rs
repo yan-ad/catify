@@ -2088,3 +2088,44 @@ fn hydrogen_unlink_runs_natively_without_an_external_cli() {
     assert!(project.get("storefront").is_none());
     std::fs::remove_dir_all(fixture).unwrap();
 }
+
+#[test]
+fn hydrogen_list_and_link_are_native_without_an_external_cli() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-link-list-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(fixture.join(".shopify")).unwrap();
+    std::fs::write(
+        fixture.join(".shopify/project.json"),
+        r#"{"shop":"example.myshopify.com"}"#,
+    )
+    .unwrap();
+
+    let command = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .env("PATH", "")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let list = command(&["hydrogen", "list", "--path", fixture.to_str().unwrap()]);
+    assert_eq!(list.status.code(), Some(1));
+    assert!(!String::from_utf8_lossy(&list.stderr).contains("Hydrogen tooling is not installed"));
+
+    let link = command(&[
+        "hydrogen",
+        "link",
+        "--path",
+        fixture.to_str().unwrap(),
+        "--storefront",
+        "Example",
+    ]);
+    assert_eq!(link.status.code(), Some(1));
+    assert!(!String::from_utf8_lossy(&link.stderr).contains("Hydrogen tooling is not installed"));
+    std::fs::remove_dir_all(fixture).unwrap();
+}

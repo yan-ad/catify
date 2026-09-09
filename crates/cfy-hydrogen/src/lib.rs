@@ -7,8 +7,12 @@ use std::{
     time::Duration,
 };
 
+use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
+use cfy_app::exchange_admin_token;
+use cfy_auth::{CredentialStore, NativeCredentialStore, Session};
 use cfy_core::{Error, ErrorKind, Result};
 use cfy_process::{OutputMode, ProcessOutput, ProcessSpec, Supervisor};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use swc_common::{
@@ -19,6 +23,7 @@ use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
 use swc_ecma_transforms_base::{fixer::fixer, hygiene::hygiene, resolver};
 use swc_ecma_transforms_typescript::strip;
 use thiserror::Error;
+use url::Url;
 
 mod setup;
 mod shortcut;
@@ -34,6 +39,618 @@ pub enum HydrogenError {
     InvalidExecutable(String),
     #[error("Hydrogen command failed: {0}")]
     Process(String),
+}
+
+#[cfg(test)]
+fn list_storefronts_from_graphql(body: &str) -> Result<Vec<HydrogenStorefront>> {
+    #[derive(Deserialize)]
+    struct Envelope {
+        data: StorefrontListData,
+    }
+    serde_json::from_str::<Envelope>(body)
+        .map(|envelope| envelope.data.storefronts)
+        .map_err(|error| {
+            Error::with_source(
+                ErrorKind::Api,
+                "could not parse Hydrogen storefront list",
+                error,
+            )
+        })
+}
+
+const LIST_STOREFRONTS_QUERY: &str = r#"
+query ListStorefronts {
+  hydrogenStorefronts {
+    id
+    title
+    productionUrl
+    currentProductionDeployment { id createdAt commitMessage }
+  }
+}"#;
+const CREATE_STOREFRONT_MUTATION: &str = r#"
+mutation CreateStorefront($title: String!) {
+  hydrogenStorefrontCreate(title: $title) {
+    hydrogenStorefront { id title productionUrl }
+    userErrors { code field message }
+    jobId
+  }
+}"#;
+const STOREFRONT_JOB_QUERY: &str = r#"
+query FetchJob($id: ID!) {
+  hydrogenStorefrontJob(id: $id) { id done errors { code message } }
+}"#;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct HydrogenStorefront {
+    id: String,
+    title: String,
+    #[serde(default)]
+    production_url: Option<String>,
+    #[serde(default)]
+    current_production_deployment: Option<ProductionDeployment>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ProductionDeployment {
+    id: String,
+    created_at: String,
+    #[serde(default)]
+    commit_message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StorefrontListData {
+    #[serde(rename = "hydrogenStorefronts")]
+    storefronts: Vec<HydrogenStorefront>,
+}
+
+#[derive(Deserialize)]
+struct CreateStorefrontData {
+    #[serde(rename = "hydrogenStorefrontCreate")]
+    result: CreateStorefrontResult,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateStorefrontResult {
+    storefront: Option<HydrogenStorefront>,
+    #[serde(default)]
+    user_errors: Vec<StorefrontUserError>,
+    job_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StorefrontUserError {
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct StorefrontJobData {
+    #[serde(rename = "hydrogenStorefrontJob")]
+    job: Option<StorefrontJob>,
+}
+
+#[derive(Deserialize)]
+struct StorefrontJob {
+    done: bool,
+    #[serde(default)]
+    errors: Vec<StorefrontUserError>,
+}
+
+async fn admin_graphql_client(session: &Session, shop: &str) -> Result<GraphQlClient> {
+    let token = exchange_admin_token(session, shop).await?;
+    let endpoint = env::var("CFY_HYDROGEN_ADMIN_URL")
+        .unwrap_or_else(|_| format!("https://{shop}/admin/api/unstable/graphql.json"));
+    let url = Url::parse(&endpoint)
+        .map_err(|error| Error::config(format!("invalid Hydrogen Admin API URL: {error}")))?;
+    if url.scheme() != "https" && !matches!(url.host_str(), Some("127.0.0.1") | Some("localhost")) {
+        return Err(Error::config("Hydrogen Admin API URL must use HTTPS"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(Error::config(
+            "Hydrogen Admin API URL must not contain credentials",
+        ));
+    }
+    if !matches!(url.host_str(), Some("127.0.0.1") | Some("localhost"))
+        && url.host_str() != Some(shop)
+    {
+        return Err(Error::config(
+            "Hydrogen Admin API URL host must match the selected shop",
+        ));
+    }
+    let host = url.host_str().unwrap_or_default();
+    let base = format!(
+        "{}://{}{}",
+        url.scheme(),
+        host,
+        url.port()
+            .map(|port| format!(":{port}"))
+            .unwrap_or_default()
+    );
+    let authorization =
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+            .map_err(|error| Error::config(format!("invalid Admin API token: {error}")))?;
+    let http = HttpClient::new(&base)
+        .map_err(|error| Error::api(error.to_string()))?
+        .with_sensitive_header(
+            reqwest::header::HeaderName::from_static("authorization"),
+            authorization,
+        );
+    Ok(GraphQlClient::new(http, url.path()))
+}
+
+fn normalize_shop(value: &str) -> Result<String> {
+    let value = value.trim().trim_end_matches('/');
+    let value = value.strip_prefix("https://").unwrap_or(value);
+    let value = value.strip_prefix("http://").unwrap_or(value);
+    let domain = if value.ends_with(".myshopify.com") {
+        value.to_owned()
+    } else {
+        format!("{value}.myshopify.com")
+    };
+    let handle = domain.trim_end_matches(".myshopify.com");
+    if handle.is_empty()
+        || !handle
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+    {
+        return Err(Error::invalid_input(format!("invalid shop: {value}")));
+    }
+    Ok(domain)
+}
+
+fn project_configuration(root: &Path) -> Result<Map<String, Value>> {
+    let path = root.join(".shopify/project.json");
+    match fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
+            Error::with_source(
+                ErrorKind::Config,
+                format!("could not parse {}", path.display()),
+                error,
+            )
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Map::new()),
+        Err(error) => Err(Error::with_source(
+            ErrorKind::Config,
+            format!("could not read {}", path.display()),
+            error,
+        )),
+    }
+}
+
+fn configured_shop(root: &Path, requested: Option<&str>) -> Result<String> {
+    if let Some(shop) = requested {
+        return normalize_shop(shop);
+    }
+    project_configuration(root)?
+        .get("shop")
+        .and_then(Value::as_str)
+        .map(normalize_shop)
+        .transpose()?
+        .ok_or_else(|| Error::config("no shop found in local configuration; run `cfy hydrogen login` first or pass --shop"))
+}
+
+async fn authenticated_session() -> Result<Session> {
+    NativeCredentialStore::default()
+        .load("default")
+        .await?
+        .ok_or_else(|| Error::api("no authenticated session; run `cfy auth login` first"))
+}
+
+async fn list_storefronts(session: &Session, shop: &str) -> Result<Vec<HydrogenStorefront>> {
+    let client = admin_graphql_client(session, shop).await?;
+    let response = client
+        .execute::<_, StorefrontListData>(&GraphQlRequest::query(
+            LIST_STOREFRONTS_QUERY,
+            serde_json::json!({}),
+        ))
+        .await
+        .map_err(|error| Error::api(format!("could not list Hydrogen storefronts: {error}")))?;
+    Ok(response.data.storefronts)
+}
+
+async fn create_storefront(
+    session: &Session,
+    shop: &str,
+    title: &str,
+) -> Result<HydrogenStorefront> {
+    let client = admin_graphql_client(session, shop).await?;
+    let response = client
+        .execute::<_, CreateStorefrontData>(&GraphQlRequest::mutation(
+            CREATE_STOREFRONT_MUTATION,
+            serde_json::json!({"title": title}),
+        ))
+        .await
+        .map_err(|error| Error::api(format!("could not create Hydrogen storefront: {error}")))?;
+    let result = response.data.result;
+    if !result.user_errors.is_empty() {
+        return Err(Error::api(format!(
+            "could not create Hydrogen storefront: {}",
+            result
+                .user_errors
+                .into_iter()
+                .map(|error| error.message)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    let storefront = result
+        .storefront
+        .ok_or_else(|| Error::api("Hydrogen storefront creation returned no storefront"))?;
+    let job_id = result
+        .job_id
+        .ok_or_else(|| Error::api("Hydrogen storefront creation returned no job ID"))?;
+    for _ in 0..120 {
+        let response = client
+            .execute::<_, StorefrontJobData>(&GraphQlRequest::query(
+                STOREFRONT_JOB_QUERY,
+                serde_json::json!({"id": job_id}),
+            ))
+            .await
+            .map_err(|error| {
+                Error::api(format!(
+                    "could not check Hydrogen storefront creation: {error}"
+                ))
+            })?;
+        let job = response
+            .data
+            .job
+            .ok_or_else(|| Error::api("Hydrogen storefront creation job was not found"))?;
+        if !job.errors.is_empty() {
+            return Err(Error::api(format!(
+                "could not create Hydrogen storefront: {}",
+                job.errors
+                    .into_iter()
+                    .map(|error| error.message)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
+        if job.done {
+            return Ok(storefront);
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    Err(Error::api(
+        "timed out waiting for Hydrogen storefront creation",
+    ))
+}
+
+fn write_linked_storefront(root: &Path, shop: &str, storefront: &HydrogenStorefront) -> Result<()> {
+    let path = root.join(".shopify/project.json");
+    let mut config = project_configuration(root)?;
+    config.insert("shop".into(), Value::String(shop.to_owned()));
+    config.insert(
+        "storefront".into(),
+        serde_json::json!({"id": storefront.id, "title": storefront.title}),
+    );
+    let contents = serde_json::to_vec(&config).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            "could not serialize Hydrogen project configuration",
+            error,
+        )
+    })?;
+    let permissions = fs::metadata(&path)
+        .ok()
+        .map(|metadata| metadata.permissions());
+    cfy_config::write_atomic(&path, &contents).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            format!("could not replace {}", path.display()),
+            error,
+        )
+    })?;
+    if let Some(permissions) = permissions {
+        fs::set_permissions(&path, permissions).map_err(|error| {
+            Error::with_source(
+                ErrorKind::Config,
+                format!("could not restore permissions on {}", path.display()),
+                error,
+            )
+        })?;
+    }
+    ensure_shopify_gitignore(root);
+    Ok(())
+}
+
+fn default_storefront_title(root: &Path, storefronts: &[HydrogenStorefront]) -> String {
+    let title = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Hydrogen Storefront")
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut characters = part.chars();
+            let first = characters.next().unwrap_or_default().to_ascii_uppercase();
+            format!("{first}{}", characters.as_str().to_ascii_lowercase())
+        })
+        .collect::<String>();
+    let title = if title.is_empty() {
+        "Hydrogen Storefront".to_owned()
+    } else {
+        title
+    };
+    if storefronts
+        .iter()
+        .any(|storefront| storefront.title == title)
+    {
+        format!("{title} Storefront")
+    } else {
+        title
+    }
+}
+
+/// Returns `None` only when the user selects storefront creation.
+fn select_storefront(storefronts: &[HydrogenStorefront]) -> Result<Option<HydrogenStorefront>> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return Err(Error::invalid_input(
+            "multiple Hydrogen storefronts are available; pass --storefront <NAME>, --create-storefront, or --name in a non-interactive terminal",
+        ));
+    }
+    println!("Select a Hydrogen storefront to link:");
+    println!("  0) Create a new storefront");
+    for (index, storefront) in storefronts.iter().enumerate() {
+        println!(
+            "  {}) {} ({})",
+            index + 1,
+            storefront.title,
+            storefront
+                .production_url
+                .as_deref()
+                .unwrap_or("no production URL")
+        );
+    }
+    print!("Selection: ");
+    io::stdout().flush().map_err(|error| {
+        Error::process(format!(
+            "could not prompt for storefront selection: {error}"
+        ))
+    })?;
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|error| Error::process(format!("could not read storefront selection: {error}")))?;
+    let selection = input.trim().parse::<usize>().map_err(|_| {
+        Error::invalid_input("storefront selection must be a number from the displayed choices")
+    })?;
+    if selection == 0 {
+        return Ok(None);
+    }
+    storefronts
+        .get(selection - 1)
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| {
+            Error::invalid_input("storefront selection is outside the displayed choices")
+        })
+}
+
+async fn run_list(options: ListOptions) -> Result<()> {
+    let shop = configured_shop(&options.path, None)?;
+    let session = authenticated_session().await?;
+    let storefronts = list_storefronts(&session, &shop).await?;
+    if storefronts.is_empty() {
+        println!("Hydrogen storefronts\n\nThere are no Hydrogen storefronts on your Shop.");
+        return Ok(());
+    }
+    println!(
+        "Showing {} Hydrogen storefront{} for the store {shop}",
+        storefronts.len(),
+        if storefronts.len() == 1 { "" } else { "s" }
+    );
+    for storefront in storefronts {
+        let id = storefront.id.rsplit('/').next().unwrap_or(&storefront.id);
+        println!("{} (id: {id})", storefront.title);
+        if let Some(url) = storefront.production_url {
+            println!("    {url}");
+        }
+        if let Some(deployment) = storefront.current_production_deployment {
+            let date = deployment
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&deployment.created_at);
+            let message = deployment
+                .commit_message
+                .unwrap_or_default()
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            println!(
+                "    {date}{}",
+                if message.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {message}")
+                }
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn run_link(options: LinkOptions) -> Result<()> {
+    let root = fs::canonicalize(&options.path).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Config,
+            format!(
+                "could not resolve Hydrogen project {}",
+                options.path.display()
+            ),
+            error,
+        )
+    })?;
+    let shop = configured_shop(&root, options.shop.as_deref())?;
+    let config = project_configuration(&root)?;
+    if config
+        .get("storefront")
+        .and_then(Value::as_object)
+        .is_some_and(|value| !value.is_empty())
+        && !options.force
+    {
+        return Err(Error::invalid_input(
+            "this project is already linked to a Hydrogen storefront; pass --force to link a different storefront",
+        ));
+    }
+    let session = authenticated_session().await?;
+    let storefronts = list_storefronts(&session, &shop).await?;
+    let storefront = if let Some(name) = options.storefront {
+        storefronts.into_iter().find(|storefront| storefront.title == name).ok_or_else(|| {
+            Error::invalid_input(format!("couldn't find {name}; run `cfy hydrogen list --path {}` to list available storefronts", root.display()))
+        })?
+    } else if options.create_storefront || options.name.is_some() {
+        let title = options.name.unwrap_or_else(|| {
+            root.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Hydrogen Storefront")
+                .to_owned()
+        });
+        create_storefront(&session, &shop, title.trim()).await?
+    } else if storefronts.len() == 1 {
+        storefronts
+            .into_iter()
+            .next()
+            .expect("checked storefront count")
+    } else {
+        match select_storefront(&storefronts)? {
+            Some(storefront) => storefront,
+            None => {
+                create_storefront(
+                    &session,
+                    &shop,
+                    &default_storefront_title(&root, &storefronts),
+                )
+                .await?
+            }
+        }
+    };
+    write_linked_storefront(&root, &shop, &storefront)?;
+    println!("{} is now linked", storefront.title);
+    Ok(())
+}
+
+fn print_list_help() {
+    println!(
+        "Returns a list of Hydrogen storefronts available on a given shop.\n\nUsage: cfy hydrogen list [OPTIONS]\n\nOptions:\n      --path <PATH>  Path to the directory of the Hydrogen storefront [env: SHOPIFY_HYDROGEN_FLAG_PATH=]\n  -h, --help         Print help"
+    );
+}
+
+fn print_link_help() {
+    println!(
+        "Link a local project to one of your shop's Hydrogen storefronts.\n\nUsage: cfy hydrogen link [OPTIONS]\n\nOptions:\n      --create-storefront       Create a new Hydrogen storefront [env: SHOPIFY_HYDROGEN_FLAG_CREATE_STOREFRONT=]\n  -f, --force                    Link even when the project is already linked\n      --name <NAME>              The name to use when creating a new Hydrogen storefront [env: SHOPIFY_HYDROGEN_FLAG_NAME=]\n      --path <PATH>              Path to the directory of the Hydrogen storefront [env: SHOPIFY_HYDROGEN_FLAG_PATH=]\n  -s, --shop <SHOP>              Shop URL [env: SHOPIFY_SHOP=]\n      --storefront <STOREFRONT>  The name of an existing Hydrogen Storefront [env: SHOPIFY_HYDROGEN_STOREFRONT=]\n  -h, --help                     Print help"
+    );
+}
+
+fn parse_list_command(args: &[String]) -> Result<NativeCommand> {
+    let mut path = env::var_os("SHOPIFY_HYDROGEN_FLAG_PATH").map(PathBuf::from);
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--help" | "-h" => return Ok(NativeCommand::ListHelp),
+            "--path" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| Error::invalid_input("--path requires a value"))?;
+                path = Some(PathBuf::from(value));
+            }
+            value if value.starts_with("--path=") => {
+                path = Some(PathBuf::from(&value["--path=".len()..]));
+            }
+            value => {
+                return Err(Error::invalid_input(format!(
+                    "unexpected argument for hydrogen list: {value}"
+                )));
+            }
+        }
+        index += 1;
+    }
+    Ok(NativeCommand::List(ListOptions {
+        path: path.unwrap_or(current_directory()?),
+    }))
+}
+
+fn parse_link_command(args: &[String]) -> Result<NativeCommand> {
+    let mut path = env::var_os("SHOPIFY_HYDROGEN_FLAG_PATH").map(PathBuf::from);
+    let mut shop = env::var("SHOPIFY_SHOP").ok();
+    let mut storefront = env::var("SHOPIFY_HYDROGEN_STOREFRONT").ok();
+    let mut create_storefront =
+        env_bool("SHOPIFY_HYDROGEN_FLAG_CREATE_STOREFRONT")?.unwrap_or(false);
+    let mut name = env::var("SHOPIFY_HYDROGEN_FLAG_NAME").ok();
+    let mut force = env_bool("SHOPIFY_HYDROGEN_FLAG_FORCE")?.unwrap_or(false);
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--help" | "-h" => return Ok(NativeCommand::LinkHelp),
+            "-f" | "--force" => force = true,
+            "--create-storefront" => create_storefront = true,
+            "--path" | "--shop" | "-s" | "--storefront" | "--name" => {
+                let flag = args[index].clone();
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| Error::invalid_input(format!("{flag} requires a value")))?;
+                match flag.as_str() {
+                    "--path" => path = Some(PathBuf::from(value)),
+                    "--shop" | "-s" => shop = Some(value.clone()),
+                    "--storefront" => storefront = Some(value.clone()),
+                    "--name" => name = Some(value.clone()),
+                    _ => unreachable!(),
+                }
+            }
+            value if value.starts_with("--path=") => {
+                path = Some(PathBuf::from(&value["--path=".len()..]))
+            }
+            value if value.starts_with("--shop=") => {
+                shop = Some(value["--shop=".len()..].to_owned())
+            }
+            value if value.starts_with("--storefront=") => {
+                storefront = Some(value["--storefront=".len()..].to_owned())
+            }
+            value if value.starts_with("--name=") => {
+                name = Some(value["--name=".len()..].to_owned())
+            }
+            value => {
+                return Err(Error::invalid_input(format!(
+                    "unexpected argument for hydrogen link: {value}"
+                )));
+            }
+        }
+        index += 1;
+    }
+    if storefront.is_some() && (create_storefront || name.is_some()) {
+        return Err(Error::invalid_input(
+            "--storefront cannot be used with --create-storefront or --name; use --storefront to link an existing storefront or --name to create one",
+        ));
+    }
+    Ok(NativeCommand::Link(LinkOptions {
+        path: path.unwrap_or(current_directory()?),
+        shop,
+        storefront,
+        create_storefront,
+        name,
+        force,
+    }))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ListOptions {
+    path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkOptions {
+    path: PathBuf,
+    shop: Option<String>,
+    storefront: Option<String>,
+    create_storefront: bool,
+    name: Option<String>,
+    force: bool,
 }
 
 pub(crate) fn transpile_typescript(contents: &[u8], path: &Path) -> Result<Vec<u8>> {
@@ -597,6 +1214,10 @@ enum NativeCommand {
     SetupViteHelp,
     Shortcut,
     ShortcutHelp,
+    List(ListOptions),
+    ListHelp,
+    Link(LinkOptions),
+    LinkHelp,
 }
 
 fn env_bool(name: &str) -> Result<Option<bool>> {
@@ -642,6 +1263,8 @@ fn parse_native_command(args: &[String]) -> Result<Option<NativeCommand>> {
             vite::parse_setup_vite(&args[2..]).map(Some)
         }
         Some("shortcut") => shortcut::parse_shortcut(args).map(Some),
+        Some("list") => parse_list_command(args).map(Some),
+        Some("link") => parse_link_command(args).map(Some),
         _ => Ok(None),
     }
 }
@@ -1592,6 +2215,22 @@ pub async fn run(args: &[String]) -> Result<i32> {
             shortcut::print_shortcut_help();
             return Ok(0);
         }
+        Some(NativeCommand::List(options)) => {
+            run_list(options).await?;
+            return Ok(0);
+        }
+        Some(NativeCommand::ListHelp) => {
+            print_list_help();
+            return Ok(0);
+        }
+        Some(NativeCommand::Link(options)) => {
+            run_link(options).await?;
+            return Ok(0);
+        }
+        Some(NativeCommand::LinkHelp) => {
+            print_link_help();
+            return Ok(0);
+        }
         None => {}
     }
 
@@ -1668,6 +2307,102 @@ mod tests {
             Some(NativeCommand::UnlinkHelp)
         ));
         assert!(parse_native_command(&["dev".into()]).unwrap().is_none());
+    }
+
+    #[test]
+    fn parses_native_link_and_list_contracts() {
+        assert!(matches!(
+            parse_native_command(&["list".into(), "--path=storefront".into()]).unwrap(),
+            Some(NativeCommand::List(ListOptions { path })) if path == Path::new("storefront")
+        ));
+        assert!(matches!(
+            parse_native_command(&[
+                "link".into(),
+                "--path".into(),
+                "storefront".into(),
+                "--shop=example".into(),
+                "--storefront".into(),
+                "Example".into(),
+                "-f".into(),
+            ])
+            .unwrap(),
+            Some(NativeCommand::Link(LinkOptions { path, shop: Some(shop), storefront: Some(storefront), force: true, .. }))
+                if path == Path::new("storefront") && shop == "example" && storefront == "Example"
+        ));
+        assert!(
+            parse_native_command(&[
+                "link".into(),
+                "--storefront".into(),
+                "Example".into(),
+                "--name".into(),
+                "Other".into(),
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn parses_upstream_storefront_list_response() {
+        let storefronts = list_storefronts_from_graphql(
+            r#"{"data":{"hydrogenStorefronts":[{"id":"gid://shopify/HydrogenStorefront/7","title":"Example","productionUrl":"https://example.example.com","currentProductionDeployment":{"id":"gid://shopify/HydrogenStorefrontDeployment/3","createdAt":"2026-03-10T12:00:00Z","commitMessage":"Ship it\nmore"}}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(storefronts.len(), 1);
+        assert_eq!(storefronts[0].title, "Example");
+        assert_eq!(
+            storefronts[0]
+                .current_production_deployment
+                .as_ref()
+                .unwrap()
+                .commit_message
+                .as_deref(),
+            Some("Ship it\nmore")
+        );
+    }
+
+    #[test]
+    fn linked_storefront_preserves_project_configuration() {
+        let root = fixture("link-storefront");
+        fs::create_dir_all(root.join(".shopify")).unwrap();
+        fs::write(
+            root.join(".shopify/project.json"),
+            r#"{"shopName":"Example","email":"owner@example.com"}"#,
+        )
+        .unwrap();
+        write_linked_storefront(
+            &root,
+            "example.myshopify.com",
+            &HydrogenStorefront {
+                id: "gid://shopify/HydrogenStorefront/7".into(),
+                title: "Example Storefront".into(),
+                production_url: None,
+                current_production_deployment: None,
+            },
+        )
+        .unwrap();
+        let config: Value =
+            serde_json::from_str(&fs::read_to_string(root.join(".shopify/project.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["shopName"], "Example");
+        assert_eq!(config["shop"], "example.myshopify.com");
+        assert_eq!(config["storefront"]["title"], "Example Storefront");
+        assert!(
+            fs::read_to_string(root.join(".gitignore"))
+                .unwrap()
+                .lines()
+                .any(|line| line == ".shopify")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shop_normalization_is_strict() {
+        assert_eq!(
+            normalize_shop("https://example.myshopify.com/").unwrap(),
+            "example.myshopify.com"
+        );
+        assert_eq!(normalize_shop("example").unwrap(), "example.myshopify.com");
+        assert!(normalize_shop("example/path").is_err());
     }
 
     #[test]

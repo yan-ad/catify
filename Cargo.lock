@@ -778,12 +778,16 @@ dependencies = [
 name = "cfy-hydrogen"
 version = "0.0.1-pre.5"
 dependencies = [
+ "cfy-api",
+ "cfy-app",
+ "cfy-auth",
  "cfy-config",
  "cfy-core",
  "cfy-process",
  "regex",
  "reqwest",
  "rustls",
+ "serde",
  "serde_json",
  "sha2",
  "swc_common",
@@ -793,6 +797,7 @@ dependencies = [
  "swc_ecma_transforms_typescript",
  "thiserror 2.0.20",
  "tokio",
+ "url",
  "zip",
 ]
 
