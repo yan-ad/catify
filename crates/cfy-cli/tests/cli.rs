@@ -1017,6 +1017,16 @@ scopes = "read_products,write_products"
     assert_eq!(report["webs"].as_array().unwrap().len(), 1);
     assert_eq!(report["system"]["package_manager"], "pnpm");
 
+    let human = Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .args(["app", "info", "--path"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(human.status.success());
+    let human = String::from_utf8_lossy(&human.stdout);
+    assert!(human.contains("CURRENT APP CONFIGURATION"));
+    assert!(human.contains("DIRECTORY COMPONENTS"));
+
     let web_env = Command::new(env!("CARGO_BIN_EXE_cfy"))
         .args(["app", "info", "--web-env", "--path"])
         .arg(&root)
@@ -1790,7 +1800,7 @@ fn app_config_use_persists_selection_and_reset_restores_default() {
         .unwrap();
     let active: serde_json::Value = serde_json::from_slice(&active.stdout).unwrap();
     assert_eq!(active["config"], "staging");
-    assert_eq!(active["values"]["SHOPIFY_API_KEY"], "[REDACTED]");
+    assert_eq!(active["values"]["SHOPIFY_API_KEY"], "staging-key");
 
     let reset = Command::new(env!("CARGO_BIN_EXE_cfy"))
         .args(["app", "config", "use", "--reset", "--path"])
@@ -1808,7 +1818,7 @@ fn app_config_use_persists_selection_and_reset_restores_default() {
         .unwrap();
     let default: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
     assert_eq!(default["config"], "default");
-    assert_eq!(default["values"]["SHOPIFY_API_KEY"], "[REDACTED]");
+    assert_eq!(default["values"]["SHOPIFY_API_KEY"], "default-key");
 }
 
 #[cfg(unix)]

@@ -2287,9 +2287,8 @@ fn format_app_info(
         .build
         .automatically_update_urls_on_dev
         .map_or("Not configured".to_owned(), |value| value.to_string());
-    let user = std::env::var("CFY_AUTH_EMAIL").unwrap_or_else(|_| "Not configured".to_owned());
     let mut output = format!(
-        "CURRENT APP CONFIGURATION\n\n  Configuration file  {config_file}\n  App name            {}\n  Client ID            {}\n  Access scopes        {}\n\n  Dev store            {dev_store}\n  Update URLs          {update_urls}\n  User                 {user}\n\nYOUR PROJECT\n\n  Root location  {}\n\nDIRECTORY COMPONENTS",
+        "CURRENT APP CONFIGURATION\n\n  Configuration file  {config_file}\n  App name            {}\n  Client ID            {}\n  Access scopes        {}\n\n  Dev store            {dev_store}\n  Update URLs          {update_urls}\n\nYOUR PROJECT\n\n  Root location  {}\n\nDIRECTORY COMPONENTS",
         app.config.name.as_deref().unwrap_or("unknown"),
         app.config.client_id.as_deref().unwrap_or("unknown"),
         if scopes.is_empty() { "None" } else { scopes },

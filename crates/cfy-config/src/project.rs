@@ -635,6 +635,38 @@ mod tests {
     }
 
     #[test]
+    fn adopts_shopify_cli_selected_config_when_no_catify_override_exists() {
+        let fixture = Fixture::new("shopify-cli-selected-config");
+        fixture.write("shopify.app.toml", "client_id = 'default'\n");
+        fixture.write("shopify.app.staging.toml", "client_id = 'staging'\n");
+        fixture.write(
+            ".shopify/project.json",
+            r#"{"staging": {"dev_store_url": "staging.myshopify.com"}}"#,
+        );
+        let state = fixture.path().join("shopify-cli-app-state.json");
+        let root = fixture.path().to_string_lossy();
+        fixture.write(
+            "shopify-cli-app-state.json",
+            &format!(r#"{{"{root}": {{"configFile": "shopify.app.staging.toml"}}}}"#),
+        );
+        let previous = env::var_os("CFY_SHOPIFY_CLI_APP_STATE_FILE");
+        // Tests in this module execute serially enough for a scoped process
+        // override; restore the caller's state immediately after resolution.
+        unsafe { env::set_var("CFY_SHOPIFY_CLI_APP_STATE_FILE", &state) };
+        let project = discover(fixture.path(), Some(ProjectKind::App)).unwrap();
+        let selected =
+            resolve_environment(project, &ProjectOverrides::default(), &Environment::new())
+                .unwrap();
+        if let Some(value) = previous {
+            unsafe { env::set_var("CFY_SHOPIFY_CLI_APP_STATE_FILE", value) };
+        } else {
+            unsafe { env::remove_var("CFY_SHOPIFY_CLI_APP_STATE_FILE") };
+        }
+        assert_eq!(selected.config_name, "staging");
+        assert_eq!(selected.store.as_deref(), Some("staging.myshopify.com"));
+    }
+
+    #[test]
     fn discovers_theme_from_nested_directory() {
         let fixture = Fixture::new("theme");
         fixture.write("shopify.theme.toml", "name = 'theme'");

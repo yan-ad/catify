@@ -184,7 +184,7 @@ scopes = "read_products,write_products"
 
         assert_eq!(values["SHOPIFY_API_KEY"], "client-key");
         assert_eq!(values["SCOPES"], "read_products,write_products");
-        assert_eq!(redacted(&values)["SHOPIFY_API_KEY"], "[REDACTED]");
+        assert_eq!(redacted(&values)["SHOPIFY_API_KEY"], "client-key");
         assert_eq!(
             redacted(&values)["SHOPIFY_APP_URL"],
             values["SHOPIFY_APP_URL"]

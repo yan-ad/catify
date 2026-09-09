@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 111,
     "tested": 111,
-    "live_verified": 30,
+    "live_verified": 31,
     "by_status": {
       "adapter": 18,
       "native": 93
@@ -253,7 +253,8 @@
       "evidence": [
         "crates/cfy-cli/tests/cli.rs",
         "crates/cfy-config/src/app_env.rs tests",
-        "installed cfy 0.0.1-pre.2 environment rendering smoke against an existing app project"
+        "installed cfy 0.0.1-pre.2 environment rendering smoke against an existing app project",
+        "local 0.0.1-pre.5 live parity: emitted Shopify-compatible dotenv values for the Shopify CLI-selected kiriminaja-local app configuration"
       ],
       "live_verified": true,
       "notes": null
@@ -436,7 +437,8 @@
       "evidence": [
         "crates/cfy-cli/src/lib.rs",
         "crates/cfy-cli/tests/cli.rs",
-        "installed cfy 0.0.1-pre.2 smoke against an existing Shopify app project"
+        "installed cfy 0.0.1-pre.2 smoke against an existing Shopify app project",
+        "local 0.0.1-pre.5 live parity: read Shopify CLI selected config and rendered current configuration, dev store, and directory components"
       ],
       "live_verified": true,
       "notes": "Matches Shopify CLI 4.6.1 flags; dev-store information is reported only when available in local project state."
@@ -1056,7 +1058,8 @@
       "evidence": [
         "crates/cfy-app/src/lib.rs::BusinessPlatformClient",
         "crates/cfy-app/src/lib.rs tests",
-        "crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags"
+        "crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags",
+        "local 0.0.1-pre.5 live parity: listed the five accessible organizations in Shopify ID/name table form"
       ],
       "live_verified": true,
       "notes": null
@@ -1494,9 +1497,10 @@
       "tested": true,
       "evidence": [
         "crates/cfy-api/src/theme.rs tests",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "local 0.0.1-pre.5 live parity: read non-secret Shopify Theme store preference and listed 12 themes through native Admin GraphQL"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {

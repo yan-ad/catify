@@ -93,6 +93,36 @@ impl Drop for AbortOnDrop {
     }
 }
 
+/// Reads Shopify CLI's non-secret, last-selected Theme store so `cfy theme`
+/// commands preserve the target a user already chose with `shopify theme`.
+/// Explicit flags and environment variables still have higher precedence.
+fn shopify_cli_theme_store() -> Option<String> {
+    let path = env::var_os("CFY_SHOPIFY_CLI_THEME_STATE_FILE")
+        .map(PathBuf::from)
+        .or_else(|| {
+            let home = env::var_os("HOME")?;
+            #[cfg(target_os = "macos")]
+            {
+                Some(
+                    PathBuf::from(home)
+                        .join("Library/Preferences/shopify-cli-theme-conf-nodejs/config.json"),
+                )
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                Some(PathBuf::from(home).join(".config/shopify-cli-theme-conf-nodejs/config.json"))
+            }
+        })?;
+    let contents = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .ok()?
+        .get("themeStore")?
+        .as_str()
+        .map(str::trim)
+        .filter(|store| !store.is_empty())
+        .map(str::to_owned)
+}
+
 async fn list_themes_with_session(store: &str) -> Result<Vec<Theme>> {
     #[derive(serde::Deserialize)]
     struct Data {
@@ -135,11 +165,12 @@ async fn list_themes_with_session(store: &str) -> Result<Vec<Theme>> {
             .map(|port| format!(":{port}"))
             .unwrap_or_default()
     );
-    let mut header = reqwest::header::HeaderValue::from_str(token.expose())
+    let mut header = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token.expose()))
         .map_err(|error| Error::config(format!("invalid Admin access token: {error}")))?;
     header.set_sensitive(true);
     let client = HttpClient::new(&base)
         .map_err(|error| Error::api(error.to_string()))?
+        .with_sensitive_header(reqwest::header::AUTHORIZATION, header.clone())
         .with_sensitive_header(
             reqwest::header::HeaderName::from_static("x-shopify-access-token"),
             header,
@@ -2040,7 +2071,7 @@ async fn pull_theme(
 }
 
 async fn list_themes(explicit_store: Option<&str>, output: &Output) -> Result<()> {
-    let store = resolve_store(explicit_store)?;
+    let store = resolve_theme_store(explicit_store)?;
     let themes = match env::var("SHOPIFY_CLI_THEME_TOKEN") {
         Ok(token) => ThemeClient::new(&store, &token, SHOPIFY_API_VERSION)
             .map_err(Error::from)?
@@ -2087,6 +2118,23 @@ fn resolve_store(explicit_store: Option<&str>) -> Result<String> {
     }
 
     select_store(explicit_store, &environment, None)
+}
+
+fn resolve_theme_store(explicit_store: Option<&str>) -> Result<String> {
+    if let Some(store) = explicit_store.filter(|store| !store.trim().is_empty()) {
+        return Ok(store.to_owned());
+    }
+    for name in ["CFY_STORE", "SHOPIFY_FLAG_STORE"] {
+        if let Ok(store) = env::var(name)
+            && !store.trim().is_empty()
+        {
+            return Ok(store);
+        }
+    }
+    if let Some(store) = shopify_cli_theme_store() {
+        return Ok(store);
+    }
+    resolve_store(None)
 }
 
 fn theme_environment_credentials(
@@ -2188,25 +2236,19 @@ fn format_themes(themes: &[Theme]) -> String {
         .max(4);
     let role_width = themes
         .iter()
-        .map(|theme| display_theme_role(&theme.role).len())
+        .map(|theme| display_theme_role(&theme.role).len() + 2)
         .max()
-        .unwrap_or(4)
-        .max(4);
-    let id_width = themes
-        .iter()
-        .map(|theme| theme.id.to_string().len() + 1)
-        .max()
-        .unwrap_or(2)
-        .max(2);
+        .unwrap_or(6)
+        .max(6);
     let mut rows = vec![format!(
         "{:<name_width$}  {:<role_width$}  ID",
         "NAME", "ROLE"
     )];
     rows.extend(themes.iter().map(|theme| {
         format!(
-            "{:<name_width$}  [{:<role_width$}]  #{:<id_width$}",
+            "{:<name_width$}  {:<role_width$}  #{}",
             theme.name,
-            display_theme_role(&theme.role),
+            format!("[{}]", display_theme_role(&theme.role)),
             theme.id
         )
     }));
@@ -2869,8 +2911,8 @@ mod tests {
     use super::{
         AppCommand, Cli, Command, ThemeCommand, explicit_theme_tokens, filesystem_event,
         format_themes, insert_character, live_push_requires_confirmation, remove_character,
-        reusable_session, select_store, select_theme_for_open, suggested_command_args,
-        update_auth_selection, update_list_selection,
+        reusable_session, select_store, select_theme_for_open, shopify_cli_theme_store,
+        suggested_command_args, update_auth_selection, update_list_selection,
     };
     use cfy_api::theme::Theme;
     use cfy_auth::{Secret, Session};
@@ -3200,9 +3242,34 @@ mod tests {
 
         assert_eq!(
             format_themes(&themes),
-            "10\tmain\tDawn\n20\tdevelopment\tDevelopment"
+            "NAME         ROLE           ID\nDawn         [live]         #10\nDevelopment  [development]  #20"
         );
         assert_eq!(format_themes(&[]), "No themes found.");
+    }
+
+    #[test]
+    fn reads_shopify_theme_store_preference() {
+        let path = std::env::temp_dir().join(format!(
+            "cfy-theme-preference-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, r#"{"themeStore":"theme.myshopify.com"}"#).unwrap();
+        let previous = std::env::var_os("CFY_SHOPIFY_CLI_THEME_STATE_FILE");
+        unsafe { std::env::set_var("CFY_SHOPIFY_CLI_THEME_STATE_FILE", &path) };
+        assert_eq!(
+            shopify_cli_theme_store().as_deref(),
+            Some("theme.myshopify.com")
+        );
+        if let Some(previous) = previous {
+            unsafe { std::env::set_var("CFY_SHOPIFY_CLI_THEME_STATE_FILE", previous) };
+        } else {
+            unsafe { std::env::remove_var("CFY_SHOPIFY_CLI_THEME_STATE_FILE") };
+        }
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
