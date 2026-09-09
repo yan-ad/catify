@@ -112,7 +112,7 @@ fn hydrogen_route_generation_is_native_without_external_tools() {
             .unwrap()
             .as_nanos()
     ));
-    let cache_dir = cache_root.join("templates/test-ref");
+    let cache_dir = cache_root.join("templates/v2-test-ref");
     std::fs::create_dir_all(cache_dir.join("app/routes")).unwrap();
     std::fs::create_dir_all(cache_dir.join("app/components")).unwrap();
     std::fs::write(
@@ -130,6 +130,21 @@ fn hydrogen_route_generation_is_native_without_external_tools() {
         "export async function loader() {}\n",
     )
     .unwrap();
+    for relative in [
+        "vite/vite.config.js",
+        "vite/package.json",
+        "i18n/subfolders.ts",
+        "i18n/domains.ts",
+        "i18n/subdomains.ts",
+        "i18n/mock-i18n-types.ts",
+        "tailwind/tailwind.css",
+        "tailwind/package.json",
+        "vanilla-extract/package.json",
+    ] {
+        let path = cache_dir.join("assets").join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "export default {};\n").unwrap();
+    }
     std::fs::write(cache_dir.join(".complete"), "test-ref\n").unwrap();
 
     for help_flag in ["--help", "-h"] {
@@ -158,6 +173,140 @@ fn hydrogen_route_generation_is_native_without_external_tools() {
     );
     assert!(fixture.join("app/routes/pages.$handle.jsx").is_file());
     assert!(fixture.join("app/components/PageTitle.jsx").is_file());
+
+    std::fs::remove_dir_all(fixture).unwrap();
+    std::fs::remove_dir_all(cache_root).unwrap();
+}
+
+#[test]
+fn hydrogen_setup_commands_are_native_with_official_cached_assets() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-setup-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let cache_root = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-setup-cache-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let cache_dir = cache_root.join("templates/v2-test-ref");
+    std::fs::create_dir_all(cache_dir.join("app/routes")).unwrap();
+    std::fs::create_dir_all(fixture.join("app/lib")).unwrap();
+    std::fs::write(
+        fixture.join("vite.config.js"),
+        "export default {plugins: []};\n",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("package.json"),
+        r#"{"dependencies":{"@shopify/hydrogen":"1.0.0"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("app/lib/context.js"),
+        "import {createHydrogenContext} from '@shopify/hydrogen';\nexport function createAppLoadContext(request) { return createHydrogenContext({env: {}}); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("app/root.jsx"),
+        "export function links() { return []; }\n",
+    )
+    .unwrap();
+    for (relative, contents) in [
+        ("vite/vite.config.js", "export default {};\n"),
+        ("vite/package.json", "{}\n"),
+        (
+            "i18n/mock-i18n-types.ts",
+            "export type I18nBase = unknown;\n",
+        ),
+        (
+            "i18n/domains.ts",
+            "export function getLocaleFromRequest(request: Request) { return {}; }\n",
+        ),
+        (
+            "i18n/subdomains.ts",
+            "export function getLocaleFromRequest(request: Request) { return {}; }\n",
+        ),
+        (
+            "i18n/subfolders.ts",
+            "export function getLocaleFromRequest(request: Request) { return {}; }\n",
+        ),
+        ("tailwind/tailwind.css", "@import 'tailwindcss';\n"),
+        (
+            "tailwind/package.json",
+            r#"{"devDependencies":{"@tailwindcss/vite":"^4"}}"#,
+        ),
+        ("vanilla-extract/package.json", "{}\n"),
+    ] {
+        let path = cache_dir.join("assets").join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+    std::fs::write(cache_dir.join("locale-check.ts"), "export {};\n").unwrap();
+    std::fs::write(cache_dir.join(".complete"), "test-ref\n").unwrap();
+
+    let run = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .env("PATH", "")
+            .env("CFY_HYDROGEN_OFFLINE", "1")
+            .env("CFY_HYDROGEN_TEMPLATE_REF", "test-ref")
+            .env("CFY_CACHE_DIR", &cache_root)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    for args in [
+        vec![
+            "hydrogen",
+            "setup",
+            "markets",
+            "subfolders",
+            "--path",
+            fixture.to_str().unwrap(),
+        ],
+        vec![
+            "hydrogen",
+            "setup",
+            "css",
+            "tailwind",
+            "--no-install-deps",
+            "--path",
+            fixture.to_str().unwrap(),
+        ],
+    ] {
+        let output = run(&args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(fixture.join("app/lib/i18n.js").is_file());
+    assert!(fixture.join("app/styles/tailwind.css").is_file());
+    assert!(
+        std::fs::read_to_string(fixture.join("vite.config.js"))
+            .unwrap()
+            .contains("tailwindcss()")
+    );
+    assert!(
+        std::fs::read_to_string(fixture.join("app/root.jsx"))
+            .unwrap()
+            .contains("tailwindCss")
+    );
+    for command in [
+        ["hydrogen", "setup", "markets", "--help"].as_slice(),
+        ["hydrogen", "setup", "css", "--help"].as_slice(),
+        ["hydrogen", "shortcut", "--help"].as_slice(),
+    ] {
+        assert!(run(command).status.success());
+    }
 
     std::fs::remove_dir_all(fixture).unwrap();
     std::fs::remove_dir_all(cache_root).unwrap();

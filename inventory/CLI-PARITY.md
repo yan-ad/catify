@@ -11,8 +11,8 @@
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `adapter` | 24 | Implemented through an explicit external runtime adapter. |
-| `native` | 87 | Implemented in Rust and exposed at the upstream command path. |
+| `adapter` | 21 | Implemented through an explicit external runtime adapter. |
+| `native` | 90 | Implemented in Rust and exposed at the upstream command path. |
 
 ## Runtime black-box parity
 
@@ -95,10 +95,10 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `hydrogen logout` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen preview` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen setup` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `hydrogen setup css` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `hydrogen setup markets` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
+| `hydrogen setup css` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust CSS setup validates Vite projects, updates package metadata and source configuration, and synchronizes Tailwind and Vanilla Extract assets exclusively from the official immutable Hydrogen archive cache; it never executes Shopify CLI or Node. Evidence: crates/cfy-hydrogen/src/setup.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
+| `hydrogen setup markets` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust multi-market setup validates the strategy, synchronizes the official i18n asset from the immutable Hydrogen archive cache, transpiles it when the project is JavaScript, and updates the Hydrogen context without executing Shopify CLI or Node. Evidence: crates/cfy-hydrogen/src/setup.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
 | `hydrogen setup vite` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
-| `hydrogen shortcut` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
+| `hydrogen shortcut` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust shell shortcut installer creates idempotent Bash, Zsh, Fish, or PowerShell h2 aliases without Shopify CLI delegation. Evidence: crates/cfy-hydrogen/src/shortcut.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
 | `hydrogen unlink` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust removal of the linked storefront from `.shopify/project.json`, preserving local account metadata and ensuring `.shopify` is ignored by Git. Evidence: crates/cfy-hydrogen/src/lib.rs::unlink_storefront; crates/cfy-hydrogen/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_unlink_runs_natively_without_an_external_cli. |
 | `hydrogen upgrade` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `organization list` | `native` | yes | yes | [#37](https://github.com/yan-ad/catify/issues/37) | Native Business Platform token exchange and organization listing are exposed at the exact upstream command path. Evidence: crates/cfy-app/src/lib.rs::BusinessPlatformClient; crates/cfy-app/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::organization_list_uses_shopify_compatible_command_and_flags. |

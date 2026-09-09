@@ -662,21 +662,23 @@
     },
     "hydrogen setup css": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/setup.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust CSS setup validates Vite projects, updates package metadata and source configuration, and synchronizes Tailwind and Vanilla Extract assets exclusively from the official immutable Hydrogen archive cache; it never executes Shopify CLI or Node.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen setup markets": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/setup.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust multi-market setup validates the strategy, synchronizes the official i18n asset from the immutable Hydrogen archive cache, transpiles it when the project is JavaScript, and updates the Hydrogen context without executing Shopify CLI or Node.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen setup vite": {
       "evidence": [
@@ -689,12 +691,13 @@
     },
     "hydrogen shortcut": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/shortcut.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust shell shortcut installer creates idempotent Bash, Zsh, Fish, or PowerShell h2 aliases without Shopify CLI delegation.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen unlink": {
       "evidence": [

@@ -20,6 +20,9 @@ use swc_ecma_transforms_base::{fixer::fixer, hygiene::hygiene, resolver};
 use swc_ecma_transforms_typescript::strip;
 use thiserror::Error;
 
+mod setup;
+mod shortcut;
+
 #[derive(Debug, Error)]
 pub enum HydrogenError {
     #[error(
@@ -32,7 +35,7 @@ pub enum HydrogenError {
     Process(String),
 }
 
-fn transpile_typescript(contents: &[u8], path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn transpile_typescript(contents: &[u8], path: &Path) -> Result<Vec<u8>> {
     let source = String::from_utf8(contents.to_vec()).map_err(|error| {
         Error::with_source(
             ErrorKind::Config,
@@ -81,12 +84,12 @@ fn transpile_typescript(contents: &[u8], path: &Path) -> Result<Vec<u8>> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TemplateSource {
+pub(crate) struct TemplateSource {
     root: PathBuf,
 }
 
 impl TemplateSource {
-    fn read(&self, path: &Path) -> Result<Vec<u8>> {
+    pub(crate) fn read(&self, path: &Path) -> Result<Vec<u8>> {
         fs::read(self.root.join(path)).map_err(|error| {
             Error::with_source(
                 ErrorKind::Config,
@@ -96,7 +99,7 @@ impl TemplateSource {
         })
     }
 
-    fn has_file(&self, path: &Path) -> bool {
+    pub(crate) fn has_file(&self, path: &Path) -> bool {
         self.root.join(path).is_file()
     }
 }
@@ -150,13 +153,17 @@ fn exact_hydrogen_version(requirement: &str) -> Option<&str> {
 }
 
 fn template_ref_cache_key(reference: &str) -> String {
-    if reference.bytes().all(|byte| {
+    let key = if reference.bytes().all(|byte| {
         byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'@' | b'~')
     }) {
         reference.to_owned()
     } else {
         format!("{:x}", Sha256::digest(reference.as_bytes()))
-    }
+    };
+    // v2 adds setup assets to the official archive cache. Namespacing avoids
+    // treating route-only snapshots created by earlier Catify versions as a
+    // complete source for native setup commands.
+    format!("v2-{key}")
 }
 
 fn template_cache_is_fresh(path: &Path) -> bool {
@@ -182,7 +189,7 @@ fn template_reference(root: &Path) -> String {
         .unwrap_or_else(|| pinned_template_ref(root))
 }
 
-fn resolve_template_source(root: &Path) -> Result<TemplateSource> {
+pub(crate) fn resolve_template_source(root: &Path) -> Result<TemplateSource> {
     let reference = template_reference(root);
     let cache_root = hydrogen_cache_root().join("templates");
     let cache_key = template_ref_cache_key(&reference);
@@ -357,7 +364,9 @@ fn extract_template_archive(bytes: &[u8], destination: &Path) -> Result<()> {
             ));
         };
 
-        let target = if path.ends_with(UPSTREAM_LOCALE_CHECK_PATH) {
+        let target = if let Some(relative) = setup_asset_relative(&path) {
+            destination.join("assets").join(relative)
+        } else if path.ends_with(UPSTREAM_LOCALE_CHECK_PATH) {
             destination.join("locale-check.ts")
         } else {
             let components = path.components().collect::<Vec<_>>();
@@ -498,6 +507,49 @@ const UPSTREAM_LOCALE_CHECK_PATH: &str = "packages/cli/assets/routes/locale-chec
 const MAX_TEMPLATE_ARCHIVE_BYTES: usize = 32 * 1024 * 1024;
 const TEMPLATE_DISCOVERY_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// Official `packages/cli/assets` files that the native setup commands
+/// synchronize from the immutable Hydrogen archive. The tuple maps the
+/// upstream path suffix to the relative path inside the runtime cache.
+const SETUP_ASSET_FILES: &[(&str, &str)] = &[
+    (
+        "packages/cli/assets/vite/vite.config.js",
+        "vite/vite.config.js",
+    ),
+    ("packages/cli/assets/vite/package.json", "vite/package.json"),
+    (
+        "packages/cli/assets/i18n/subfolders.ts",
+        "i18n/subfolders.ts",
+    ),
+    ("packages/cli/assets/i18n/domains.ts", "i18n/domains.ts"),
+    (
+        "packages/cli/assets/i18n/subdomains.ts",
+        "i18n/subdomains.ts",
+    ),
+    (
+        "packages/cli/assets/i18n/mock-i18n-types.ts",
+        "i18n/mock-i18n-types.ts",
+    ),
+    (
+        "packages/cli/assets/tailwind/tailwind.css",
+        "tailwind/tailwind.css",
+    ),
+    (
+        "packages/cli/assets/tailwind/package.json",
+        "tailwind/package.json",
+    ),
+    (
+        "packages/cli/assets/vanilla-extract/package.json",
+        "vanilla-extract/package.json",
+    ),
+];
+
+fn setup_asset_relative(path: &Path) -> Option<&'static str> {
+    SETUP_ASSET_FILES
+        .iter()
+        .find(|(upstream, _)| path.ends_with(upstream))
+        .map(|(_, relative)| *relative)
+}
+
 const ALL_ROUTE_CHOICES: &[&str] = &[
     "home",
     "page",
@@ -536,6 +588,12 @@ enum NativeCommand {
     GenerateRouteHelp,
     GenerateRoutes(GenerateRouteOptions),
     GenerateRoutesHelp,
+    SetupMarkets(setup::SetupMarketsOptions),
+    SetupMarketsHelp,
+    SetupCss(setup::SetupCssOptions),
+    SetupCssHelp,
+    Shortcut,
+    ShortcutHelp,
 }
 
 fn env_bool(name: &str) -> Result<Option<bool>> {
@@ -552,7 +610,7 @@ fn env_bool(name: &str) -> Result<Option<bool>> {
     }
 }
 
-fn current_directory() -> Result<PathBuf> {
+pub(crate) fn current_directory() -> Result<PathBuf> {
     env::current_dir().map_err(|error| {
         Error::with_source(
             ErrorKind::Config,
@@ -571,6 +629,13 @@ fn parse_native_command(args: &[String]) -> Result<Option<NativeCommand>> {
         Some("generate") if args.get(1).map(String::as_str) == Some("routes") => {
             parse_generate_command(&args[2..], true).map(Some)
         }
+        Some("setup") if args.get(1).map(String::as_str) == Some("markets") => {
+            setup::parse_setup_markets(&args[2..]).map(Some)
+        }
+        Some("setup") if args.get(1).map(String::as_str) == Some("css") => {
+            setup::parse_setup_css(&args[2..]).map(Some)
+        }
+        Some("shortcut") => shortcut::parse_shortcut(args).map(Some),
         _ => Ok(None),
     }
 }
@@ -842,7 +907,7 @@ fn route_names(source: &TemplateSource, route_name: &str) -> Result<Vec<String>>
         .collect())
 }
 
-fn has_vite_config(root: &Path) -> bool {
+pub(crate) fn has_vite_config(root: &Path) -> bool {
     ["tsx", "ts", "jsx", "js", "mjs", "cjs"]
         .iter()
         .any(|extension| root.join(format!("vite.config.{extension}")).is_file())
@@ -873,7 +938,7 @@ fn project_directories(root: &Path) -> Result<(PathBuf, PathBuf)> {
     Ok((root, app_directory))
 }
 
-fn resolve_static_app_directory(root: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_static_app_directory(root: &Path) -> Option<PathBuf> {
     for filename in [
         "react-router.config.ts",
         "react-router.config.js",
@@ -1045,7 +1110,7 @@ fn transform_adapter(contents: &[u8], adapter: Option<&str>) -> Vec<u8> {
         .into_bytes()
 }
 
-fn write_generated_file(path: &Path, contents: &[u8]) -> Result<()> {
+pub(crate) fn write_generated_file(path: &Path, contents: &[u8]) -> Result<()> {
     reject_symlink_ancestors(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -1065,11 +1130,19 @@ fn write_generated_file(path: &Path, contents: &[u8]) -> Result<()> {
     })
 }
 
-fn reject_symlink_ancestors(path: &Path) -> Result<()> {
+pub(crate) fn reject_symlink_ancestors(path: &Path) -> Result<()> {
     let mut current = path.parent();
     while let Some(directory) = current {
         match fs::symlink_metadata(directory) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
+                // macOS exposes /var as a system alias to /private/var, and
+                // its standard temporary directory lives beneath it. It is
+                // not a project-controlled escape; all other symlinks remain
+                // prohibited, including any inside a project tree.
+                if cfg!(target_os = "macos") && directory == Path::new("/var") {
+                    current = directory.parent();
+                    continue;
+                }
                 return Err(Error::config(format!(
                     "refusing to generate through symlink {}",
                     directory.display()
@@ -1473,6 +1546,36 @@ pub async fn run(args: &[String]) -> Result<i32> {
             print_generate_routes_help();
             return Ok(0);
         }
+        Some(NativeCommand::SetupMarkets(options)) => {
+            tokio::task::spawn_blocking(move || setup::run_setup_markets(&options))
+                .await
+                .map_err(|error| Error::process(format!("setup markets task failed: {error}")))??;
+            return Ok(0);
+        }
+        Some(NativeCommand::SetupMarketsHelp) => {
+            setup::print_setup_markets_help();
+            return Ok(0);
+        }
+        Some(NativeCommand::SetupCss(options)) => {
+            tokio::task::spawn_blocking(move || setup::run_setup_css(&options))
+                .await
+                .map_err(|error| Error::process(format!("setup css task failed: {error}")))??;
+            return Ok(0);
+        }
+        Some(NativeCommand::SetupCssHelp) => {
+            setup::print_setup_css_help();
+            return Ok(0);
+        }
+        Some(NativeCommand::Shortcut) => {
+            tokio::task::spawn_blocking(shortcut::run_create_shortcut)
+                .await
+                .map_err(|error| Error::process(format!("shortcut task failed: {error}")))??;
+            return Ok(0);
+        }
+        Some(NativeCommand::ShortcutHelp) => {
+            shortcut::print_shortcut_help();
+            return Ok(0);
+        }
         None => {}
     }
 
@@ -1766,6 +1869,12 @@ export default function Test({value}: {value: string}) {
             archive
                 .write_all(b"export async function loader() {}\n")
                 .unwrap();
+            for (upstream, _) in SETUP_ASSET_FILES {
+                archive
+                    .start_file(format!("hydrogen-commit/{upstream}"), options)
+                    .unwrap();
+                archive.write_all(b"export default {};\n").unwrap();
+            }
             archive
                 .start_file("hydrogen-commit/README.md", options)
                 .unwrap();
@@ -1777,6 +1886,7 @@ export default function Test({value}: {value: string}) {
         assert!(root.join("app/routes/_index.tsx").is_file());
         assert!(root.join("app/components/Foo.tsx").is_file());
         assert!(root.join("locale-check.ts").is_file());
+        assert!(root.join("assets/vite/vite.config.js").is_file());
         assert!(!root.join("README.md").exists());
         fs::remove_dir_all(root).unwrap();
     }
@@ -1810,6 +1920,12 @@ export default function Test({value}: {value: string}) {
                 archive
                     .write_all(b"export async function loader() {}\n")
                     .unwrap();
+                for (upstream, _) in SETUP_ASSET_FILES {
+                    archive
+                        .start_file(format!("hydrogen-commit/{upstream}"), options)
+                        .unwrap();
+                    archive.write_all(b"export default {};\n").unwrap();
+                }
                 archive.finish().unwrap();
             }
             fs::write(&archive_path, bytes.get_ref()).unwrap();
@@ -1818,6 +1934,7 @@ export default function Test({value}: {value: string}) {
         fetch_official_template(archive_path.to_str().unwrap(), &cache_dir).unwrap();
         assert!(cache_dir.join("app/routes/_index.tsx").is_file());
         assert!(cache_dir.join("locale-check.ts").is_file());
+        assert!(cache_dir.join("assets/tailwind/tailwind.css").is_file());
         assert!(cache_dir.join(".complete").is_file());
         fs::remove_dir_all(root).unwrap();
     }
