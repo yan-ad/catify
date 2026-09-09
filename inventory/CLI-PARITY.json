@@ -9,8 +9,8 @@
     "tested": 111,
     "live_verified": 26,
     "by_status": {
-      "adapter": 27,
-      "native": 84
+      "adapter": 26,
+      "native": 85
     },
     "by_domain": {
       "app": {
@@ -32,7 +32,8 @@
         "native": 1
       },
       "hydrogen": {
-        "adapter": 25
+        "adapter": 24,
+        "native": 1
       },
       "organization": {
         "native": 1
@@ -1008,12 +1009,14 @@
     {
       "command": "hydrogen unlink",
       "domain": "hydrogen",
-      "status": "adapter",
+      "status": "native",
       "owner": 43,
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust removal of the linked storefront from `.shopify/project.json`, preserving local account metadata and ensuring `.shopify` is ignored by Git.",
       "tested": true,
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs::unlink_storefront",
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_unlink_runs_natively_without_an_external_cli"
       ],
       "live_verified": false,
       "notes": null

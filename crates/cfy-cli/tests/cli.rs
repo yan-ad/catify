@@ -92,6 +92,25 @@ export = "run"
 }
 
 #[test]
+fn hydrogen_unlink_help_is_native() {
+    for help_flag in ["--help", "-h"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+            .env("PATH", "")
+            .args(["hydrogen", "unlink", help_flag])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("cfy hydrogen unlink"));
+        assert!(stdout.contains("--path"));
+    }
+}
+
+#[test]
 fn app_init_matches_shopify_public_command_shape() {
     let output = cfy(&["app", "init", "--help"]);
     assert!(output.status.success());
@@ -1729,4 +1748,41 @@ fn completion_generates_a_shell_script() {
     let output = cfy(&["completion", "bash"]);
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("_cfy"));
+}
+#[test]
+fn hydrogen_unlink_runs_natively_without_an_external_cli() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-unlink-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(fixture.join(".shopify")).unwrap();
+    std::fs::write(
+        fixture.join(".shopify/project.json"),
+        r#"{"shop":"example.myshopify.com","shopName":"Example","email":"owner@example.com","storefront":{"id":"gid://shopify/HydrogenStorefront/1","title":"Hydrogen Test"}}"#,
+    )
+    .unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .env("PATH", "")
+        .args(["hydrogen", "unlink", "--path", fixture.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Hydrogen Test"));
+    let project: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.join(".shopify/project.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(project["shop"], "example.myshopify.com");
+    assert!(project.get("storefront").is_none());
+    std::fs::remove_dir_all(fixture).unwrap();
 }

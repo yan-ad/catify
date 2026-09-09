@@ -694,12 +694,14 @@
     },
     "hydrogen unlink": {
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/lib.rs::unlink_storefront",
+        "crates/cfy-hydrogen/src/lib.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_unlink_runs_natively_without_an_external_cli"
       ],
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust removal of the linked storefront from `.shopify/project.json`, preserving local account metadata and ensuring `.shopify` is ignored by Git.",
       "live_verified": false,
       "owner": 43,
-      "status": "adapter"
+      "status": "native"
     },
     "hydrogen upgrade": {
       "evidence": [

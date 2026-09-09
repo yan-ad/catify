@@ -8,5 +8,7 @@ repository.workspace = true
 
 [dependencies]
 cfy-core.workspace = true
+cfy-config.workspace = true
 cfy-process.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true

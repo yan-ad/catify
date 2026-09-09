@@ -718,8 +718,10 @@ dependencies = [
 name = "cfy-hydrogen"
 version = "0.0.1-pre.4"
 dependencies = [
+ "cfy-config",
  "cfy-core",
  "cfy-process",
+ "serde_json",
  "thiserror 2.0.20",
 ]
 
