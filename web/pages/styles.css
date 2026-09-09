@@ -1,10 +1,9 @@
 :root {
   --background: #0a0b0a;
   --text: #f3eee2;
-  --muted: #979b94;
+  --muted: #9a9d96;
   --line: #292c29;
   --green: #8cff46;
-  --orange: #ff7a1a;
   color: var(--text);
   background: var(--background);
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
@@ -26,53 +25,52 @@ body {
   background: var(--background);
 }
 
+a,
+button {
+  font: inherit;
+}
+
 a {
   color: inherit;
   text-decoration-color: #626760;
   text-underline-offset: 0.22em;
 }
 
-a:hover {
+a:hover,
+.copy-button:hover {
   color: var(--green);
   text-decoration-color: currentColor;
 }
 
-button,
-a {
-  font: inherit;
-}
-
-button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+button:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 4px;
 }
 
 h1,
-h2,
-h3,
-p,
-dl,
-dd {
+p {
   margin-top: 0;
 }
 
 .page {
-  width: min(100% - 3rem, 980px);
+  width: min(100% - 2rem, 640px);
   margin: 0 auto;
 }
 
-.masthead {
+.landing {
   display: flex;
-  min-height: 88px;
+  min-height: 100svh;
   align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
+  padding: clamp(2.5rem, 8vw, 5.5rem) 0 2rem;
+  text-align: center;
 }
 
 .wordmark {
+  align-self: flex-start;
   color: var(--text);
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.05em;
   text-decoration: none;
@@ -82,308 +80,121 @@ dd {
   display: inline-block;
   width: 0.55rem;
   height: 0.55rem;
-  margin-right: 0.65rem;
+  margin-right: 0.6rem;
   background: var(--green);
   content: "";
 }
 
-nav {
-  display: flex;
-  gap: 1.5rem;
-  color: var(--muted);
-  font-size: 0.76rem;
+.hero-logo {
+  display: block;
+  width: min(75vw, 310px);
+  height: auto;
+  margin: clamp(3rem, 9vw, 5.5rem) auto clamp(1.75rem, 4vw, 2.5rem);
 }
 
-.hero {
-  display: grid;
-  min-height: 650px;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 390px);
-  align-items: center;
-  gap: clamp(2rem, 7vw, 6rem);
-  padding: clamp(5rem, 11vw, 8rem) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  margin-bottom: 2.2rem;
-  color: var(--muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.status span {
-  width: 0.5rem;
-  height: 0.5rem;
-  background: var(--orange);
-}
-
-h1,
-h2 {
-  font-family: Georgia, "Times New Roman", serif;
-  font-weight: 400;
-  letter-spacing: -0.055em;
+.intro {
+  margin-bottom: 1.8rem;
 }
 
 h1 {
-  margin-bottom: 1.8rem;
-  font-size: clamp(3.5rem, 7.7vw, 6rem);
-  line-height: 0.96;
+  max-width: 28rem;
+  margin-bottom: 0.6rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.1rem, 5vw, 3rem);
+  font-weight: 400;
+  letter-spacing: -0.055em;
+  line-height: 1;
 }
 
-.lede {
-  max-width: 590px;
-  margin-bottom: 2.2rem;
-  color: #c7c5bd;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.15rem, 2vw, 1.35rem);
-  line-height: 1.55;
+.intro p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: clamp(0.78rem, 1.8vw, 0.9rem);
+  line-height: 1.6;
 }
 
 .install-command {
   display: flex;
-  max-width: 520px;
+  width: min(100%, 470px);
+  min-height: 52px;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 0;
-  border-block: 1px solid var(--line);
+  border: 1px solid var(--line);
+  text-align: left;
 }
 
 .install-command code {
+  min-width: 0;
+  padding-left: 1rem;
   color: var(--green);
-  font-size: clamp(0.72rem, 1.6vw, 0.88rem);
-  white-space: nowrap;
+  font-size: clamp(0.72rem, 2.2vw, 0.84rem);
+  overflow-wrap: anywhere;
 }
 
 .copy-button {
-  padding: 0;
+  align-self: stretch;
+  flex: 0 0 auto;
+  padding: 0 1rem;
   border: 0;
+  border-left: 1px solid var(--line);
   color: var(--muted);
   background: transparent;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   text-decoration: underline;
   text-decoration-color: #626760;
   text-underline-offset: 0.22em;
   cursor: pointer;
 }
 
-.copy-button:hover {
-  color: var(--green);
-}
-
-.link-row {
-  display: flex;
-  gap: 0.65rem;
-  margin: 1rem 0 0;
+.platforms,
+.links,
+.disclaimer {
   color: var(--muted);
-  font-size: 0.7rem;
-}
-
-.hero-logo {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.benchmarks,
-.about {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: clamp(2rem, 7vw, 6rem);
-  padding: clamp(4.5rem, 9vw, 7rem) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.section-number {
-  margin-bottom: 0.75rem;
-  color: var(--orange);
-  font-size: 0.68rem;
-}
-
-.section-heading h2 {
-  margin-bottom: 0;
-  font-size: clamp(2rem, 4.5vw, 3.3rem);
-  line-height: 1;
-}
-
-.stat-list {
-  border-top: 1px solid var(--line);
-}
-
-.stat-list > div {
-  display: flex;
-  min-height: 74px;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 2rem;
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.stat-list dt {
-  color: #c7c5bd;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.05rem;
-}
-
-.stat-list dd {
-  color: var(--green);
-  font-size: clamp(1.2rem, 3vw, 1.75rem);
-  letter-spacing: -0.06em;
-}
-
-.fine-print {
-  max-width: 670px;
-  margin: 1.5rem 0 0;
-  color: var(--muted);
-  font-size: 0.69rem;
-  line-height: 1.65;
-}
-
-.text-link {
-  margin: 1.2rem 0 0;
   font-size: 0.72rem;
+  line-height: 1.7;
 }
 
-.principles article {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 2rem;
-  padding: 0 0 2.2rem;
+.platforms {
+  margin: 1.15rem 0 1.35rem;
 }
 
-.principles article + article {
-  padding-top: 2.2rem;
-  border-top: 1px solid var(--line);
+.platforms span,
+.links span {
+  margin: 0 0.35rem;
+  color: #555950;
 }
 
-.principles h3 {
-  margin-bottom: 0;
-  color: var(--text);
-  font-size: 0.76rem;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.principles p {
-  margin-bottom: 0;
-  color: #b1b2ac;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.08rem;
-  line-height: 1.6;
-}
-
-.closing {
-  max-width: 720px;
-  padding: clamp(5rem, 11vw, 9rem) 0;
-}
-
-.closing h2 {
-  margin-bottom: 1.5rem;
-  font-size: clamp(3rem, 7vw, 5.3rem);
-  line-height: 0.95;
-}
-
-.closing p {
-  max-width: 600px;
-  margin-bottom: 1.7rem;
-  color: #b1b2ac;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.15rem;
-  line-height: 1.6;
-}
-
-.primary-link {
-  color: var(--green);
-  font-size: 0.76rem;
-  text-decoration-color: currentColor;
-}
-
-footer {
+.links {
   display: flex;
-  min-height: 110px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.disclaimer {
+  margin: auto 0 0;
+  padding-top: 3.5rem;
   font-size: 0.64rem;
-  line-height: 1.6;
-}
-
-footer p {
-  margin-bottom: 0;
-}
-
-footer p:last-child {
-  max-width: 390px;
-  text-align: right;
-}
-
-@media (max-width: 760px) {
-  .page {
-    width: min(100% - 2rem, 980px);
-  }
-
-  .masthead {
-    min-height: 72px;
-  }
-
-  nav a:not(:last-child) {
-    display: none;
-  }
-
-  .hero {
-    min-height: auto;
-    grid-template-columns: 1fr;
-    gap: 3rem;
-    padding: 4.5rem 0;
-  }
-
-  .hero-logo {
-    width: min(78vw, 360px);
-    justify-self: center;
-  }
-
-  .benchmarks,
-  .about {
-    grid-template-columns: 1fr;
-    gap: 2.5rem;
-  }
-
-  .principles article {
-    grid-template-columns: 1fr;
-    gap: 0.7rem;
-  }
-
-  footer {
-    align-items: flex-start;
-    flex-direction: column;
-    justify-content: center;
-  }
-
-  footer p:last-child {
-    text-align: left;
-  }
 }
 
 @media (max-width: 460px) {
-  h1 {
-    font-size: 3.35rem;
+  .landing {
+    padding-top: 2rem;
+  }
+
+  .hero-logo {
+    width: min(80vw, 290px);
+    margin-top: 3.5rem;
   }
 
   .install-command {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: stretch;
   }
 
   .install-command code {
-    white-space: normal;
-    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    padding-block: 0.75rem;
   }
 }
 
