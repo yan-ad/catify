@@ -41,7 +41,10 @@ use cfy_bulk::{
 };
 use cfy_config::{
     active_config::ActiveConfigState,
-    app_env::{from_project as app_environment, merge_dotenv, redacted as redact_app_environment},
+    app_env::{
+        from_project as app_environment, merge_dotenv, redacted as redact_app_environment,
+        render_dotenv,
+    },
     project::{Environment, ProjectKind, ProjectOverrides, discover, resolve_environment},
     write_atomic,
 };
@@ -2253,18 +2256,10 @@ fn app_info(
         },
         "diagnostics": diagnostics,
     });
-    let human = format!(
-        "App information\n\nName: {}\nClient ID: {}\nConfiguration: {}\nApplication URL: {}\nEmbedded: {}\nScopes: {}\nExtensions: {}\nWeb components: {}\nPackage manager: {}\nDiagnostics: {}",
-        app.config.name.as_deref().unwrap_or("unknown"),
-        app.config.client_id.as_deref().unwrap_or("unknown"),
-        selected.config_path.display(),
-        app.config.application_url.as_deref().unwrap_or("unknown"),
-        app.config
-            .embedded
-            .map_or("unknown".to_owned(), |value| value.to_string()),
-        if scopes.is_empty() { "none" } else { scopes },
-        app.extensions.len(),
-        app.webs.len(),
+    let human = format_app_info(
+        &selected,
+        app,
+        scopes,
         package_manager,
         graph.diagnostics.len(),
     );
@@ -2272,6 +2267,63 @@ fn app_info(
         .success(&human, &report)
         .map_err(|error| Error::process(error.to_string()))?;
     Ok(0)
+}
+
+fn format_app_info(
+    selected: &cfy_config::project::ProjectEnvironment,
+    app: &cfy_config::graph::AppNode,
+    scopes: &str,
+    package_manager: &str,
+    diagnostics: usize,
+) -> String {
+    let config_file = selected
+        .config_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    let dev_store = selected.store.as_deref().unwrap_or("Not configured");
+    let update_urls = app
+        .config
+        .build
+        .automatically_update_urls_on_dev
+        .map_or("Not configured".to_owned(), |value| value.to_string());
+    let user = std::env::var("CFY_AUTH_EMAIL").unwrap_or_else(|_| "Not configured".to_owned());
+    let mut output = format!(
+        "CURRENT APP CONFIGURATION\n\n  Configuration file  {config_file}\n  App name            {}\n  Client ID            {}\n  Access scopes        {}\n\n  Dev store            {dev_store}\n  Update URLs          {update_urls}\n  User                 {user}\n\nYOUR PROJECT\n\n  Root location  {}\n\nDIRECTORY COMPONENTS",
+        app.config.name.as_deref().unwrap_or("unknown"),
+        app.config.client_id.as_deref().unwrap_or("unknown"),
+        if scopes.is_empty() { "None" } else { scopes },
+        selected.project.root().display(),
+    );
+    if app.webs.is_empty() && app.extensions.is_empty() {
+        output.push_str("\n\n  None found.");
+    } else {
+        for web in &app.webs {
+            output.push_str(&format!(
+                "\n\n  web\n    {}  {}",
+                web.name.as_deref().unwrap_or("web"),
+                web.directory.display()
+            ));
+        }
+        for extension in &app.extensions {
+            output.push_str(&format!(
+                "\n\n  {}\n    {}  {}",
+                extension.extension_type.as_deref().unwrap_or("extension"),
+                extension
+                    .name
+                    .as_deref()
+                    .filter(|name| !name.starts_with("t:"))
+                    .or(extension.handle.as_deref())
+                    .unwrap_or("extension"),
+                extension.directory.display()
+            ));
+        }
+    }
+    if diagnostics > 0 {
+        output.push_str(&format!("\n\nDiagnostics: {diagnostics}"));
+    }
+    output.push_str(&format!("\n\nPackage manager: {package_manager}"));
+    output
 }
 
 async fn app_bulk_client(
@@ -3519,7 +3571,7 @@ fn app_env_command(command: AppEnvCommand, output: &Output) -> Result<u8> {
             let values = app_environment(&selected);
             output
                 .success(
-                    "App environment",
+                    &render_dotenv(&redact_app_environment(&values)),
                     &serde_json::json!({
                         "config": selected.config_name,
                         "config_path": selected.config_path,

@@ -25,6 +25,7 @@ use crate::{
     },
     output::Output,
 };
+use cfy_api::{GraphQlClient, GraphQlRequest, HttpClient};
 use cfy_api::{
     theme::{Theme, ThemeAsset, ThemeChange, ThemeClient, diff_assets},
     theme_profile::{LiquidEvaluation, ThemeProfiler},
@@ -90,6 +91,92 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn list_themes_with_session(store: &str) -> Result<Vec<Theme>> {
+    #[derive(serde::Deserialize)]
+    struct Data {
+        themes: ThemeConnection,
+    }
+    #[derive(serde::Deserialize)]
+    struct ThemeConnection {
+        nodes: Vec<ThemeNode>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ThemeNode {
+        id: String,
+        name: String,
+        role: String,
+        #[serde(rename = "createdAt")]
+        created_at: Option<String>,
+        #[serde(rename = "updatedAt")]
+        updated_at: Option<String>,
+        processing: Option<bool>,
+    }
+
+    let session = authenticated_session("default").await?;
+    let token = exchange_admin_token(&session, store).await?;
+    let endpoint = env::var("CFY_ADMIN_GRAPHQL_URL").unwrap_or_else(|_| {
+        format!("https://{store}/admin/api/{SHOPIFY_API_VERSION}/graphql.json")
+    });
+    let url = reqwest::Url::parse(&endpoint)
+        .map_err(|error| Error::config(format!("invalid Admin GraphQL URL: {error}")))?;
+    if url.scheme() != "https"
+        && url.host_str() != Some("localhost")
+        && url.host_str() != Some("127.0.0.1")
+    {
+        return Err(Error::config("Admin GraphQL URL must use HTTPS"));
+    }
+    let base = format!(
+        "{}://{}{}",
+        url.scheme(),
+        url.host_str().unwrap_or_default(),
+        url.port()
+            .map(|port| format!(":{port}"))
+            .unwrap_or_default()
+    );
+    let mut header = reqwest::header::HeaderValue::from_str(token.expose())
+        .map_err(|error| Error::config(format!("invalid Admin access token: {error}")))?;
+    header.set_sensitive(true);
+    let client = HttpClient::new(&base)
+        .map_err(|error| Error::api(error.to_string()))?
+        .with_sensitive_header(
+            reqwest::header::HeaderName::from_static("x-shopify-access-token"),
+            header,
+        );
+    let response = GraphQlClient::new(client, url.path())
+        .execute::<_, Data>(&GraphQlRequest::query(
+            "query ListThemes { themes(first: 250) { nodes { id name role createdAt updatedAt processing } } }",
+            serde_json::json!({}),
+        ))
+        .await
+        .map_err(|error| Error::api(format!("could not list themes: {error}")))?;
+    let mut themes = response
+        .data
+        .themes
+        .nodes
+        .into_iter()
+        .map(|theme| {
+            let id = theme
+                .id
+                .rsplit('/')
+                .next()
+                .ok_or_else(|| Error::api("theme API returned an invalid ID"))?
+                .parse()
+                .map_err(|_| Error::api("theme API returned a non-numeric ID"))?;
+            Ok(Theme {
+                id,
+                name: theme.name,
+                role: theme.role.to_ascii_lowercase(),
+                created_at: theme.created_at,
+                updated_at: theme.updated_at,
+                previewable: None,
+                processing: theme.processing,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    themes.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(themes)
 }
 
 fn explicit_theme_tokens(
@@ -1954,14 +2041,14 @@ async fn pull_theme(
 
 async fn list_themes(explicit_store: Option<&str>, output: &Output) -> Result<()> {
     let store = resolve_store(explicit_store)?;
-    let token = env::var("SHOPIFY_CLI_THEME_TOKEN").map_err(|_| {
-        Error::new(
-            cfy_core::ErrorKind::Api,
-            "theme authentication is required; set SHOPIFY_CLI_THEME_TOKEN or complete the Catify login flow",
-        )
-    })?;
-    let client = ThemeClient::new(&store, &token, SHOPIFY_API_VERSION).map_err(Error::from)?;
-    let themes = client.list().await.map_err(Error::from)?;
+    let themes = match env::var("SHOPIFY_CLI_THEME_TOKEN") {
+        Ok(token) => ThemeClient::new(&store, &token, SHOPIFY_API_VERSION)
+            .map_err(Error::from)?
+            .list()
+            .await
+            .map_err(Error::from)?,
+        Err(_) => list_themes_with_session(&store).await?,
+    };
     output
         .success(&format_themes(&themes), &themes)
         .map_err(|error| {
@@ -2093,11 +2180,46 @@ fn format_themes(themes: &[Theme]) -> String {
     if themes.is_empty() {
         return "No themes found.".to_owned();
     }
-    themes
+    let name_width = themes
         .iter()
-        .map(|theme| format!("{}\t{}\t{}", theme.id, theme.role, theme.name))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|theme| theme.name.len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let role_width = themes
+        .iter()
+        .map(|theme| display_theme_role(&theme.role).len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let id_width = themes
+        .iter()
+        .map(|theme| theme.id.to_string().len() + 1)
+        .max()
+        .unwrap_or(2)
+        .max(2);
+    let mut rows = vec![format!(
+        "{:<name_width$}  {:<role_width$}  ID",
+        "NAME", "ROLE"
+    )];
+    rows.extend(themes.iter().map(|theme| {
+        format!(
+            "{:<name_width$}  [{:<role_width$}]  #{:<id_width$}",
+            theme.name,
+            display_theme_role(&theme.role),
+            theme.id
+        )
+    }));
+    rows.join("\n")
+}
+
+fn display_theme_role(role: &str) -> &str {
+    match role {
+        "main" => "live",
+        "development" => "development",
+        "unpublished" => "unpublished",
+        other => other,
+    }
 }
 
 /// Options shared by every Catify command.
@@ -2296,7 +2418,7 @@ pub enum ThemeCommand {
     /// List themes available on a store.
     List {
         /// Store handle or myshopify.com domain.
-        #[arg(long)]
+        #[arg(short = 's', long, env = "SHOPIFY_FLAG_STORE")]
         store: Option<String>,
     },
     /// Download a theme's selected assets into a local directory.

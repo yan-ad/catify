@@ -16,6 +16,46 @@ pub enum ProjectKind {
     Theme,
 }
 
+/// Returns Shopify CLI's last selected app configuration for this project.
+///
+/// Catify keeps its own selection state, but reading this non-secret preference
+/// lets an existing Shopify CLI project keep working without an extra `cfy app
+/// config use` migration step. An explicit Catify/Shopify flag always wins and
+/// stale preference entries are ignored by `select_config` below.
+fn shopify_cli_selected_config(project: &Project) -> Option<String> {
+    let path = std::env::var_os("CFY_SHOPIFY_CLI_APP_STATE_FILE")
+        .map(PathBuf::from)
+        .or_else(|| {
+            let home = std::env::var_os("HOME")?;
+            #[cfg(target_os = "macos")]
+            {
+                Some(
+                    PathBuf::from(home)
+                        .join("Library/Preferences/shopify-cli-app-nodejs/config.json"),
+                )
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                Some(PathBuf::from(home).join(".config/shopify-cli-app-nodejs/config.json"))
+            }
+        })?;
+    let contents = fs::read_to_string(path).ok()?;
+    let state = serde_json::from_str::<serde_json::Value>(&contents).ok()?;
+    let canonical_root = project
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| project.root.clone());
+    let root = canonical_root.to_string_lossy();
+    state
+        .get(root.as_ref())
+        .or_else(|| state.get(project.root.to_string_lossy().as_ref()))?
+        .get("configFile")?
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
 /// Shopify CLI persists the last development store per app client ID in this
 /// local, gitignored file. It is a convenience default only: an explicit flag,
 /// environment variable, or `store` in the selected TOML always wins.
@@ -331,7 +371,8 @@ fn resolve_environment_inner(
         .config
         .as_deref()
         .or_else(|| environment_value(environment, &["CFY_CONFIG", "SHOPIFY_FLAG_APP_CONFIG"]));
-    let config_path = select_config(&project, requested_config)?;
+    let shopify_cli_config = shopify_cli_selected_config(&project);
+    let config_path = select_config(&project, requested_config.or(shopify_cli_config.as_deref()))?;
     let config_name = config_name(&config_path, project.kind);
     let contents = fs::read_to_string(&config_path).map_err(|source| ProjectError::ReadConfig {
         path: config_path.clone(),

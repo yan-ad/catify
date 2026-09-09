@@ -86,17 +86,20 @@ pub fn human_lines(list: &OrganizationList) -> String {
     if list.organizations.is_empty() {
         return "No organizations found.".into();
     }
-    list.organizations
+    let id_width = list
+        .organizations
         .iter()
-        .map(|organization| {
-            format!(
-                "{}\t{}",
-                organization.name,
-                organization.handle.as_deref().unwrap_or("-")
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|organization| organization.id.len())
+        .max()
+        .unwrap_or(2)
+        .max(2);
+    let mut rows = vec![format!("{:<id_width$}  NAME", "ID")];
+    rows.extend(
+        list.organizations
+            .iter()
+            .map(|organization| format!("{:<id_width$}  {}", organization.id, organization.name)),
+    );
+    rows.join("\n")
 }
 
 #[cfg(test)]
@@ -144,7 +147,7 @@ mod tests {
         .unwrap();
         assert_eq!(list.pages, 2);
         assert_eq!(list.organizations[0].name, "Acme");
-        assert_eq!(human_lines(&list), "Acme\tacme\nZulu\t-");
+        assert_eq!(human_lines(&list), "ID  NAME\n1   Acme\n2   Zulu");
     }
 
     #[test]

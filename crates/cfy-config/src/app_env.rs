@@ -92,7 +92,10 @@ pub fn redacted(values: &AppEnvironment) -> AppEnvironment {
 
 fn is_sensitive(name: &str) -> bool {
     let name = name.to_ascii_uppercase();
-    name.contains("KEY")
+    // Shopify's API key is the public app client ID, not a credential. It is
+    // intentionally shown by `shopify app env show` and safe to write to the
+    // generated web environment. Other keys remain conservatively redacted.
+    (name.contains("KEY") && name != "SHOPIFY_API_KEY")
         || name.contains("TOKEN")
         || name.contains("SECRET")
         || name.contains("PASSWORD")

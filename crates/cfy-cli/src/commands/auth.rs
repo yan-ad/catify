@@ -43,6 +43,25 @@ pub enum AuthCommand {
     Logout,
 }
 
+fn format_organizations(organizations: &[cfy_app::RemoteOrganization]) -> String {
+    if organizations.is_empty() {
+        return "No organizations found.".to_owned();
+    }
+    let id_width = organizations
+        .iter()
+        .map(|organization| organization.id.len())
+        .max()
+        .unwrap_or(2)
+        .max(2);
+    let mut rows = vec![format!("{:<id_width$}  NAME", "ID")];
+    rows.extend(
+        organizations
+            .iter()
+            .map(|organization| format!("{:<id_width$}  {}", organization.id, organization.name)),
+    );
+    rows.join("\n")
+}
+
 #[derive(Debug, Subcommand)]
 pub enum OrganizationCommand {
     /// List organizations available to the current identity.
@@ -197,11 +216,9 @@ pub(crate) async fn organization_command(
                 .await?
                 .list_organizations()
                 .await?;
+            let human = format_organizations(&organizations);
             output
-                .success(
-                    &format!("{} organization(s)", organizations.len()),
-                    &organizations,
-                )
+                .success(&human, &organizations)
                 .map_err(|error| Error::process(error.to_string()))?;
             Ok(0)
         }
