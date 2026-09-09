@@ -17,9 +17,9 @@ use tokio_rustls::{
 
 /// A loopback-only TLS terminator that forwards decrypted bytes to a TCP backend.
 ///
-/// Dropping the proxy requests shutdown and releases the listener without
-/// waiting. Call [`TlsProxy::stop`] when orderly, observable cleanup is
-/// required before continuing.
+/// Dropping the proxy initiates shutdown without waiting. Call
+/// [`TlsProxy::stop`] when orderly, observable cleanup is required before
+/// continuing.
 pub struct TlsProxy {
     local_addr: SocketAddr,
     shutdown: watch::Sender<bool>,
@@ -135,10 +135,9 @@ impl TlsProxy {
 impl Drop for TlsProxy {
     fn drop(&mut self) {
         let _ = self.shutdown.send(true);
-        // A drop cannot await graceful cleanup. Signalling lets an actively
-        // polled accept loop finish normally, while aborting ensures the
-        // listener is released even when Windows has not yet scheduled that
-        // task (for example, during test-runtime teardown).
+        // A drop cannot await cleanup. Aborting causes Tokio to release the
+        // listener when it next polls the task, but callers that need to
+        // observe the port becoming available must use `stop`.
         if let Some(task) = self.task.take() {
             task.abort();
         }

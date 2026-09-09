@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf};
 
 use cfy_dev::{TlsProxy, TlsProxyError};
 use tokio::{
@@ -147,9 +147,9 @@ async fn rejects_non_loopback_addresses_and_reports_pem_errors() {
 }
 
 #[tokio::test]
-async fn drop_closes_listener() {
+async fn stop_closes_listener_before_returning() {
     let (backend, _request) = backend().await;
-    let proxy = TlsProxy::start(
+    let mut proxy = TlsProxy::start(
         "127.0.0.1:0".parse().unwrap(),
         backend,
         fixture("localhost-cert.pem"),
@@ -158,18 +158,8 @@ async fn drop_closes_listener() {
     .await
     .unwrap();
     let address = proxy.local_addr();
-    drop(proxy);
-
-    tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            if TcpStream::connect(address).await.is_err() {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    proxy.stop().await.unwrap();
+    assert!(TcpStream::connect(address).await.is_err());
 }
 
 #[test]
