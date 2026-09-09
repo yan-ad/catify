@@ -7,7 +7,7 @@
 - Total upstream commands: **111**
 - Implemented (`native` + `adapter`): **111**
 - Commands with automated evidence: **111**
-- Live-verified commands: **28**
+- Live-verified commands: **29**
 
 | Status | Count | Meaning |
 |---|---:|---|
@@ -142,5 +142,5 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `theme push` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme rename` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-api/src/theme.rs tests; crates/cfy-cli/tests/cli.rs. |
 | `theme share` | `native` | yes | no | [#39](https://github.com/yan-ad/catify/issues/39) | Rust scans the local theme, applies optional listing overlays, creates a randomized unpublished theme, uploads all assets, rolls back failed uploads, and returns preview/editor URLs without Shopify CLI delegation. Evidence: crates/cfy-config/src/theme.rs tests; crates/cfy-api/src/theme.rs tests::share_creates_unpublished_theme_and_rolls_back_failed_upload; crates/cfy-cli/src/lib.rs tests::theme_share_matches_upstream_flags_without_legacy_theme_id. |
-| `upgrade` | `native` | yes | no | [#36](https://github.com/yan-ad/catify/issues/36) | Rust detects Homebrew, Cargo, npm, current standalone metadata, and legacy shell-installer layouts. Standalone upgrades discover stable or prerelease GitHub assets, verify SHA256SUMS, extract the platform archive, and replace the executable atomically; package-manager channels retain inherited TTY/signals. Evidence: crates/cfy-upgrade/src/lib.rs tests; crates/cfy-upgrade/tests/upgrade.rs; crates/cfy-cli/tests/cli.rs. Standalone archive replacement is fixture-tested end to end. Windows schedules replacement after the running executable exits. |
+| `upgrade` | `native` | yes | yes | [#36](https://github.com/yan-ad/catify/issues/36) | Rust detects Homebrew, Cargo, npm, current standalone metadata, and legacy shell-installer layouts. Standalone upgrades discover stable or prerelease GitHub assets, verify SHA256SUMS, extract the platform archive, and replace the executable atomically; package-manager channels retain inherited TTY/signals. Evidence: crates/cfy-upgrade/src/lib.rs tests; crates/cfy-upgrade/tests/upgrade.rs; crates/cfy-cli/tests/cli.rs; manual standalone verification: cfy 0.0.1-pre.5; cfy upgrade reported Catify is already up to date. Standalone archive replacement is fixture-tested end to end. Manual standalone verification on cfy 0.0.1-pre.5 reported Catify is already up to date. Windows schedules replacement after the running executable exits. |
 | `version` | `native` | yes | yes | [#36](https://github.com/yan-ad/catify/issues/36) | Rust implementation is exposed at the exact upstream command path. Evidence: crates/cfy-cli/tests/cli.rs; compatibility/scenarios.json; installed cfy 0.0.1-pre.2 version smoke. |

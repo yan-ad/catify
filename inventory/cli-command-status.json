@@ -1174,11 +1174,12 @@
       "evidence": [
         "crates/cfy-upgrade/src/lib.rs tests",
         "crates/cfy-upgrade/tests/upgrade.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "manual standalone verification: cfy 0.0.1-pre.5; cfy upgrade reported Catify is already up to date"
       ],
       "implementation": "Rust detects Homebrew, Cargo, npm, current standalone metadata, and legacy shell-installer layouts. Standalone upgrades discover stable or prerelease GitHub assets, verify SHA256SUMS, extract the platform archive, and replace the executable atomically; package-manager channels retain inherited TTY/signals.",
-      "live_verified": false,
-      "notes": "Standalone archive replacement is fixture-tested end to end. Windows schedules replacement after the running executable exits.",
+      "live_verified": true,
+      "notes": "Standalone archive replacement is fixture-tested end to end. Manual standalone verification on cfy 0.0.1-pre.5 reported Catify is already up to date. Windows schedules replacement after the running executable exits.",
       "owner": 36,
       "status": "native"
     },

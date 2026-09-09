@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 111,
     "tested": 111,
-    "live_verified": 28,
+    "live_verified": 29,
     "by_status": {
       "adapter": 18,
       "native": 93
@@ -1652,10 +1652,11 @@
       "evidence": [
         "crates/cfy-upgrade/src/lib.rs tests",
         "crates/cfy-upgrade/tests/upgrade.rs",
-        "crates/cfy-cli/tests/cli.rs"
+        "crates/cfy-cli/tests/cli.rs",
+        "manual standalone verification: cfy 0.0.1-pre.5; cfy upgrade reported Catify is already up to date"
       ],
-      "live_verified": false,
-      "notes": "Standalone archive replacement is fixture-tested end to end. Windows schedules replacement after the running executable exits."
+      "live_verified": true,
+      "notes": "Standalone archive replacement is fixture-tested end to end. Manual standalone verification on cfy 0.0.1-pre.5 reported Catify is already up to date. Windows schedules replacement after the running executable exits."
     },
     {
       "command": "version",
