@@ -313,6 +313,87 @@ fn hydrogen_setup_commands_are_native_with_official_cached_assets() {
 }
 
 #[test]
+fn hydrogen_setup_vite_runs_natively_with_official_cached_assets() {
+    let fixture = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-vite-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let cache_root = std::env::temp_dir().join(format!(
+        "cfy-hydrogen-vite-cache-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let cache_dir = cache_root.join("templates/v2-test-ref");
+    std::fs::create_dir_all(cache_dir.join("app/routes")).unwrap();
+    std::fs::create_dir_all(fixture.join("app/routes")).unwrap();
+    std::fs::write(cache_dir.join("locale-check.ts"), "export {};\n").unwrap();
+    std::fs::create_dir_all(cache_dir.join("assets/vite")).unwrap();
+    std::fs::write(
+        cache_dir.join("assets/vite/vite.config.js"),
+        "export default { future: {} };\n",
+    )
+    .unwrap();
+    std::fs::write(cache_dir.join("assets/vite/package.json"), "{}\n").unwrap();
+    std::fs::write(cache_dir.join(".complete"), "test-ref\n").unwrap();
+    std::fs::write(fixture.join("remix.config.js"), "server: 'server.js',\n").unwrap();
+    std::fs::write(
+        fixture.join("package.json"),
+        r#"{"dependencies":{"@remix-run/css-bundle":"^2"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("app/root.jsx"),
+        "import {LiveReload} from '@remix-run/react';\nimport css from './site.css';\nexport default () => <LiveReload />;\n",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("app/routes/index.jsx"),
+        "import css from './route.css';\nexport default () => null;\n",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("server.js"),
+        "import build from '@remix-run/dev/server-build';\n",
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))
+        .env("PATH", "")
+        .env("CFY_HYDROGEN_OFFLINE", "1")
+        .env("CFY_HYDROGEN_TEMPLATE_REF", "test-ref")
+        .env("CFY_CACHE_DIR", &cache_root)
+        .args(["hydrogen", "setup", "vite", "--path"])
+        .arg(&fixture)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fixture.join("vite.config.js").is_file());
+    assert!(!fixture.join("remix.config.js").exists());
+    assert!(
+        std::fs::read_to_string(fixture.join("server.js"))
+            .unwrap()
+            .contains("virtual:remix/server-build")
+    );
+    assert!(
+        std::fs::read_to_string(fixture.join("app/routes/index.jsx"))
+            .unwrap()
+            .contains("route.css?url")
+    );
+    std::fs::remove_dir_all(fixture).unwrap();
+    std::fs::remove_dir_all(cache_root).unwrap();
+}
+
+#[test]
 fn hydrogen_unlink_help_is_native() {
     for help_flag in ["--help", "-h"] {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_cfy"))

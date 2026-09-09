@@ -9,8 +9,8 @@
     "tested": 111,
     "live_verified": 28,
     "by_status": {
-      "adapter": 21,
-      "native": 90
+      "adapter": 20,
+      "native": 91
     },
     "by_domain": {
       "app": {
@@ -32,8 +32,8 @@
         "native": 1
       },
       "hydrogen": {
-        "adapter": 19,
-        "native": 6
+        "adapter": 18,
+        "native": 7
       },
       "organization": {
         "native": 1
@@ -989,12 +989,13 @@
     {
       "command": "hydrogen setup vite",
       "domain": "hydrogen",
-      "status": "adapter",
+      "status": "native",
       "owner": 43,
-      "implementation": "External runtime adapter is exposed at the exact upstream command path.",
+      "implementation": "Native Rust Classic Remix-to-Vite migration validates the project, synchronizes the official Vite config and package metadata from the immutable Hydrogen archive cache, updates supported project files without executing Shopify CLI or Node, and preserves a reviewable filesystem-only migration.",
       "tested": true,
       "evidence": [
-        "crates/cfy-hydrogen/src/lib.rs tests"
+        "crates/cfy-hydrogen/src/vite.rs tests",
+        "crates/cfy-cli/tests/cli.rs::hydrogen_setup_vite_runs_natively_with_official_cached_assets"
       ],
       "live_verified": false,
       "notes": null

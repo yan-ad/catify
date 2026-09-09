@@ -22,6 +22,7 @@ use thiserror::Error;
 
 mod setup;
 mod shortcut;
+mod vite;
 
 #[derive(Debug, Error)]
 pub enum HydrogenError {
@@ -592,6 +593,8 @@ enum NativeCommand {
     SetupMarketsHelp,
     SetupCss(setup::SetupCssOptions),
     SetupCssHelp,
+    SetupVite(vite::SetupViteOptions),
+    SetupViteHelp,
     Shortcut,
     ShortcutHelp,
 }
@@ -634,6 +637,9 @@ fn parse_native_command(args: &[String]) -> Result<Option<NativeCommand>> {
         }
         Some("setup") if args.get(1).map(String::as_str) == Some("css") => {
             setup::parse_setup_css(&args[2..]).map(Some)
+        }
+        Some("setup") if args.get(1).map(String::as_str) == Some("vite") => {
+            vite::parse_setup_vite(&args[2..]).map(Some)
         }
         Some("shortcut") => shortcut::parse_shortcut(args).map(Some),
         _ => Ok(None),
@@ -970,7 +976,7 @@ pub(crate) fn resolve_static_app_directory(root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn static_string_property(contents: &str, property: &str) -> Option<String> {
+pub(crate) fn static_string_property(contents: &str, property: &str) -> Option<String> {
     let position = contents.find(property)?;
     let after = &contents[position + property.len()..];
     let colon = after.find(':')?;
@@ -1564,6 +1570,16 @@ pub async fn run(args: &[String]) -> Result<i32> {
         }
         Some(NativeCommand::SetupCssHelp) => {
             setup::print_setup_css_help();
+            return Ok(0);
+        }
+        Some(NativeCommand::SetupVite(options)) => {
+            tokio::task::spawn_blocking(move || vite::run_setup_vite(&options))
+                .await
+                .map_err(|error| Error::process(format!("setup vite task failed: {error}")))??;
+            return Ok(0);
+        }
+        Some(NativeCommand::SetupViteHelp) => {
+            vite::print_setup_vite_help();
             return Ok(0);
         }
         Some(NativeCommand::Shortcut) => {

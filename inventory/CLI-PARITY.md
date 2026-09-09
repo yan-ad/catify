@@ -11,8 +11,8 @@
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `adapter` | 21 | Implemented through an explicit external runtime adapter. |
-| `native` | 90 | Implemented in Rust and exposed at the upstream command path. |
+| `adapter` | 20 | Implemented through an explicit external runtime adapter. |
+| `native` | 91 | Implemented in Rust and exposed at the upstream command path. |
 
 ## Runtime black-box parity
 
@@ -97,7 +97,7 @@ Expected deviations: `root-help`, `version-json`, `invalid-command`, `config-hel
 | `hydrogen setup` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
 | `hydrogen setup css` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust CSS setup validates Vite projects, updates package metadata and source configuration, and synchronizes Tailwind and Vanilla Extract assets exclusively from the official immutable Hydrogen archive cache; it never executes Shopify CLI or Node. Evidence: crates/cfy-hydrogen/src/setup.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
 | `hydrogen setup markets` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust multi-market setup validates the strategy, synchronizes the official i18n asset from the immutable Hydrogen archive cache, transpiles it when the project is JavaScript, and updates the Hydrogen context without executing Shopify CLI or Node. Evidence: crates/cfy-hydrogen/src/setup.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
-| `hydrogen setup vite` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
+| `hydrogen setup vite` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust Classic Remix-to-Vite migration validates the project, synchronizes the official Vite config and package metadata from the immutable Hydrogen archive cache, updates supported project files without executing Shopify CLI or Node, and preserves a reviewable filesystem-only migration. Evidence: crates/cfy-hydrogen/src/vite.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_vite_runs_natively_with_official_cached_assets. |
 | `hydrogen shortcut` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust shell shortcut installer creates idempotent Bash, Zsh, Fish, or PowerShell h2 aliases without Shopify CLI delegation. Evidence: crates/cfy-hydrogen/src/shortcut.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_setup_commands_are_native_with_official_cached_assets. |
 | `hydrogen unlink` | `native` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | Native Rust removal of the linked storefront from `.shopify/project.json`, preserving local account metadata and ensuring `.shopify` is ignored by Git. Evidence: crates/cfy-hydrogen/src/lib.rs::unlink_storefront; crates/cfy-hydrogen/src/lib.rs tests; crates/cfy-cli/tests/cli.rs::hydrogen_unlink_runs_natively_without_an_external_cli. |
 | `hydrogen upgrade` | `adapter` | yes | no | [#43](https://github.com/yan-ad/catify/issues/43) | External runtime adapter is exposed at the exact upstream command path. Evidence: crates/cfy-hydrogen/src/lib.rs tests. |
