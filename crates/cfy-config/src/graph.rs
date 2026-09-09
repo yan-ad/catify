@@ -304,7 +304,12 @@ fn parse_extension(
         diagnostics,
         "extension configuration",
     );
-    let extension_type = string_field(path, source, &raw, "type", diagnostics);
+    // Newer extension configurations put their effective metadata in a
+    // `[[extensions]]` entry. Keep the complete source document in `raw`, but
+    // use that entry when deriving the common graph fields so consumers do not
+    // mistake a modern Function configuration for an unsupported extension.
+    let configuration = extension_configuration_table(&raw);
+    let extension_type = string_field(path, source, configuration, "type", diagnostics);
     let family = extension_type
         .as_deref()
         .map(classify_extension)
@@ -324,15 +329,26 @@ fn parse_extension(
     ExtensionConfig {
         directory: path.parent().unwrap_or(Path::new("")).to_path_buf(),
         path: path.to_path_buf(),
-        name: string_field(path, source, &raw, "name", diagnostics),
-        handle: string_field(path, source, &raw, "handle", diagnostics),
-        uid: string_field(path, source, &raw, "uid", diagnostics),
+        name: string_field(path, source, configuration, "name", diagnostics),
+        handle: string_field(path, source, configuration, "handle", diagnostics),
+        uid: string_field(path, source, configuration, "uid", diagnostics),
         extension_type,
-        api_version: string_field(path, source, &raw, "api_version", diagnostics),
+        api_version: string_field(path, source, configuration, "api_version", diagnostics)
+            .or_else(|| string_field(path, source, &raw, "api_version", diagnostics)),
         family,
         raw,
         unknown,
     }
+}
+
+fn extension_configuration_table(raw: &Table) -> &Table {
+    raw.get("extensions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_table)
+        .find(|table| table.get("type").and_then(Value::as_str).is_some())
+        .unwrap_or(raw)
 }
 
 fn classify_extension(value: &str) -> ExtensionFamily {

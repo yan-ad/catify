@@ -705,7 +705,7 @@ mod tests {
                     assert!(request.contains("asset%5Bkey%5D=assets%2Flogo.bin"));
                 }
                 let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -751,7 +751,7 @@ mod tests {
                 let mut request = [0; 1024];
                 let _ = socket.read(&mut request).await.unwrap();
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -804,7 +804,7 @@ mod tests {
                     }
                 };
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -866,7 +866,7 @@ mod tests {
                     ("200 OK", r#"{"asset":{}}"#)
                 };
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -943,7 +943,7 @@ mod tests {
                     ("200 OK", "{}")
                 };
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -1023,7 +1023,7 @@ mod tests {
             let _ = socket.read(&mut request).await.unwrap();
             let body = r#"{"errors":"forbidden"}"#;
             let response = format!(
-                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             );
             socket.write_all(response.as_bytes()).await.unwrap();

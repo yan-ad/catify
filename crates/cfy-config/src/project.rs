@@ -16,6 +16,25 @@ pub enum ProjectKind {
     Theme,
 }
 
+/// Shopify CLI persists the last development store per app client ID in this
+/// local, gitignored file. It is a convenience default only: an explicit flag,
+/// environment variable, or `store` in the selected TOML always wins.
+fn project_state_store(project: &Project, document: &toml::Value) -> Option<String> {
+    let client_id = document.get("client_id")?.as_str()?.trim();
+    if client_id.is_empty() {
+        return None;
+    }
+    let contents = fs::read_to_string(project.root.join(".shopify/project.json")).ok()?;
+    let state = serde_json::from_str::<serde_json::Value>(&contents).ok()?;
+    state
+        .get(client_id)?
+        .get("dev_store_url")?
+        .as_str()
+        .map(str::trim)
+        .filter(|store| !store.is_empty())
+        .map(str::to_owned)
+}
+
 impl fmt::Display for ProjectKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -330,7 +349,8 @@ fn resolve_environment_inner(
         document.get("store"),
         &config_path,
         "store",
-    )?;
+    )?
+    .or_else(|| project_state_store(&project, &document));
     let organization = resolve_string(
         overrides.organization.as_deref(),
         environment_value(
@@ -520,6 +540,57 @@ mod tests {
 
         assert_eq!(project.kind(), ProjectKind::App);
         assert_eq!(project.root(), outer.path().join("packages/inner"));
+    }
+
+    #[test]
+    fn resolves_development_store_from_local_project_state_for_selected_client() {
+        let fixture = Fixture::new("project-state-store");
+        fixture.write("shopify.app.toml", "client_id = 'default-client'\n");
+        fixture.write("shopify.app.staging.toml", "client_id = 'staging-client'\n");
+        fixture.write(
+            ".shopify/project.json",
+            r#"{
+                "default-client": {"dev_store_url": "default.myshopify.com"},
+                "staging-client": {"dev_store_url": "staging.myshopify.com"}
+            }"#,
+        );
+        let project = discover(fixture.path(), Some(ProjectKind::App)).unwrap();
+        let environment = Environment::new();
+
+        let selected = resolve_environment(
+            project,
+            &ProjectOverrides {
+                config: Some("staging".into()),
+                ..ProjectOverrides::default()
+            },
+            &environment,
+        )
+        .unwrap();
+
+        assert_eq!(selected.store.as_deref(), Some("staging.myshopify.com"));
+    }
+
+    #[test]
+    fn explicit_store_overrides_local_project_state() {
+        let fixture = Fixture::new("project-state-explicit-store");
+        fixture.write("shopify.app.toml", "client_id = 'client'\n");
+        fixture.write(
+            ".shopify/project.json",
+            r#"{"client": {"dev_store_url": "cached.myshopify.com"}}"#,
+        );
+        let project = discover(fixture.path(), Some(ProjectKind::App)).unwrap();
+
+        let selected = resolve_environment(
+            project,
+            &ProjectOverrides {
+                store: Some("explicit.myshopify.com".into()),
+                ..ProjectOverrides::default()
+            },
+            &Environment::new(),
+        )
+        .unwrap();
+
+        assert_eq!(selected.store.as_deref(), Some("explicit.myshopify.com"));
     }
 
     #[test]

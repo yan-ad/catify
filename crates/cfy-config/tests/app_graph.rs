@@ -11,6 +11,30 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 #[test]
+fn modern_extensions_array_supplies_effective_function_metadata() {
+    let root = temp_dir("modern-function");
+    fs::write(root.join("shopify.app.toml"), "name = \"modern\"\n").unwrap();
+    let extension = root.join("extensions/payment");
+    fs::create_dir_all(&extension).unwrap();
+    fs::write(
+        extension.join("shopify.extension.toml"),
+        "api_version = \"2025-10\"\n\n[[extensions]]\nname = \"Payment\"\nhandle = \"payment-customization\"\nuid = \"extension-uid\"\ntype = \"function\"\n",
+    )
+    .unwrap();
+
+    let project = project::discover(&root, Some(ProjectKind::App)).unwrap();
+    let graph = AppConfigGraph::load(&project).unwrap();
+    let function = graph.apps[0].extensions.first().unwrap();
+    assert_eq!(function.family, ExtensionFamily::Function);
+    assert_eq!(function.name.as_deref(), Some("Payment"));
+    assert_eq!(function.handle.as_deref(), Some("payment-customization"));
+    assert_eq!(function.uid.as_deref(), Some("extension-uid"));
+    assert_eq!(function.api_version.as_deref(), Some("2025-10"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn directory_patterns_cannot_escape_the_project_root() {
     let root = temp_dir("escape");
     fs::write(

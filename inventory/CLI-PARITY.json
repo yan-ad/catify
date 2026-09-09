@@ -7,7 +7,7 @@
     "total": 111,
     "implemented": 111,
     "tested": 111,
-    "live_verified": 29,
+    "live_verified": 30,
     "by_status": {
       "adapter": 18,
       "native": 93
@@ -461,14 +461,16 @@
       "domain": "app",
       "status": "native",
       "owner": 40,
-      "implementation": "Rust-native app log subscription and polling resolves organization stores, subscribes through App Management, filters status/source, resubscribes after 401, backs off on throttling/server failures, and stops on Ctrl-C without invoking Shopify CLI.",
+      "implementation": "Rust-native app log subscription and polling reads legacy and modern Function TOML metadata, resolves the selected app client_id's persisted development store from .shopify/project.json, maps it through the Business Platform Store API, subscribes through App Management, filters status/source, resubscribes after 401, backs off on throttling/server failures, and stops on Ctrl-C without invoking Shopify CLI.",
       "tested": true,
       "evidence": [
         "crates/cfy-app/src/logs.rs tests",
-        "crates/cfy-cli/src/lib.rs::stream_app_logs",
-        "app logs command parser tests"
+        "crates/cfy-config/tests/app_graph.rs modern [[extensions]] Function metadata regression",
+        "crates/cfy-config/src/project.rs project-state development-store resolver tests",
+        "crates/cfy-store/src/lib.rs Store API query fixture",
+        "manual live verification: cfy app logs --path /Volumes/Data/Kerjaa/kaj-shopify-plugin --config kiriminaja-local streamed for 15 seconds after resolving two Function sources and the persisted development store"
       ],
-      "live_verified": false,
+      "live_verified": true,
       "notes": null
     },
     {

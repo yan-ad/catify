@@ -17,14 +17,15 @@ use url::Url;
 type Result<T> = std::result::Result<T, StoreError>;
 
 const STORE_LIST_QUERY: &str = r#"
-query ListAccessibleShops($first: Int!) {
+query ListAccessibleShops($first: Int!, $search: String) {
   organization {
     id
     name
     accessibleShops(
       first: $first
       sort: SHOP_CREATED_AT_DESC
-      filters: [{field: STORE_STATUS, operator: EQUALS, value: "active"}]
+      search: $search
+      filters: [{field: STORE_STATUS, operator: EQUALS, value: "ACTIVE"}]
     ) {
       edges {
         node { id shopifyShopId name storeType primaryDomain url createdAt }
@@ -152,7 +153,7 @@ impl OrganizationStoreClient {
             .graphql
             .execute::<_, Data>(&GraphQlRequest::query(
                 STORE_LIST_QUERY,
-                serde_json::json!({"first": STORE_LIST_LIMIT}),
+                serde_json::json!({"first": STORE_LIST_LIMIT, "search": null}),
             ))
             .await
             .map_err(|error| StoreError::Backend(format!("could not list stores: {error}")))?;
