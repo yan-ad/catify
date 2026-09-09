@@ -1,10 +1,11 @@
 //! App development lifecycle orchestration.
 
 use cfy_core::{Cancellation, Error, ErrorKind};
-use cfy_process::{ProcessOutput, ProcessSpec, RunningProcess, Supervisor};
+use cfy_process::{OutputStream, ProcessOutput, ProcessSpec, RunningProcess, Supervisor};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use thiserror::Error as ThisError;
+use tokio::sync::broadcast;
 
 mod tls_proxy;
 
@@ -124,6 +125,7 @@ pub struct DevSession {
     components: HashMap<String, RunningComponent>,
     snapshots: HashMap<String, ComponentSnapshot>,
     events: Vec<LifecycleEvent>,
+    event_tx: broadcast::Sender<LifecycleEvent>,
     options: DevOptions,
 }
 
@@ -154,11 +156,13 @@ impl DevSession {
                 )
             })
             .collect();
+        let (event_tx, _) = broadcast::channel(512);
         Ok(Self {
             supervisor,
             components: HashMap::new(),
             snapshots,
             events: Vec::new(),
+            event_tx,
             options,
         })
     }
@@ -171,6 +175,13 @@ impl DevSession {
 
     pub fn events(&self) -> &[LifecycleEvent] {
         &self.events
+    }
+
+    /// Subscribes to lifecycle and child-output events as they occur. Dropping
+    /// or lagging a dashboard does not affect process supervision.
+    #[must_use]
+    pub fn subscribe_events(&self) -> broadcast::Receiver<LifecycleEvent> {
+        self.event_tx.subscribe()
     }
 
     pub async fn start(
@@ -190,6 +201,7 @@ impl DevSession {
                 .supervisor
                 .spawn(spec.process.clone())
                 .map_err(DevError::Process)?;
+            self.forward_output(&spec.name, &process);
             self.set_state(&spec.name, ComponentState::Ready);
             self.components.insert(
                 spec.name.clone(),
@@ -237,6 +249,7 @@ impl DevSession {
                     .supervisor
                     .spawn(running.spec.process.clone())
                     .map_err(DevError::Process)?;
+                self.forward_output(&name, &process);
                 self.components.insert(
                     name.clone(),
                     RunningComponent {
@@ -247,7 +260,7 @@ impl DevSession {
                 self.set_state(&name, ComponentState::Running);
             } else {
                 self.set_state(&name, ComponentState::Failed);
-                self.events.push(LifecycleEvent::Failure {
+                self.emit(LifecycleEvent::Failure {
                     component: name.clone(),
                     message: format!("exit code {:?}", output.exit_code()),
                 });
@@ -261,19 +274,23 @@ impl DevSession {
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
+        let mut stopped = Vec::new();
         for snapshot in self.snapshots.values_mut() {
             snapshot.state = ComponentState::Stopped;
-            self.events.push(LifecycleEvent::StateChanged {
+            stopped.push(LifecycleEvent::StateChanged {
                 component: snapshot.name.clone(),
                 state: ComponentState::Stopped,
             });
+        }
+        for event in stopped {
+            self.emit(event);
         }
         self.components.clear();
         self.supervisor
             .shutdown()
             .await
             .map_err(DevError::Process)?;
-        self.events.push(LifecycleEvent::Shutdown);
+        self.emit(LifecycleEvent::Shutdown);
         Ok(())
     }
 
@@ -281,27 +298,48 @@ impl DevSession {
         if let Some(snapshot) = self.snapshots.get_mut(name) {
             snapshot.state = state.clone();
         }
-        self.events.push(LifecycleEvent::StateChanged {
+        self.emit(LifecycleEvent::StateChanged {
             component: name.into(),
             state,
         });
     }
 
     fn record_output(&mut self, name: &str, output: &ProcessOutput) {
-        if !output.stdout.is_empty() {
-            self.events.push(LifecycleEvent::Output {
-                component: name.into(),
-                bytes: output.stdout.clone(),
-                stderr: false,
-            });
+        // Output is forwarded live by `forward_output`. Keep a final captured
+        // diagnostic for callers that inspect snapshots after process exit.
+        if !output.stderr.is_empty()
+            && let Some(snapshot) = self.snapshots.get_mut(name)
+        {
+            snapshot
+                .diagnostics
+                .push(String::from_utf8_lossy(&output.stderr).trim().to_owned());
         }
-        if !output.stderr.is_empty() {
-            self.events.push(LifecycleEvent::Output {
-                component: name.into(),
-                bytes: output.stderr.clone(),
-                stderr: true,
-            });
-        }
+    }
+
+    fn forward_output(&self, component: &str, process: &RunningProcess) {
+        let mut output = process.subscribe_output();
+        let events = self.event_tx.clone();
+        let component = component.to_owned();
+        tokio::spawn(async move {
+            loop {
+                match output.recv().await {
+                    Ok(chunk) => {
+                        let _ = events.send(LifecycleEvent::Output {
+                            component: component.clone(),
+                            bytes: chunk.bytes,
+                            stderr: chunk.stream == OutputStream::Stderr,
+                        });
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
+    fn emit(&mut self, event: LifecycleEvent) {
+        let _ = self.event_tx.send(event.clone());
+        self.events.push(event);
     }
 }
 

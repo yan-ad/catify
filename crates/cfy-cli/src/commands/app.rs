@@ -45,7 +45,10 @@ use cfy_config::{
         from_project as app_environment, merge_dotenv, redacted as redact_app_environment,
         render_dotenv,
     },
-    project::{Environment, ProjectKind, ProjectOverrides, discover, resolve_environment},
+    project::{
+        Environment, ProjectKind, ProjectOverrides, discover, resolve_environment,
+        resolve_environment_with_store,
+    },
     write_atomic,
 };
 use cfy_core::{Cancellation, Error, ErrorKind, Result};
@@ -55,7 +58,10 @@ use cfy_deploy::{
     ModuleReconciliationPolicy, RemoteModuleDescriptor, SourceUploadPolicy, VersionMetadata,
     complete_source_from_build, deploy as deploy_app, reconcile_modules,
 };
-use cfy_dev::{ComponentSpec, DevOptions, DevSession, TlsProxy};
+use cfy_dev::{
+    ComponentSnapshot, ComponentSpec, ComponentState, DevOptions, DevSession, LifecycleEvent,
+    TlsProxy,
+};
 use cfy_extension_adapter::{Adapter, AdapterCommand, Parallelism};
 use cfy_process::{OutputMode, ProcessSpec, RunningProcess, Supervisor};
 use cfy_store::{
@@ -64,7 +70,21 @@ use cfy_store::{
 };
 use cfy_tunnel::{CloudflaredAdapter, TunnelConfig, TunnelProvider, TunnelSession};
 use clap::{ArgAction, Args, Subcommand, ValueEnum};
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use notify::{RecursiveMode, Watcher};
+use ratatui::{
+    Terminal,
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -960,7 +980,16 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         .and_then(toml::Value::as_str)
         .ok_or_else(|| Error::invalid_input("selected app configuration has no client_id"))?
         .to_owned();
-    let store_domain = store.or(selected.store.clone()).ok_or_else(|| {
+    // Resolve store *after* config selection. The `--store` override must not
+    // replace the selected TOML before `.shopify/project.json` can provide the
+    // saved dev-store mapping for its client ID.
+    let selected = resolve_environment_with_store(
+        selected.project.clone(),
+        Some(selected.config_name.clone()),
+        store,
+        &env::vars().collect::<Environment>(),
+    )?;
+    let store_domain = selected.store.clone().ok_or_else(|| {
         Error::invalid_input("app dev requires --store or a store in the selected app config")
     })?;
     let graph =
@@ -977,13 +1006,22 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
     } else {
         public_port
     };
+    let tui_enabled = dashboard_available(output);
     let specs = app
         .webs
         .iter()
         .enumerate()
         .filter_map(|(index, web)| {
             let port = web_base_port.checked_add(u16::try_from(index).ok()?)?;
-            web_dev_component(web, port)
+            web_dev_component(
+                web,
+                port,
+                if tui_enabled {
+                    OutputMode::Stream
+                } else {
+                    OutputMode::Inherit
+                },
+            )
         })
         .collect::<Vec<_>>();
     if specs.is_empty() && app.extensions.is_empty() {
@@ -1070,6 +1108,7 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             &supervisor,
         )?);
     }
+    let requested_tunnel_url = tunnel_url.clone();
     let mut tunnel = None;
     let public_url = if specs.is_empty() {
         None
@@ -1103,6 +1142,11 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         tunnel = Some(session);
         Some(url)
     };
+    let tunnel_kind = infer_dev_tunnel(
+        use_localhost,
+        requested_tunnel_url.as_ref(),
+        !specs.is_empty(),
+    );
     let manifest = match dev_manifest(
         &graph,
         public_url.as_ref(),
@@ -1253,19 +1297,45 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         }
         Some(session)
     };
-    output
-        .lifecycle(&match public_url {
-            Some(ref url) => format!(
-                "Running {} app component(s); public URL: {url}; GraphiQL: {graphiql_url}",
-                specs.len()
-            ),
-            None => format!(
-                "Running {} app component(s) on localhost; GraphiQL: {graphiql_url}",
-                specs.len()
-            ),
-        })
-        .map_err(|error| Error::process(error.to_string()))?;
+    let dashboard_context = AppDevDashboardContext {
+        app_name: app
+            .config
+            .name
+            .clone()
+            .unwrap_or_else(|| remote_app.name.clone()),
+        config_name: selected
+            .config_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&selected.config_name)
+            .to_owned(),
+        store: store_domain.clone(),
+        framework: detect_app_framework(&graph.root, &app.webs),
+        tunnel: tunnel_kind,
+        public_url: public_url.as_ref().map(ToString::to_string),
+        graphiql_url: graphiql_url.to_string(),
+        components: specs.iter().map(|spec| spec.name.clone()).collect(),
+    };
+    if !tui_enabled {
+        output
+            .lifecycle(&match public_url {
+                Some(ref url) => format!(
+                    "Running {} app component(s); public URL: {url}; GraphiQL: {graphiql_url}",
+                    specs.len()
+                ),
+                None => format!(
+                    "Running {} app component(s) on localhost; GraphiQL: {graphiql_url}",
+                    specs.len()
+                ),
+            })
+            .map_err(|error| Error::process(error.to_string()))?;
+    }
     let local_cancellation = cancellation.clone();
+    let dashboard_events = session.as_ref().map(DevSession::subscribe_events);
+    let dashboard_snapshots = session
+        .as_ref()
+        .map(DevSession::snapshots)
+        .unwrap_or_default();
     let mut local_task = tokio::spawn(async move {
         if let Some(ref mut session) = session {
             session.wait(&local_cancellation).await
@@ -1312,9 +1382,40 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
             .map_err(|error| Error::process(error.to_string()))
     });
     let mut graphiql_task_completed = false;
+    let mut dashboard_task = if tui_enabled {
+        dashboard_events.map(|events| {
+            tokio::spawn(run_app_dev_dashboard(
+                events,
+                dashboard_snapshots,
+                dashboard_context,
+                cancellation.clone(),
+            ))
+        })
+    } else {
+        None
+    };
     let mut result = Ok(0);
     loop {
         tokio::select! {
+            dashboard = async {
+                match dashboard_task.as_mut() {
+                    Some(task) => Some(task.await),
+                    None => std::future::pending().await,
+                }
+            } => {
+                match dashboard {
+                    Some(Ok(Ok(()))) => {
+                        cancellation.cancel();
+                        let _ = supervisor.shutdown().await;
+                        let _ = (&mut local_task).await;
+                        result = Ok(0);
+                    }
+                    Some(Ok(Err(error))) => result = Err(error),
+                    Some(Err(error)) => result = Err(Error::process(format!("App Dev dashboard task failed: {error}"))),
+                    None => unreachable!("dashboard future only completes with a task"),
+                }
+                break;
+            }
             local = &mut local_task => {
                 result = match local {
                     Ok(Ok(())) => Ok(0),
@@ -1655,20 +1756,541 @@ async fn send_dev_notification(destination: Option<&str>, root: &Path) -> Result
     Ok(())
 }
 
-fn web_dev_component(web: &cfy_config::graph::WebConfig, port: u16) -> Option<ComponentSpec> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppFramework {
+    Remix,
+    ReactRouter,
+    Nuxt,
+    TanStackStart,
+    NextJs,
+    Vite,
+    Unknown,
+}
+
+impl AppFramework {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Remix => "Remix",
+            Self::ReactRouter => "React Router",
+            Self::Nuxt => "Nuxt",
+            Self::TanStackStart => "TanStack Start",
+            Self::NextJs => "Next.js",
+            Self::Vite => "Vite",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DevTunnel {
+    Cloudflare,
+    Tailscale,
+    Ngrok,
+    Custom,
+    Localhost,
+    None,
+}
+
+impl DevTunnel {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Cloudflare => "Cloudflare Quick Tunnel",
+            Self::Tailscale => "Tailscale Funnel",
+            Self::Ngrok => "ngrok",
+            Self::Custom => "Custom HTTPS tunnel",
+            Self::Localhost => "Localhost",
+            Self::None => "Not required",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct AppDevDashboardContext {
+    app_name: String,
+    config_name: String,
+    store: String,
+    framework: AppFramework,
+    tunnel: DevTunnel,
+    public_url: Option<String>,
+    graphiql_url: String,
+    components: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DashboardTab {
+    Overview,
+    Logs,
+    Components,
+    Network,
+    Help,
+}
+
+impl DashboardTab {
+    const ALL: [Self; 5] = [
+        Self::Overview,
+        Self::Logs,
+        Self::Components,
+        Self::Network,
+        Self::Help,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Logs => "Live logs",
+            Self::Components => "Components",
+            Self::Network => "Network",
+            Self::Help => "Help",
+        }
+    }
+}
+
+fn dashboard_tab_after_key(tab: DashboardTab, code: KeyCode) -> Option<DashboardTab> {
+    let current = DashboardTab::ALL
+        .iter()
+        .position(|candidate| *candidate == tab)
+        .unwrap_or(0);
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => Some(
+            DashboardTab::ALL[(current + DashboardTab::ALL.len() - 1) % DashboardTab::ALL.len()],
+        ),
+        KeyCode::Down | KeyCode::Char('j') => {
+            Some(DashboardTab::ALL[(current + 1) % DashboardTab::ALL.len()])
+        }
+        KeyCode::Char(value @ '1'..='5') => {
+            Some(DashboardTab::ALL[usize::from(value as u8 - b'1')])
+        }
+        _ => None,
+    }
+}
+
+#[derive(Debug)]
+struct AppDevTerminalGuard;
+
+impl Drop for AppDevTerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stderr(), cursor::Show);
+    }
+}
+
+fn detect_app_framework(root: &Path, webs: &[cfy_config::graph::WebConfig]) -> AppFramework {
+    let candidates =
+        std::iter::once(root.to_path_buf()).chain(webs.iter().map(|web| web.directory.clone()));
+    for directory in candidates {
+        let package = directory.join("package.json");
+        let Ok(contents) = std::fs::read_to_string(package) else {
+            continue;
+        };
+        let Ok(document) = serde_json::from_str::<serde_json::Value>(&contents) else {
+            continue;
+        };
+        let has = |name: &str| {
+            ["dependencies", "devDependencies", "peerDependencies"]
+                .into_iter()
+                .filter_map(|key| document.get(key)?.as_object())
+                .any(|dependencies| dependencies.contains_key(name))
+        };
+        if has("@remix-run/dev") || has("@remix-run/react") {
+            return AppFramework::Remix;
+        }
+        if has("@react-router/dev") {
+            return AppFramework::ReactRouter;
+        }
+        if has("nuxt") {
+            return AppFramework::Nuxt;
+        }
+        if has("@tanstack/start") {
+            return AppFramework::TanStackStart;
+        }
+        if has("next") {
+            return AppFramework::NextJs;
+        }
+        if has("vite") {
+            return AppFramework::Vite;
+        }
+    }
+    AppFramework::Unknown
+}
+
+fn infer_dev_tunnel(
+    use_localhost: bool,
+    tunnel_url: Option<&url::Url>,
+    runs_web: bool,
+) -> DevTunnel {
+    if !runs_web {
+        return DevTunnel::None;
+    }
+    if use_localhost {
+        return DevTunnel::Localhost;
+    }
+    match tunnel_url.and_then(url::Url::host_str) {
+        Some(host) if host.ends_with("ts.net") || host.contains("tailscale") => {
+            DevTunnel::Tailscale
+        }
+        Some(host)
+            if host.ends_with("ngrok-free.app")
+                || host.ends_with("ngrok.app")
+                || host.ends_with("ngrok.io") =>
+        {
+            DevTunnel::Ngrok
+        }
+        Some(host) if host.ends_with("trycloudflare.com") || host.contains("cloudflare") => {
+            DevTunnel::Cloudflare
+        }
+        Some(_) => DevTunnel::Custom,
+        None => DevTunnel::Cloudflare,
+    }
+}
+
+fn dashboard_available(output: &Output) -> bool {
+    output.mode() == crate::output::OutputMode::Human
+        && io::stdin().is_terminal()
+        && io::stderr().is_terminal()
+        && env::var_os("CFY_APP_DEV_PLAIN").is_none()
+}
+
+fn dashboard_log_line(component: &str, bytes: &[u8], stderr: bool) -> Vec<Line<'static>> {
+    let style = if stderr {
+        Style::default().fg(Color::LightRed)
+    } else {
+        Style::default().fg(Color::Gray)
+    };
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{component:<18} "),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled(line.to_owned(), style),
+            ])
+        })
+        .collect()
+}
+
+fn dashboard_state_label(state: &ComponentState) -> (&'static str, Color) {
+    match state {
+        ComponentState::Running | ComponentState::Ready => ("running", Color::Green),
+        ComponentState::Starting | ComponentState::Restarting { .. } => ("starting", Color::Yellow),
+        ComponentState::Failed => ("failed", Color::Red),
+        ComponentState::Stopped => ("stopped", Color::DarkGray),
+        ComponentState::Pending => ("pending", Color::Gray),
+    }
+}
+
+fn draw_app_dev_dashboard(
+    frame: &mut ratatui::Frame,
+    context: &AppDevDashboardContext,
+    tab: DashboardTab,
+    logs: &[Line<'static>],
+    snapshots: &[ComponentSnapshot],
+    message: Option<&str>,
+) {
+    let area = frame.area();
+    frame.render_widget(Clear, area);
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(22), Constraint::Min(44)])
+        .split(area);
+    let items = DashboardTab::ALL
+        .iter()
+        .map(|candidate| {
+            let selected = *candidate == tab;
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    if selected { "▌ " } else { "  " },
+                    Style::default().fg(if selected {
+                        Color::Cyan
+                    } else {
+                        Color::DarkGray
+                    }),
+                ),
+                Span::styled(
+                    candidate.label(),
+                    if selected {
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Gray)
+                    },
+                ),
+            ]))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        List::new(items).block(
+            Block::default().borders(Borders::RIGHT).title(Span::styled(
+                " CATIFY DEV ",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        ),
+        columns[0],
+    );
+    let panel = columns[1].inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let footer = Rect::new(
+        panel.x,
+        panel.y + panel.height.saturating_sub(2),
+        panel.width,
+        2,
+    );
+    let content = Rect::new(
+        panel.x,
+        panel.y,
+        panel.width,
+        panel.height.saturating_sub(3),
+    );
+    let title = format!(" {} · {} ", context.app_name, tab.label());
+    let body = match tab {
+        DashboardTab::Overview => vec![
+            Line::styled(
+                "Development workspace",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(""),
+            Line::from(vec![
+                Span::styled("Framework   ", Style::default().fg(Color::DarkGray)),
+                Span::raw(context.framework.label()),
+            ]),
+            Line::from(vec![
+                Span::styled("Tunnel      ", Style::default().fg(Color::DarkGray)),
+                Span::raw(context.tunnel.label()),
+            ]),
+            Line::from(vec![
+                Span::styled("Store       ", Style::default().fg(Color::DarkGray)),
+                Span::raw(&context.store),
+            ]),
+            Line::from(vec![
+                Span::styled("Config      ", Style::default().fg(Color::DarkGray)),
+                Span::raw(&context.config_name),
+            ]),
+            Line::from(vec![
+                Span::styled("Preview     ", Style::default().fg(Color::DarkGray)),
+                Span::raw(
+                    context
+                        .public_url
+                        .as_deref()
+                        .unwrap_or("Theme extensions only"),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("GraphiQL    ", Style::default().fg(Color::DarkGray)),
+                Span::raw(&context.graphiql_url),
+            ]),
+            Line::raw(""),
+            Line::styled(
+                message.unwrap_or("Session connected. Changes sync to your development app."),
+                Style::default().fg(Color::Green),
+            ),
+        ],
+        DashboardTab::Logs => {
+            if logs.is_empty() {
+                vec![Line::styled(
+                    "Waiting for component output…",
+                    Style::default().fg(Color::DarkGray),
+                )]
+            } else {
+                logs.to_vec()
+            }
+        }
+        DashboardTab::Components => snapshots
+            .iter()
+            .map(|snapshot| {
+                let (label, color) = dashboard_state_label(&snapshot.state);
+                Line::from(vec![
+                    Span::styled(
+                        format!("{:<22}", snapshot.name),
+                        Style::default().fg(Color::Cyan),
+                    ),
+                    Span::styled(
+                        label,
+                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(if snapshot.restart_count > 0 {
+                        format!("  restarts: {}", snapshot.restart_count)
+                    } else {
+                        String::new()
+                    }),
+                ])
+            })
+            .collect(),
+        DashboardTab::Network => vec![
+            Line::from(vec![
+                Span::styled("Tunnel provider  ", Style::default().fg(Color::DarkGray)),
+                Span::raw(context.tunnel.label()),
+            ]),
+            Line::from(vec![
+                Span::styled("Public URL       ", Style::default().fg(Color::DarkGray)),
+                Span::raw(context.public_url.as_deref().unwrap_or("None")),
+            ]),
+            Line::from(vec![
+                Span::styled("Local components ", Style::default().fg(Color::DarkGray)),
+                Span::raw(context.components.join(", ")),
+            ]),
+            Line::from(vec![
+                Span::styled("GraphiQL         ", Style::default().fg(Color::DarkGray)),
+                Span::raw(&context.graphiql_url),
+            ]),
+        ],
+        DashboardTab::Help => vec![
+            Line::styled(
+                "Keyboard shortcuts",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(""),
+            Line::raw("↑/↓ or j/k  Switch tabs"),
+            Line::raw("1–5         Jump to a tab"),
+            Line::raw("g           Open GraphiQL URL"),
+            Line::raw("q / Esc     Stop App Dev"),
+            Line::raw("Ctrl+C      Stop App Dev"),
+        ],
+    };
+    frame.render_widget(
+        Paragraph::new(body)
+            .wrap(Wrap { trim: false })
+            .block(Block::default().borders(Borders::ALL).title(title)),
+        content,
+    );
+    frame.render_widget(
+        Paragraph::new(" ↑↓ Switch tabs  •  1–5 Jump  •  g GraphiQL  •  q Quit ")
+            .style(Style::default().fg(Color::DarkGray)),
+        footer,
+    );
+}
+
+async fn run_app_dev_dashboard(
+    mut events: tokio::sync::broadcast::Receiver<LifecycleEvent>,
+    mut snapshots: Vec<ComponentSnapshot>,
+    context: AppDevDashboardContext,
+    cancellation: Cancellation,
+) -> Result<()> {
+    enable_raw_mode().map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not enable App Dev dashboard",
+            error,
+        )
+    })?;
+    let _guard = AppDevTerminalGuard;
+    execute!(io::stderr(), cursor::Hide).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not initialize App Dev dashboard",
+            error,
+        )
+    })?;
+    let backend = CrosstermBackend::new(io::stderr());
+    let mut terminal = Terminal::new(backend).map_err(|error| {
+        Error::with_source(
+            ErrorKind::Process,
+            "could not create App Dev dashboard",
+            error,
+        )
+    })?;
+    let mut tab = DashboardTab::Overview;
+    let mut logs = Vec::<Line<'static>>::new();
+    let mut message = None::<String>;
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel();
+    let input_cancellation = cancellation.clone();
+    let _input_task = AbortOnDrop(tokio::task::spawn_blocking(move || {
+        while !input_cancellation.is_cancelled() {
+            match event::poll(Duration::from_millis(75)) {
+                Ok(true) => match event::read() {
+                    Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
+                        if input_tx.send(key.code).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                },
+                Ok(false) => {}
+                Err(_) => break,
+            }
+        }
+    }));
+    loop {
+        if cancellation.is_cancelled() {
+            break;
+        }
+        terminal
+            .draw(|frame| {
+                draw_app_dev_dashboard(frame, &context, tab, &logs, &snapshots, message.as_deref())
+            })
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::Process,
+                    "could not render App Dev dashboard",
+                    error,
+                )
+            })?;
+        tokio::select! {
+            biased;
+            received = events.recv() => match received {
+                Ok(LifecycleEvent::Output { component, bytes, stderr }) => {
+                    logs.extend(dashboard_log_line(&component, &bytes, stderr));
+                    if logs.len() > 400 { logs.drain(..logs.len() - 400); }
+                    tab = DashboardTab::Logs;
+                }
+                Ok(LifecycleEvent::StateChanged { component, state }) => {
+                    if let Some(snapshot) = snapshots.iter_mut().find(|snapshot| snapshot.name == component) {
+                        snapshot.state = state.clone();
+                    }
+                    message = Some(format!("{component}: {}", dashboard_state_label(&state).0));
+                }
+                Ok(LifecycleEvent::Failure { component, message: error }) => message = Some(format!("{component} failed: {error}")),
+                Ok(LifecycleEvent::Shutdown) | Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => message = Some(format!("Dashboard skipped {count} older events")),
+            },
+            input = input_rx.recv() => {
+                if let Some(code) = input {
+                    match code {
+                        KeyCode::Char('q') | KeyCode::Esc => cancellation.cancel(),
+                        KeyCode::Char('g') => { let _ = open_browser(&context.graphiql_url); },
+                        other => {
+                            if let Some(next) = dashboard_tab_after_key(tab, other) {
+                                tab = next;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    terminal.clear().ok();
+    Ok(())
+}
+
+fn web_dev_component(
+    web: &cfy_config::graph::WebConfig,
+    port: u16,
+    output: OutputMode,
+) -> Option<ComponentSpec> {
     let command = web.raw.get("commands")?.as_table()?.get("dev")?.as_str()?;
     #[cfg(windows)]
     let process = ProcessSpec::new("cmd")
         .args(["/C", command])
         .env("PORT", port.to_string())
         .current_dir(&web.directory)
-        .output(OutputMode::Inherit);
+        .output(output);
     #[cfg(not(windows))]
     let process = ProcessSpec::new("sh")
         .args(["-c", command])
         .env("PORT", port.to_string())
         .current_dir(&web.directory)
-        .output(OutputMode::Inherit);
+        .output(output);
     Some(ComponentSpec {
         name: web
             .name
@@ -3981,6 +4603,47 @@ mod app_dev_tests {
             root,
             Path::new("/project/extensions/example/src/index.js")
         ));
+    }
+
+    #[test]
+    fn detects_frameworks_tunnels_and_vertical_tab_navigation() {
+        let fixture = std::env::temp_dir().join(format!(
+            "cfy-framework-fixture-{}-{}",
+            std::process::id(),
+            unix_time_ms()
+        ));
+        std::fs::create_dir_all(&fixture).unwrap();
+        std::fs::write(
+            fixture.join("package.json"),
+            r#"{"dependencies":{"@tanstack/start":"latest"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            detect_app_framework(&fixture, &[]),
+            AppFramework::TanStackStart
+        );
+        assert_eq!(
+            infer_dev_tunnel(
+                false,
+                Some(&url::Url::parse("https://demo.ngrok-free.app").unwrap()),
+                true
+            ),
+            DevTunnel::Ngrok
+        );
+        assert_eq!(infer_dev_tunnel(true, None, true), DevTunnel::Localhost);
+        assert_eq!(
+            dashboard_tab_after_key(DashboardTab::Overview, KeyCode::Down),
+            Some(DashboardTab::Logs)
+        );
+        assert_eq!(
+            dashboard_tab_after_key(DashboardTab::Overview, KeyCode::Up),
+            Some(DashboardTab::Help)
+        );
+        assert_eq!(
+            dashboard_tab_after_key(DashboardTab::Logs, KeyCode::Char('4')),
+            Some(DashboardTab::Network)
+        );
+        std::fs::remove_dir_all(fixture).unwrap();
     }
 
     #[tokio::test]

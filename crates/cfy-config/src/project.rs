@@ -16,6 +16,29 @@ pub enum ProjectKind {
     Theme,
 }
 
+/// Resolves a project configuration and then applies an explicit store value.
+///
+/// Commands such as `app dev` must resolve the selected configuration first so
+/// the saved development-store mapping can participate in the same precedence
+/// chain as every other App command. Keeping this helper in `cfy-config` avoids
+/// each command reimplementing selection (and accidentally losing that state).
+pub fn resolve_environment_with_store(
+    project: Project,
+    config: Option<String>,
+    store: Option<String>,
+    environment: &Environment,
+) -> Result<ProjectEnvironment> {
+    resolve_environment(
+        project,
+        &ProjectOverrides {
+            config,
+            store,
+            ..ProjectOverrides::default()
+        },
+        environment,
+    )
+}
+
 /// Returns Shopify CLI's last selected app configuration for this project.
 ///
 /// Catify keeps its own selection state, but reading this non-secret preference
@@ -632,6 +655,35 @@ mod tests {
         .unwrap();
 
         assert_eq!(selected.store.as_deref(), Some("explicit.myshopify.com"));
+    }
+
+    #[test]
+    fn selected_config_store_can_be_overridden_without_losing_project_state() {
+        let fixture = Fixture::new("project-state-config-override");
+        fixture.write("shopify.app.toml", "client_id = 'default'\n");
+        fixture.write("shopify.app.local.toml", "client_id = 'local'\n");
+        fixture.write(
+            ".shopify/project.json",
+            r#"{"local": {"dev_store_url": "local.myshopify.com"}}"#,
+        );
+        let project = discover(fixture.path(), Some(ProjectKind::App)).unwrap();
+        let selected = resolve_environment_with_store(
+            project.clone(),
+            Some("local".into()),
+            None,
+            &Environment::new(),
+        )
+        .unwrap();
+        assert_eq!(selected.store.as_deref(), Some("local.myshopify.com"));
+
+        let explicit = resolve_environment_with_store(
+            project,
+            Some("local".into()),
+            Some("explicit.myshopify.com".into()),
+            &Environment::new(),
+        )
+        .unwrap();
+        assert_eq!(explicit.store.as_deref(), Some("explicit.myshopify.com"));
     }
 
     #[test]

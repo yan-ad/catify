@@ -14,7 +14,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::{Child, Command},
-    sync::{Notify, mpsc, oneshot, watch},
+    sync::{Notify, broadcast, oneshot, watch},
     task::JoinHandle,
     time::{Instant, timeout},
 };
@@ -252,7 +252,11 @@ impl Supervisor {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (cancel_tx, cancel_rx) = watch::channel(None);
         let (complete_tx, complete_rx) = oneshot::channel();
-        let (events_tx, events_rx) = mpsc::unbounded_channel();
+        // Output has more than one legitimate consumer: the supervisor keeps its
+        // captured result, while a development dashboard may render the stream
+        // live. A broadcast channel avoids making either consumer steal bytes
+        // from the other.
+        let (events_tx, events_rx) = broadcast::channel(512);
         self.inner
             .children
             .lock()
@@ -334,7 +338,7 @@ pub struct RunningProcess {
     id: u64,
     cancel: watch::Sender<Option<ShutdownSignal>>,
     completion: Option<oneshot::Receiver<Result<ProcessOutput>>>,
-    events: mpsc::UnboundedReceiver<OutputChunk>,
+    events: broadcast::Receiver<OutputChunk>,
 }
 
 impl RunningProcess {
@@ -348,7 +352,23 @@ impl RunningProcess {
     }
 
     pub async fn next_output(&mut self) -> Option<OutputChunk> {
-        self.events.recv().await
+        loop {
+            match self.events.recv().await {
+                Ok(chunk) => return Some(chunk),
+                // A slow renderer should show the newest output rather than
+                // terminate a running process just because its log buffer
+                // rolled over.
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    }
+
+    /// Creates another live output consumer without affecting process capture
+    /// or existing consumers.
+    #[must_use]
+    pub fn subscribe_output(&self) -> broadcast::Receiver<OutputChunk> {
+        self.events.resubscribe()
     }
 
     pub async fn wait(mut self) -> Result<ProcessOutput> {
@@ -408,7 +428,7 @@ async fn supervise_child(
     process_tree: platform::ProcessTree,
     output_mode: OutputMode,
     mut cancel: watch::Receiver<Option<ShutdownSignal>>,
-    events: mpsc::UnboundedSender<OutputChunk>,
+    events: broadcast::Sender<OutputChunk>,
     grace_period: Duration,
 ) -> Result<ProcessOutput> {
     let stdout_task = child
@@ -463,7 +483,7 @@ fn pump_output(
     mut reader: impl AsyncRead + Unpin + Send + 'static,
     stream: OutputStream,
     mode: OutputMode,
-    events: mpsc::UnboundedSender<OutputChunk>,
+    events: broadcast::Sender<OutputChunk>,
 ) -> JoinHandle<std::io::Result<Vec<u8>>> {
     tokio::spawn(async move {
         let mut captured = Vec::new();
