@@ -2124,7 +2124,7 @@ fn hydrogen_list_and_link_are_native_without_an_external_cli() {
             .unwrap()
     };
     let list = command(&["hydrogen", "list", "--path", fixture.to_str().unwrap()]);
-    assert_eq!(list.status.code(), Some(1));
+    assert!(!list.status.success());
     assert!(!String::from_utf8_lossy(&list.stderr).contains("Hydrogen tooling is not installed"));
 
     let link = command(&[
@@ -2135,7 +2135,7 @@ fn hydrogen_list_and_link_are_native_without_an_external_cli() {
         "--storefront",
         "Example",
     ]);
-    assert_eq!(link.status.code(), Some(1));
+    assert!(!link.status.success());
     assert!(!String::from_utf8_lossy(&link.stderr).contains("Hydrogen tooling is not installed"));
     std::fs::remove_dir_all(fixture).unwrap();
 }

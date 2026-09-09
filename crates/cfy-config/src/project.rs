@@ -697,9 +697,14 @@ mod tests {
         );
         let state = fixture.path().join("shopify-cli-app-state.json");
         let root = fixture.path().to_string_lossy();
+        let state_json = serde_json::json!({
+            root.as_ref(): {
+                "configFile": "shopify.app.staging.toml"
+            }
+        });
         fixture.write(
             "shopify-cli-app-state.json",
-            &format!(r#"{{"{root}": {{"configFile": "shopify.app.staging.toml"}}}}"#),
+            &serde_json::to_string(&state_json).unwrap(),
         );
         let previous = env::var_os("CFY_SHOPIFY_CLI_APP_STATE_FILE");
         // Tests in this module execute serially enough for a scoped process
