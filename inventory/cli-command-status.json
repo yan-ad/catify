@@ -109,12 +109,13 @@
         "crates/cfy-config/src/project.rs selected_config_store_can_be_overridden_without_losing_project_state",
         "crates/cfy-dev/src/lib.rs lifecycle dashboard events",
         "crates/cfy-process/src/lib.rs broadcast process output",
+        "crates/cfy-bulk/src/lib.rs app_dev_graphiql_binds_without_eager_admin_authentication",
         "crates/cfy-dev/tests/tls_proxy.rs",
         "crates/cfy-process/src/lib.rs ProcessSpec redaction tests"
       ],
       "implementation": "Rust-native App Dev resolves the selected config's saved dev store, orchestrates project builds, signed source uploads, Shopify remote dev-session create/update/delete, debounced full-source synchronization, supervised web processes, secure GraphiQL, localhost HTTPS, tunnel lifecycle, notifications, and an interactive Ratatui dashboard with vertical Overview, Live logs, Components, Network, and Help tabs. The dashboard detects Remix, React Router, Nuxt, TanStack Start, Next.js, and Vite projects and shows Cloudflare, Tailscale, ngrok, custom, or localhost tunnel context without delegating to Shopify CLI.",
       "live_verified": false,
-      "notes": "Theme-extension preview is isolated behind a versioned stdin protocol as its dedicated runtime engine; credentials never enter argv or debug output. The dashboard activates only on a human TTY; JSON, redirected output, and CFY_APP_DEV_PLAIN retain stream-safe plain behavior.",
+      "notes": "Theme-extension preview is isolated behind a versioned stdin protocol as its dedicated runtime engine; credentials never enter argv or debug output. The dashboard activates only on a human TTY; JSON, redirected output, and CFY_APP_DEV_PLAIN retain stream-safe plain behavior. Optional GraphiQL Admin authentication is lazy, matching Shopify CLI, so an uninstalled app or rejected client-credentials exchange cannot prevent the App Dev session itself from starting.",
       "owner": 29,
       "status": "native"
     },
@@ -344,9 +345,11 @@
       "evidence": [
         "crates/cfy-app/src/lib.rs tests",
         "crates/cfy-cli/tests/cli.rs",
+        "crates/cfy-cli/src/commands/app.rs app_versions_human_output_contains_the_upstream_table",
+        "local source build 0.0.1-pre.7 live App Management listing returned and rendered 20 of 211 versions",
         "installed cfy 0.0.1-pre.2 live App Management version listing"
       ],
-      "implementation": "Rust implementation is exposed at the exact upstream command path.",
+      "implementation": "Rust-native App Management query renders the first 20 deployed versions in the Shopify-compatible VERSION, STATUS, MESSAGE, DATE CREATED, and CREATED BY table while preserving the structured JSON report and total version count.",
       "live_verified": true,
       "owner": 40,
       "status": "native"

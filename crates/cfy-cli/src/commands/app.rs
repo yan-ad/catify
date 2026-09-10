@@ -1046,19 +1046,13 @@ async fn app_dev(args: AppDevArgs, output: &Output) -> Result<u8> {
         credentials.client_id,
         credentials.client_secret.expose().to_owned(),
     );
-    let admin_token = exchange_client_credentials(&store_for_admin, &admin_credentials)
-        .await
-        .map_err(|error| Error::api(error.to_string()))?;
-    let admin_version = resolve_api_version(&store_for_admin, None)
-        .await
-        .map_err(|error| Error::api(error.to_string()))?;
     let graphiql_key = graphiql_key.unwrap_or_else(|| {
         let digest = Sha256::digest(admin_credentials.client_secret.expose().as_bytes());
         format!("{digest:x}")
     });
-    let graphiql_server = GraphiqlServer::bind_with_key(
-        BulkClient::new(&store_for_admin, &admin_version, admin_token.secret())
-            .map_err(|error| Error::api(error.to_string()))?,
+    let graphiql_server = GraphiqlServer::bind_with_app_credentials(
+        store_for_admin,
+        admin_credentials,
         graphiql_port.unwrap_or(3457),
         MutationPolicy::DevelopmentStoresOnly,
         Some(graphiql_key),
@@ -4294,10 +4288,77 @@ async fn app_versions_command(command: AppVersionsCommand, output: &Output) -> R
     let backend = AppManagementClient::from_session(&session).await?;
     let app = backend.app_by_client_id(client_id).await?;
     let report = backend.list_versions(&app.id).await?;
+    let human = render_app_versions(&report);
     output
-        .success("App versions", &report)
+        .success(&human, &report)
         .map_err(|error| Error::process(error.to_string()))?;
     Ok(0)
+}
+
+fn render_app_versions(report: &cfy_app::AppVersionsReport) -> String {
+    if report.versions.is_empty() {
+        return "No app versions found".into();
+    }
+    let headers = ["VERSION", "STATUS", "MESSAGE", "DATE CREATED", "CREATED BY"];
+    let rows = report
+        .versions
+        .iter()
+        .map(|version| {
+            [
+                version.version.as_deref().unwrap_or_default().to_owned(),
+                version.status.clone(),
+                version.message.clone(),
+                version.created_at.trim_end_matches(" UTC").to_owned(),
+                version.created_by.clone(),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let mut widths = headers.map(str::len);
+    for row in &rows {
+        for (index, value) in row.iter().enumerate() {
+            widths[index] = widths[index].max(value.len());
+        }
+    }
+    let format_row = |row: [&str; 5]| {
+        format!(
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {}",
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            w0 = widths[0],
+            w1 = widths[1],
+            w2 = widths[2],
+            w3 = widths[3],
+        )
+    };
+    let mut rendered = format_row(headers);
+    rendered.push('\n');
+    rendered.push_str(&format_row([
+        &"─".repeat(widths[0]),
+        &"─".repeat(widths[1]),
+        &"─".repeat(widths[2]),
+        &"─".repeat(widths[3]),
+        &"─".repeat(widths[4]),
+    ]));
+    for row in &rows {
+        rendered.push('\n');
+        let status = if row[1] == "active" {
+            "• active".to_owned()
+        } else {
+            row[1].clone()
+        };
+        rendered.push_str(&format_row([&row[0], &status, &row[2], &row[3], &row[4]]));
+    }
+    if report.total > report.versions.len() as u64 {
+        rendered.push_str(&format!(
+            "\n\nShowing {} of {} app versions.",
+            report.versions.len(),
+            report.total
+        ));
+    }
+    rendered
 }
 
 #[derive(Debug, Subcommand)]
@@ -4741,5 +4802,27 @@ mod app_dev_tests {
             inherited_dev_module_uids(&local, &remote),
             vec!["remote-only".to_owned()]
         );
+    }
+
+    #[test]
+    fn app_versions_human_output_contains_the_upstream_table() {
+        let report = cfy_app::AppVersionsReport {
+            versions: vec![cfy_app::RemoteAppVersion {
+                id: "gid://shopify/Version/1".into(),
+                version: Some("example-12".into()),
+                status: "active".into(),
+                message: "Ready".into(),
+                created_at: "2026-08-31 09:20:58 UTC".into(),
+                created_by: "gid://shopify/User/7".into(),
+            }],
+            total: 12,
+        };
+        let rendered = render_app_versions(&report);
+        assert!(rendered.contains("VERSION"));
+        assert!(rendered.contains("STATUS"));
+        assert!(rendered.contains("DATE CREATED"));
+        assert!(rendered.contains("example-12"));
+        assert!(rendered.contains("• active"));
+        assert!(rendered.contains("Showing 1 of 12 app versions."));
     }
 }

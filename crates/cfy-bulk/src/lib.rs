@@ -3,7 +3,12 @@
 //! This crate deliberately contains no CLI integration. It owns the typed HTTP,
 //! GraphQL, polling, credential-exchange, identifier, and raw JSONL contracts.
 
-use std::{fmt, net::SocketAddr, sync::OnceLock, time::Duration};
+use std::{
+    fmt,
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cfy_core::Cancellation;
@@ -75,9 +80,46 @@ pub enum BulkError {
 
 pub struct GraphiqlServer {
     listener: TcpListener,
-    client: BulkClient,
+    backend: GraphiqlBackend,
     key: String,
     mutation_policy: MutationPolicy,
+}
+
+#[derive(Clone)]
+enum GraphiqlBackend {
+    Fixed(BulkClient),
+    AppCredentials {
+        store: StoreDomain,
+        credentials: AppCredentials,
+        client: Arc<tokio::sync::Mutex<Option<BulkClient>>>,
+    },
+}
+
+impl GraphiqlBackend {
+    async fn client(&self) -> Result<BulkClient> {
+        match self {
+            Self::Fixed(client) => Ok(client.clone()),
+            Self::AppCredentials {
+                store,
+                credentials,
+                client,
+            } => {
+                let mut cached = client.lock().await;
+                if let Some(client) = cached.as_ref() {
+                    return Ok(client.clone());
+                }
+                // Match Shopify CLI's app-dev behavior: binding the local
+                // GraphiQL server must not authenticate with Admin API. The
+                // app credential exchange is deferred until a user actually
+                // submits a GraphiQL request.
+                let token = exchange_client_credentials(store, credentials).await?;
+                let version = resolve_api_version(store, None).await?;
+                let resolved = BulkClient::new(store, &version, token.secret())?;
+                *cached = Some(resolved.clone());
+                Ok(resolved)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -107,6 +149,39 @@ impl GraphiqlServer {
         mutation_policy: MutationPolicy,
         key: Option<String>,
     ) -> Result<Self> {
+        Self::bind_backend(GraphiqlBackend::Fixed(client), port, mutation_policy, key).await
+    }
+
+    /// Bind GraphiQL without performing an Admin token exchange. This is used
+    /// by `app dev`, where GraphiQL is optional and must not prevent the dev
+    /// preview from starting when the app is not installed on the selected
+    /// store. Authentication happens lazily on the first GraphQL request.
+    pub async fn bind_with_app_credentials(
+        store: StoreDomain,
+        credentials: AppCredentials,
+        port: u16,
+        mutation_policy: MutationPolicy,
+        key: Option<String>,
+    ) -> Result<Self> {
+        Self::bind_backend(
+            GraphiqlBackend::AppCredentials {
+                store,
+                credentials,
+                client: Arc::new(tokio::sync::Mutex::new(None)),
+            },
+            port,
+            mutation_policy,
+            key,
+        )
+        .await
+    }
+
+    async fn bind_backend(
+        backend: GraphiqlBackend,
+        port: u16,
+        mutation_policy: MutationPolicy,
+        key: Option<String>,
+    ) -> Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", port))
             .await
             .map_err(|error| {
@@ -129,7 +204,7 @@ impl GraphiqlServer {
         };
         Ok(Self {
             listener,
-            client,
+            backend,
             key,
             mutation_policy,
         })
@@ -160,11 +235,11 @@ impl GraphiqlServer {
                 tokio::time::timeout(Duration::from_millis(100), self.listener.accept()).await
             {
                 let (stream, _) = accepted.map_err(BulkError::ServerIo)?;
-                let client = self.client.clone();
+                let backend = self.backend.clone();
                 let key = self.key.clone();
                 let mutation_policy = self.mutation_policy;
                 tokio::spawn(async move {
-                    let _ = serve_graphiql_connection(stream, client, key, mutation_policy).await;
+                    let _ = serve_graphiql_connection(stream, backend, key, mutation_policy).await;
                 });
             }
         }
@@ -173,7 +248,7 @@ impl GraphiqlServer {
 
 async fn serve_graphiql_connection(
     mut stream: TcpStream,
-    client: BulkClient,
+    backend: GraphiqlBackend,
     key: String,
     mutation_policy: MutationPolicy,
 ) -> Result<()> {
@@ -256,11 +331,20 @@ async fn serve_graphiql_connection(
                     request_id: None,
                     source,
                 })?;
-            let payload = match client
-                .execute_document_with_policy(&request.query, request.variables, mutation_policy)
-                .await
-            {
-                Ok(data) => serde_json::json!({"data": data}),
+            let payload = match backend.client().await {
+                Ok(client) => match client
+                    .execute_document_with_policy(
+                        &request.query,
+                        request.variables,
+                        mutation_policy,
+                    )
+                    .await
+                {
+                    Ok(data) => serde_json::json!({"data": data}),
+                    Err(error) => {
+                        serde_json::json!({"errors": [{"message": error.to_string()}]})
+                    }
+                },
                 Err(error) => serde_json::json!({"errors": [{"message": error.to_string()}]}),
             };
             let body = serde_json::to_vec(&payload).map_err(|source| BulkError::MalformedJson {
@@ -1641,6 +1725,43 @@ mod unit_tests {
                 .contains("x-shopify-access-token: admin-secret")
         );
 
+        cancellation.cancel();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn app_dev_graphiql_binds_without_eager_admin_authentication() {
+        let store = StoreDomain::parse("not-installed.myshopify.com").unwrap();
+        let credentials = AppCredentials::new("client-id", "client-secret");
+        let server = GraphiqlServer::bind_with_app_credentials(
+            store,
+            credentials,
+            0,
+            MutationPolicy::DevelopmentStoresOnly,
+            Some("local-key".into()),
+        )
+        .await
+        .unwrap();
+
+        // Binding and rendering the UI are local-only. The Admin credential
+        // exchange is deferred until POST /graphql is actually submitted.
+        let address = server.address().unwrap();
+        let cancellation = Cancellation::default();
+        let signal = cancellation.clone();
+        let task = tokio::spawn(async move { server.run(&signal).await });
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(
+                b"GET /?key=local-key HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+        let response = String::from_utf8(response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response.contains("Catify GraphiQL"));
+        assert!(!response.contains("client-secret"));
         cancellation.cancel();
         task.await.unwrap().unwrap();
     }
